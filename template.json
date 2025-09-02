@@ -2,6 +2,7 @@
   "Actor": {
     "types": ["character", "creature"],
     "character": {
+      "background": "martial",              
       "attributes": {
         "strength": 0,
         "agility": 0,
@@ -13,11 +14,47 @@
         "composure": 0,
         "presence": 0
       },
-      "derived": {
-        "preparation": 0,
-        "resilience": 0
+      "derived": { "preparation": 0, "resilience": 0 },
+
+      "progression": {
+        "affinityMajor": "physical",        
+        "skills": {
+          "arqueologia": { "level": 0, "rank": 0, "progress": 0, "category": "knowledge" },
+          "sigilo":     { "level": 0, "rank": 0, "progress": 0, "category": "physical" },
+          "alquimia":     { "level": 0, "rank": 0, "progress": 0, "category": "arts" }
+        },
+        "weapons": {
+          "sword": { "level": 0, "rank": 0, "progress": 0 },    
+          "bow":   { "level": 0, "rank": 0, "progress": 0 }
+        },
+        "maneuvers": {
+          "trip":  { "level": 0, "rank": 0, "progress": 0 },     
+          "feint": { "level": 0, "rank": 0, "progress": 0 }
+        },
+        "defense": {
+          "evasion": { "level": 0, "rank": 0, "progress": 0 }
+        },
+        "armor": {
+          "light":   { "level": 0, "rank": 0, "progress": 0 },
+          "medium":  { "level": 0, "rank": 0, "progress": 0 },
+          "heavy":   { "level": 0, "rank": 0, "progress": 0 }
+        },
+        "resistances": {
+          "affliction": { "level": 0, "rank": 0, "progress": 0 },
+          "alteration": { "level": 0, "rank": 0, "progress": 0 },
+          "curse":      { "level": 0, "rank": 0, "progress": 0 },
+          "infection":  { "level": 0, "rank": 0, "progress": 0 },
+          "poison":     { "level": 0, "rank": 0, "progress": 0 },
+          "water":      { "level": 0, "rank": 0, "progress": 0 },
+          "fire":       { "level": 0, "rank": 0, "progress": 0 },
+          "earth":      { "level": 0, "rank": 0, "progress": 0 },
+          "air":        { "level": 0, "rank": 0, "progress": 0 },
+          "light":      { "level": 0, "rank": 0, "progress": 0 },
+          "dark":       { "level": 0, "rank": 0, "progress": 0 }
+        }
       }
     },
+
     "creature": {
       "attributes": {
         "strength": 0,
@@ -30,10 +67,8 @@
         "composure": 0,
         "presence": 0
       },
-      "derived": {
-        "preparation": 0,
-        "resilience": 0
-      }
+      "derived": { "preparation": 0, "resilience": 0 },
+      "progression": { }                   
     }
   }
 }

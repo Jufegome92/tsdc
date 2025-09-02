@@ -7,6 +7,7 @@
   <nav class="sheet-tabs t-row" data-group="primary">
     <a class="item" data-tab="main">Básico</a>
     <a class="item" data-tab="rolls">Tiradas</a>
+    <a class="item" data-tab="specs">Especializaciones</a>
   </nav>
 
   <section class="sheet-body">
@@ -17,46 +18,45 @@
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Atributos</h3>
 
-          {{!-- Cada campo edita system.attributes.<clave> --}}
           <div class="t-field">
             <label>{{labels.strength}}</label>
             <input type="number" name="system.attributes.strength" value="{{system.attributes.strength}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.agi}}</label>
+            <label>{{labels.agility}}</label>
             <input type="number" name="system.attributes.agility" value="{{system.attributes.agility}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.ten}}</label>
+            <label>{{labels.tenacity}}</label>
             <input type="number" name="system.attributes.tenacity" value="{{system.attributes.tenacity}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.cun}}</label>
+            <label>{{labels.cunning}}</label>
             <input type="number" name="system.attributes.cunning" value="{{system.attributes.cunning}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.wis}}</label>
+            <label>{{labels.wisdom}}</label>
             <input type="number" name="system.attributes.wisdom" value="{{system.attributes.wisdom}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.int}}</label>
+            <label>{{labels.intellect}}</label>
             <input type="number" name="system.attributes.intellect" value="{{system.attributes.intellect}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.aur}}</label>
+            <label>{{labels.aura}}</label>
             <input type="number" name="system.attributes.aura" value="{{system.attributes.aura}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.com}}</label>
+            <label>{{labels.composure}}</label>
             <input type="number" name="system.attributes.composure" value="{{system.attributes.composure}}" />
           </div>
           <div class="t-field">
-            <label>{{labels.pre}}</label>
+            <label>{{labels.presence}}</label>
             <input type="number" name="system.attributes.presence" value="{{system.attributes.presence}}" />
           </div>
         </div>
 
-        {{!-- Derivados (solo lectura porque se recalculan) --}}
+        {{!-- Derivados --}}
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Derivados</h3>
           <div class="t-row">
@@ -72,7 +72,7 @@
           <span class="muted">Se recalculan automáticamente con tus atributos.</span>
         </div>
 
-        {{!-- Placeholder libre / notas --}}
+        {{!-- Notas --}}
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Notas</h3>
           <textarea name="system.notes" rows="8">{{system.notes}}</textarea>
@@ -81,7 +81,7 @@
       </div>
     </div>
 
-    {{!-- Tab de tiradas demo (usa Ventaja Evolutiva) --}}
+    {{!-- Tiradas demo --}}
     <div class="tab t-col" data-group="primary" data-tab="rolls">
       <div class="t-card t-col">
         <h3 style="margin:0 0 6px 0;">Prueba de Tirada (demo)</h3>
@@ -123,5 +123,89 @@
         <span class="muted">Esto publica una tirada en el chat usando la Ventaja Evolutiva.</span>
       </div>
     </div>
+
+    {{!-- ================================
+         NUEVA PESTAÑA: ESPECIALIZACIONES
+         ================================ --}}
+    <div class="tab t-col" data-group="primary" data-tab="specs" style="gap:12px;">
+
+      <div class="t-row" style="gap:8px;">
+        <div class="t-field" style="flex:1;">
+          <label>Buscar</label>
+          <input type="text" name="specSearch" placeholder="Escribe para filtrar (p. ej. arqueo, acro, nego...)" />
+        </div>
+        <div class="t-field">
+          <label>Mostrar</label>
+          <select name="specFilter">
+            <option value="all">Todas</option>
+            <option value="favorites">Favoritas</option>
+            <option value="physical">Físicas</option>
+            <option value="mental">Mentales</option>
+            <option value="social">Sociales</option>
+            <option value="arts">Artes y Oficios</option>
+            <option value="knowledge">Saberes</option>
+          </select>
+        </div>
+      </div>
+
+      {{!-- Favoritos arriba (si hay) --}}
+      {{#if specs.favorites.length}}
+      <div class="t-card t-col">
+        <h3 style="margin:0;">⭐ Favoritas</h3>
+        <div class="t-col" style="gap:6px;">
+          {{#each specs.favorites}}
+            <div class="t-row" data-spec="{{this.key}}" style="gap:8px; align-items:center;">
+              <strong style="min-width:160px;">{{this.label}}</strong>
+              <span class="muted" title="Atributo base">{{this.attrLabel}}</span>
+              <span class="muted">Rango {{this.rank}} • Progreso {{this.progress}}/{{this.threshold}}</span>
+              <span class="t-right"></span>
+              <button type="button" class="t-btn secondary" data-action="spec-fav" title="Quitar de favoritas">★</button>
+              <button type="button" class="t-btn" data-action="spec-roll">Tirar</button>
+            </div>
+          {{/each}}
+        </div>
+      </div>
+      {{/if}}
+
+      {{!-- Grupos por categoría --}}
+      {{#each specs.groups as |group|}}
+      <div class="t-card t-col" data-category="{{group.category}}">
+        <h3 style="margin:0;">{{group.title}}</h3>
+        <div class="t-col" style="gap:6px;">
+          {{#each group.items}}
+            <div class="t-row spec-row" data-spec="{{this.key}}" style="gap:8px; align-items:center;">
+              <strong style="min-width:160px;">{{this.label}}</strong>
+              <span class="muted" title="Atributo base">{{this.attrLabel}}</span>
+              <span class="muted">Rango {{this.rank}} • Progreso {{this.progress}}/{{this.threshold}}</span>
+              {{#if this.usesCalc}}<span class="t-badge accent" title="Tiene cálculos propios">calc</span>{{/if}}
+              <span class="t-right"></span>
+              <button type="button" class="t-btn secondary" data-action="spec-fav" title="Marcar favorita">{{#if this.fav}}★{{else}}☆{{/if}}</button>
+              <button type="button" class="t-btn" data-action="spec-roll">Tirar</button>
+            </div>
+          {{/each}}
+        </div>
+      </div>
+      {{/each}}
+
+      <div class="t-card t-col">
+      <h3 style="margin:0 0 6px 0;">Trasfondo / Afinidad</h3>
+      <div class="t-row" style="gap:8px;">
+        <div class="t-field">
+          <label>Trasfondo</label>
+          <select name="background">
+            {{#each background.options}}
+              <option value="{{this.key}}" {{#if (eq ../background.current this.key)}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-col muted" style="justify-content:center;">
+          <span>• Categoría afín progresa con umbral <strong>5</strong></span>
+          <span>• Otras categorías con umbral <strong>10</strong></span>
+        </div>
+      </div>
+
+      <span class="muted">Consejo: marca con ★ las que más usas para tenerlas arriba.</span>
+    </div>
+
   </section>
 </section>
