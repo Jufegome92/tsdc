@@ -1,0 +1,35 @@
+{
+  "TSDC.System": "Transcendence",
+
+  "TSDC.Attr.strength": "Fuerza",
+  "TSDC.Attr.agility": "Agilidad",
+  "TSDC.Attr.tenacity": "Tenacidad",
+  "TSDC.Attr.cunning": "Astucia",
+  "TSDC.Attr.wisdom": "Sabiduría",
+  "TSDC.Attr.intellect": "Intelecto",
+  "TSDC.Attr.aura": "Aura",
+  "TSDC.Attr.composure": "Compostura",
+  "TSDC.Attr.presence": "Presencia",
+
+  "TSDC.Derived.preparation": "Preparación",
+  "TSDC.Derived.resilience": "Resiliencia",
+
+  "TSDC.Roll.attack": "Tirada de Ataque",
+  "TSDC.Roll.defense": "Tirada de Defensa",
+  "TSDC.Roll.specialization": "Tirada de Especialización",
+  "TSDC.Roll.attribute": "Tirada de Característica",
+  "TSDC.Roll.resistance": "Tirada de Resistencia",
+  "TSDC.Roll.impact": "Tirada de Impacto",
+  "TSDC.Roll.personality": "Tirada de Personalidad",
+
+  "TSDC.Evo.execution": "Ventaja en la Ejecución",
+  "TSDC.Evo.learning": "Ventaja en el Aprendizaje",
+  "TSDC.Evo.none": "Sin Ventaja",
+  "TSDC.Evo.choiceTitle": "Elección de Tirada Evolutiva",
+  "TSDC.Evo.choiceLabel": "Confirmar",
+
+  "TSDC.Chat.success": "Éxito",
+  "TSDC.Chat.fail": "Fallo",
+  "TSDC.Chat.learned": "Aprendido",
+  "TSDC.Chat.noLearn": "Sin Aprendizaje"
+}

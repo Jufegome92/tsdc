@@ -1,0 +1,39 @@
+{
+  "Actor": {
+    "types": ["character", "creature"],
+    "character": {
+      "attributes": {
+        "strength": 0,
+        "agility": 0,
+        "tenacity": 0,
+        "cunning": 0,
+        "wisdom": 0,
+        "intellect": 0,
+        "aura": 0,
+        "composure": 0,
+        "presence": 0
+      },
+      "derived": {
+        "preparation": 0,
+        "resilience": 0
+      }
+    },
+    "creature": {
+      "attributes": {
+        "strength": 0,
+        "agility": 0,
+        "tenacity": 0,
+        "cunning": 0,
+        "wisdom": 0,
+        "intellect": 0,
+        "aura": 0,
+        "composure": 0,
+        "presence": 0
+      },
+      "derived": {
+        "preparation": 0,
+        "resilience": 0
+      }
+    }
+  }
+}

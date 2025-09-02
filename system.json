@@ -1,0 +1,48 @@
+
+{
+    "id": "tsdc",
+    "title": "Transcendence System Core",
+    "description": "An immersive RPG system of progression and transcendence, where characters grow through practice and surpass the boundaries of the natural.",
+    "version": "0.0.0",
+    "authors": [
+        {
+            "name": "Juan Gomez",
+            "url": "https://github.com/Jufegome92"
+        }
+    ],
+    "compatibility": {
+        "minimum": 13,
+        "verified": "13.342",
+        "maximum": 13
+    },
+    "esmodules": [
+        "modules/tsdc.js"
+    ],
+    "styles": [
+        "styles/tsdc.css"
+    ],
+    "languages": [
+        {
+            "lang": "es",
+            "name": "Español",
+            "path": "lang/es.json"
+        }
+    ],
+
+    "grid": {
+      "distance": 1,
+      "units": "Meter"
+    },
+    "documentTypes": {
+    "Actor": {
+        "character": {},
+        "creature": {}
+        }
+    },
+    "url": "https://github.com/Jufegome92/transcendence",
+    "manifest": "https://raw.githubusercontent.com/Jufegome92/transcendence/main/system.json",
+    "download": "https://github.com/Jufegome92/transcendence/archive/refs/tags/v0.0.0.zip",
+    "readme": "README.md",
+    "license": "LICENSE.txt",
+    "changelog": "CHANGELOG.md"
+}
