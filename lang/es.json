@@ -31,5 +31,7 @@
   "TSDC.Chat.success": "Éxito",
   "TSDC.Chat.fail": "Fallo",
   "TSDC.Chat.learned": "Aprendido",
-  "TSDC.Chat.noLearn": "Sin Aprendizaje"
+  "TSDC.Chat.noLearn": "Sin Aprendizaje",
+  "TYPES.Actor.character": "Personaje",
+  "TYPES.Actor.creature": "Criatura"  
 }

@@ -3,7 +3,7 @@
    Scoped por sistema para no tocar otros
    =============================== */
 
-body.system-transcendence {
+body.system-tsdc {
   --t-radius: 12px;
   --t-gap: 8px;
   --t-pad: 10px;
@@ -22,14 +22,14 @@ body.system-transcendence {
   --t-bad: #f7768e;
 }
 
-body.system-transcendence {
+body.system-tsdc {
   font-family: var(--t-font);
 }
 
 /* ===============================
    Paneles / tarjetas reutilizables
    =============================== */
-body.system-transcendence .t-card {
+body.system-tsdc .t-card {
   background: var(--t-panel);
   border: 1px solid var(--t-border);
   border-radius: var(--t-radius);
@@ -37,27 +37,27 @@ body.system-transcendence .t-card {
   box-shadow: 0 2px 10px rgba(0,0,0,.35);
 }
 
-body.system-transcendence .t-row { display: flex; gap: var(--t-gap); align-items: center; }
-body.system-transcendence .t-col { display: flex; flex-direction: column; gap: var(--t-gap); }
-body.system-transcendence .t-right { margin-left: auto; }
-body.system-transcendence .t-grid { display: grid; gap: var(--t-gap); }
-body.system-transcendence .t-grid-2 { grid-template-columns: 1fr 1fr; }
-body.system-transcendence .t-grid-3 { grid-template-columns: repeat(3, 1fr); }
+body.system-tsdc .t-row { display: flex; gap: var(--t-gap); align-items: center; }
+body.system-tsdc .t-col { display: flex; flex-direction: column; gap: var(--t-gap); }
+body.system-tsdc .t-right { margin-left: auto; }
+body.system-tsdc .t-grid { display: grid; gap: var(--t-gap); }
+body.system-tsdc .t-grid-2 { grid-template-columns: 1fr 1fr; }
+body.system-tsdc .t-grid-3 { grid-template-columns: repeat(3, 1fr); }
 
 /* ===============================
    Formularios / inputs
    =============================== */
-body.system-transcendence .t-field label {
+body.system-tsdc .t-field label {
   display: block;
   font-size: 12px;
   color: var(--t-muted);
   margin-bottom: 4px;
 }
 
-body.system-transcendence input[type="text"],
-body.system-transcendence input[type="number"],
-body.system-transcendence select,
-body.system-transcendence textarea {
+body.system-tsdc input[type="text"],
+body.system-tsdc input[type="number"],
+body.system-tsdc select,
+body.system-tsdc textarea {
   width: 100%;
   background: var(--t-elev);
   border: 1px solid var(--t-border);
@@ -67,9 +67,9 @@ body.system-transcendence textarea {
   outline: none;
 }
 
-body.system-transcendence input:focus,
-body.system-transcendence select:focus,
-body.system-transcendence textarea:focus {
+body.system-tsdc input:focus,
+body.system-tsdc select:focus,
+body.system-tsdc textarea:focus {
   border-color: var(--t-accent);
   box-shadow: 0 0 0 2px rgba(122,162,247,.15);
 }
@@ -77,7 +77,7 @@ body.system-transcendence textarea:focus {
 /* ===============================
    Botones
    =============================== */
-body.system-transcendence .t-btn {
+body.system-tsdc .t-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -91,10 +91,10 @@ body.system-transcendence .t-btn {
   cursor: pointer;
   transition: transform .06s ease, filter .2s ease, box-shadow .2s ease;
 }
-body.system-transcendence .t-btn:hover { filter: brightness(1.05); }
-body.system-transcendence .t-btn:active { transform: translateY(1px) scale(0.99); }
+body.system-tsdc .t-btn:hover { filter: brightness(1.05); }
+body.system-tsdc .t-btn:active { transform: translateY(1px) scale(0.99); }
 
-body.system-transcendence .t-btn.secondary {
+body.system-tsdc .t-btn.secondary {
   background: var(--t-elev);
   color: var(--t-text);
   border: 1px solid var(--t-border);
@@ -104,19 +104,19 @@ body.system-transcendence .t-btn.secondary {
    Chat: cartas de tirada (Roll)
    – estilizamos SOLO dentro de este sistema
    =============================== */
-body.system-transcendence .chat-message .dice-roll {
+body.system-tsdc .chat-message .dice-roll {
   background: var(--t-panel);
   border: 1px solid var(--t-border);
   border-radius: var(--t-radius);
   overflow: hidden;
 }
 
-body.system-transcendence .chat-message .dice-result {
+body.system-tsdc .chat-message .dice-result {
   background: linear-gradient(180deg, rgba(122,162,247,.07), transparent);
   padding: 6px 8px 8px;
 }
 
-body.system-transcendence .chat-message .dice-total {
+body.system-tsdc .chat-message .dice-total {
   background: var(--t-elev);
   color: var(--t-text);
   border: 1px solid var(--t-border);
@@ -125,13 +125,13 @@ body.system-transcendence .chat-message .dice-total {
   font-weight: 800;
 }
 
-body.system-transcendence .chat-message .dice-tooltip .part-formula,
-body.system-transcendence .chat-message .dice-tooltip .part-total {
+body.system-tsdc .chat-message .dice-tooltip .part-formula,
+body.system-tsdc .chat-message .dice-tooltip .part-total {
   color: var(--t-muted);
 }
 
 /* Pequeños badges de estado (éxito/aprendizaje) si los mencionas en flavor */
-body.system-transcendence .t-badge {
+body.system-tsdc .t-badge {
   display: inline-block;
   padding: 2px 6px;
   border-radius: 999px;
@@ -139,23 +139,23 @@ body.system-transcendence .t-badge {
   font-weight: 700;
   letter-spacing: .3px;
 }
-body.system-transcendence .t-badge.success { background: rgba(158,206,106,.18); color: var(--t-good); border: 1px solid rgba(158,206,106,.35); }
-body.system-transcendence .t-badge.fail    { background: rgba(247,118,142,.18); color: var(--t-bad);  border: 1px solid rgba(247,118,142,.35); }
+body.system-tsdc .t-badge.success { background: rgba(158,206,106,.18); color: var(--t-good); border: 1px solid rgba(158,206,106,.35); }
+body.system-tsdc .t-badge.fail    { background: rgba(247,118,142,.18); color: var(--t-bad);  border: 1px solid rgba(247,118,142,.35); }
 
 /* ===============================
    Diálogos (como el de Evolution Choice)
    =============================== */
-body.system-transcendence .app.window-app .window-content {
+body.system-tsdc .app.window-app .window-content {
   /* toque mínimo; Foundry ya trae estilos, esto solo armoniza colores */
   background: #0f1115;
   color: var(--t-text);
 }
-body.system-transcendence .dialog .dialog-buttons button {
+body.system-tsdc .dialog .dialog-buttons button {
   border-radius: 10px;
 }
 
 /* ===============================
    Utilidades menores
    =============================== */
-body.system-transcendence .muted { color: var(--t-muted); }
-body.system-transcendence .accent { color: var(--t-accent-2); }
+body.system-tsdc .muted { color: var(--t-muted); }
+body.system-tsdc .accent { color: var(--t-accent-2); }

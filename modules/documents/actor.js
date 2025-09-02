@@ -1,5 +1,5 @@
 // modules/documents/actor.js
-import { computeDerived, normalizeAttributes } from "../features/attribute/index.js";
+import { computeDerived, normalizeAttributes } from "../features/attributes/index.js";
 
 export class TSDCActor extends Actor {
   prepareBaseData() {
