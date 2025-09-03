@@ -116,12 +116,11 @@ export class TSDCActorSheet extends ActorSheet {
       const key = String(r.find('input[name="atkKey"]').val() || "").trim();
       const isManeuver = r.find('input[name="atkIsManeuver"]').is(':checked');
       const attrKey = String(r.find('select[name="atkAttr"]').val() || "agility");
-      const dc = Number(r.find('input[name="atkDC"]').val() || 10);
       const bonus = Number(r.find('input[name="atkBonus"]').val() || 0);
       const penalty = Number(r.find('input[name="atkPenalty"]').val() || 0);
 
       const { rollAttack } = await import("../rolls/dispatcher.js");
-      await rollAttack(this.actor, { key, isManeuver, attrKey, dc, bonus, penalty, mode:"ask" });
+      await rollAttack(this.actor, { key, isManeuver, attrKey, bonus, penalty, mode:"ask" });
     });
 
     // IMPACTO
@@ -144,12 +143,11 @@ export class TSDCActorSheet extends ActorSheet {
       const r = this.element;
       const armorType  = String(r.find('select[name="defArmorType"]').val() || "light"); // para progreso en fallo
       const armorBonus = Number(r.find('input[name="defArmorBonus"]').val() || 0);
-      const dc = Number(r.find('input[name="defDC"]').val() || 10);
       const bonus = Number(r.find('input[name="defBonus"]').val() || 0);
       const penalty = Number(r.find('input[name="defPenalty"]').val() || 0);
 
       const { rollDefense } = await import("../rolls/dispatcher.js");
-      await rollDefense(this.actor, { armorType, armorBonus, dc, bonus, penalty, mode:"ask" });
+      await rollDefense(this.actor, { armorType, armorBonus, bonus, penalty, mode:"ask" });
     });
 
     // RESISTENCIA
@@ -157,12 +155,11 @@ export class TSDCActorSheet extends ActorSheet {
       ev.preventDefault();
       const r = this.element;
       const type = String(r.find('select[name="resType"]').val() || "poison");
-      const dc = Number(r.find('input[name="resDC"]').val() || 10);
       const bonus = Number(r.find('input[name="resBonus"]').val() || 0);
       const penalty = Number(r.find('input[name="resPenalty"]').val() || 0);
 
       const { rollResistance } = await import("../rolls/dispatcher.js");
-      await rollResistance(this.actor, { type, dc, bonus, penalty });
+      await rollResistance(this.actor, { type, bonus, penalty });
     });
 
   }
@@ -174,11 +171,10 @@ export class TSDCActorSheet extends ActorSheet {
     const base = Number(root.find('input[name="base"]').val() || 0);
     const bonus = Number(root.find('input[name="bonus"]').val() || 0);
     const diff = Number(root.find('input[name="diff"]').val() || 0);
-    const dc   = Number(root.find('input[name="dc"]').val() || 10);
     const rank = Number(root.find('input[name="rank"]').val() || 0);
 
     const formula = `1d10 + ${base} + ${bonus} - ${diff}`;
-    await resolveEvolution({ type: "attack", mode, formula, rank, target: dc, flavor: "Sheet Test" });
+    await resolveEvolution({ type: "attack", mode, formula, rank, flavor: "Sheet Test" });
   }
 
   _onSpecSearch(ev, html) {
@@ -227,17 +223,15 @@ export class TSDCActorSheet extends ActorSheet {
     const attrs = this.actor.system?.attributes ?? {};
     const base  = baseFromSpec(attrs, key) || 0;
 
-    // Parámetros rápidos (puedes luego usar un HBS propio)
     const requiresChoice = requiresEvolutionChoice(key);
     const params = await Dialog.prompt({
       title: `Tirada • ${row.find("strong").text()}`,
       label: "Tirar",
       callback: (dlg) => {
-        const mode = requiresChoice ? (dlg.find('select[name="mode"]').val() || "learning") : "none";
-        const dc   = Number(dlg.find('input[name="dc"]').val() || 10);
-        const bonus= Number(dlg.find('input[name="bonus"]').val() || 0);
-        const diff = Number(dlg.find('input[name="diff"]').val() || 0);
-        return { mode, dc, bonus, diff };
+        const mode  = requiresChoice ? (dlg.find('select[name="mode"]').val() || "learning") : "none";
+        const bonus = Number(dlg.find('input[name="bonus"]').val() || 0);
+        const diff  = Number(dlg.find('input[name="diff"]').val() || 0);
+        return { mode, bonus, diff };
       },
       content: `
         <form class="t-col" style="gap:8px;">
@@ -251,7 +245,6 @@ export class TSDCActorSheet extends ActorSheet {
           </div>` : ``}
           <div class="t-row" style="gap:8px;">
             <div class="t-field"><label>Base</label><input type="number" value="${base}" disabled /></div>
-            <div class="t-field"><label>DC</label><input type="number" name="dc" value="10"/></div>
           </div>
           <div class="t-row" style="gap:8px;">
             <div class="t-field"><label>Bono</label><input type="number" name="bonus" value="0"/></div>
@@ -265,14 +258,16 @@ export class TSDCActorSheet extends ActorSheet {
     const formula = `1d10 + ${base} + ${params.bonus} - ${params.diff}`;
     const rank = Number(foundry.utils.getProperty(this.actor, `system.progression.skills.${key}.rank`) || 0);
 
-    const { learned, usedPolicy } = await resolveEvolution({
+    await resolveEvolution({
       type: "specialization",
       mode: params.mode,
       formula,
       rank,
-      target: params.dc,
-      flavor: `Especialización • ${row.find("strong").text()}`
+      flavor: `Especialización • ${row.find("strong").text()}`,
+      actor: this.actor,
+      meta: { key }
     });
+
 
     // Progreso si aprendió en modo "learning"
     if (usedPolicy === "learning" && learned) {

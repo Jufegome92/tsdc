@@ -1,101 +1,105 @@
-// Ventaja Evolutiva (actorless) — sólo para Attack, Defense, Specialization
-// Regla de aprendizaje:
-// 1) La acción usa el MENOR de los dos resultados.
-// 2) Si la acción fue exitosa y (mayor - menor) > rank => aprende.
+// Ventaja Evolutiva (actorless) — Attack/Defense/Specialization usan evolución.
+// Reglas:
+// - execution: usa MAYOR; no aprendizaje.
+// - learning:  usa MENOR; si MENOR >= DC y (MAYOR - MENOR) > rank => aprende.
 
 const EVO_TYPES = new Set(["attack", "defense", "specialization"]);
 
 /**
  * @param {object} p
  * @param {"attack"|"defense"|"specialization"|"attribute"|"resistance"|"impact"|"personality"} p.type
- * @param {"none"|"execution"|"learning"|"ask"} [p.mode="none"]  // "execution" = ventaja en la ejecución; "learning" = ventaja en el aprendizaje
- * @param {string} p.formula         // p.ej. "1d10 + 3 + 1 - 2"
- * @param {number} [p.rank=0]        // rango de competencia de la habilidad/arma/etc. relevante
- * @param {number} [p.target]        // DC/umbral de éxito (opcional). Si se define, éxito = total >= target
- * @param {string} [p.flavor]        // etiqueta para el chat
- * @param {boolean} [p.toChat=true]  // postear al chat
- * @returns {Promise<{resultRoll: Roll, otherRoll?: Roll, success?: boolean, learned?: boolean, usedPolicy: string}>}
+ * @param {"none"|"execution"|"learning"|"ask"} [p.mode="none"]
+ * @param {string} p.formula
+ * @param {number} [p.rank=0]
+ * @param {string} [p.flavor]
+ * @param {boolean} [p.toChat=true]
+ * @param {object} [p.meta]   // { key?, isManeuver?, armorType? }  — se guardará en flags
+ * @param {Actor}  [p.actor]  // para guardar actorId en flags
+ * @returns {Promise<{resultRoll: Roll, otherRoll?: Roll, usedPolicy: string}>}
  */
 export async function resolveEvolution(p = {}) {
   const {
-    type,
-    formula,
-    rank = 0,
-    flavor = "Test",
-    toChat = true
+    type, formula, rank = 0, flavor = "Test",
+    toChat = true, meta = {}, actor
   } = p;
 
   let mode = p.mode ?? "none";
   if (!formula) throw new Error("resolveEvolution: formula requerida.");
 
-  // Si el tipo NO usa Ventaja Evolutiva, forzamos "none"
-  if (!EVO_TYPES.has(String(type || "").toLowerCase())) {
-    mode = "none";
-  } else if (mode === "ask") {
-    mode = await promptPolicy();
-  }
-
-  // Tirada simple (o tipos sin Ventaja Evolutiva)
-  if (mode === "none") {
+  const usesEvo = EVO_TYPES.has(String(type || "").toLowerCase());
+  if (!usesEvo) {
+    // Tirada simple (1 dado)
     const r = await (new Roll(formula)).roll({ async: true });
-    const success = typeof p.target === "number" ? (r.total >= p.target) : undefined;
-    if (toChat) await r.toMessage({ flavor: `Transcendence • ${flavor}` });
-    return { resultRoll: r, success, learned: false, usedPolicy: "none" };
+    if (toChat) {
+      await r.toMessage({
+        flavor: `Transcendence • ${flavor}`,
+        flags: {
+          tsdc: {
+            version: 1,
+            actorId: actor?._id ?? actor?.id ?? null,
+            type, policy: "none",
+            rank,
+            meta: { ...meta },
+            totals: { low: r.total, high: r.total }
+          }
+        }
+      });
+    }
+    return { resultRoll: r, usedPolicy: "none" };
   }
 
-  // Dos tiradas idénticas
+  if (mode === "ask") mode = await promptPolicy();
+
+  // Dos tiradas idénticas (para execution/learning)
   const rA = await (new Roll(formula)).roll({ async: true });
   const rB = await (new Roll(formula)).roll({ async: true });
 
   const high = rA.total >= rB.total ? rA : rB;
   const low  = rA.total >= rB.total ? rB : rA;
 
-  let resultRoll = low;      // por defecto (para aprendizaje)
-  let learned = false;
-  let success = undefined;
+  let resultRoll = low; // por defecto (learning)
+  let usedPolicy = mode;
 
-  if (mode === "execution") {
-    // Ventaja en la ejecución: usar MAYOR; no aprendizaje
-    resultRoll = high;
-    if (toChat) await resultRoll.toMessage({ flavor: `Transcendence • ${flavor} (Execution Advantage)` });
-    return { resultRoll, otherRoll: (resultRoll === rA ? rB : rA), success: typeof p.target === "number" ? (resultRoll.total >= p.target) : undefined, learned: false, usedPolicy: "execution" };
+  if (mode === "execution") resultRoll = high;
+
+  if (toChat) {
+    const policyTag = (mode === "execution") ? "Execution" : (mode === "learning" ? "Learning" : "None");
+    await resultRoll.toMessage({
+      flavor: `Transcendence • ${flavor}${usesEvo ? ` (${policyTag})` : ""}`,
+      flags: {
+        tsdc: {
+          version: 1,
+          actorId: actor?._id ?? actor?.id ?? null,
+          type, policy: usedPolicy,
+          rank,
+          meta: { ...meta },
+          totals: { low: low.total, high: high.total }
+        }
+      }
+    });
   }
 
-  if (mode === "learning") {
-    // Ventaja en el aprendizaje: usar MENOR; chequear aprendizaje
-    success = typeof p.target === "number" ? (low.total >= p.target) : undefined;
-    if (success === true) {
-      const diff = Math.abs(high.total - low.total);
-      learned = (diff > Number(rank || 0));
-    }
-    if (toChat) {
-      const msg = `Transcendence • ${flavor} (Learning) — ${success === true ? "Success" : (success === false ? "Fail" : "Result")} ${resultRoll.total}`
-        + (success === true ? ` • ${learned ? "Learned ✓" : "No Learn"}` : "");
-      await resultRoll.toMessage({ flavor: msg });
-    }
-    return { resultRoll, otherRoll: high, success, learned, usedPolicy: "learning" };
-  }
-
-  // Fallback defensivo
-  const r = await (new Roll(formula)).roll({ async: true });
-  if (toChat) await r.toMessage({ flavor: `Transcendence • ${flavor}` });
-  return { resultRoll: r, success: typeof p.target === "number" ? (r.total >= p.target) : undefined, learned: false, usedPolicy: "none" };
+  return {
+    resultRoll,
+    otherRoll: resultRoll === rA ? rB : rA,
+    usedPolicy
+  };
 }
 
-/** Diálogo simple para elegir política en tipos que sí usan Ventaja Evolutiva */
+/** Diálogo para elegir política cuando mode === "ask" */
 export async function promptPolicy() {
   return await Dialog.prompt({
     title: "Transcendence • Roll Choice",
-    label: "Confirm",
+    label: "Confirmar",
     callback: html => html.find('select[name="policy"]').val(),
     content: `
       <form>
         <div class="form-group">
-          <label>Choose:</label>
+          <label>Elige:</label>
           <select name="policy">
-            <option value="execution">Use Advantage (keep highest)</option>
-            <option value="learning">Learning (use lowest; check learn)</option>
-            <option value="none">No Advantage</option>
+            <option value="execution">Ejecución (mantén el mayor)</option>
+            <option value="learning">Aprender (usa el menor; evalúa aprendizaje)</option>
+            <option value="none">Sin ventaja</option>
           </select>
         </div>
       </form>
