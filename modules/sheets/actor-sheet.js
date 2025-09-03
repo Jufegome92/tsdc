@@ -5,7 +5,9 @@ import { BACKGROUNDS, getBackground, setBackground, getThresholdForSpec } from "
 import * as Inv from "../features/inventory/index.js";
 import { getWeapon } from "../features/weapons/index.js";
 
-export class TSDCActorSheet extends ActorSheet {
+console.log("actor-sheet import base:", import.meta.url);
+
+export class TSDCActorSheet extends foundry.appv1.sheets.ActorSheet {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       classes: ["tsdc", "sheet", "actor"],
@@ -154,6 +156,7 @@ export class TSDCActorSheet extends ActorSheet {
       await rollAttack(this.actor, { key, isManeuver, attrKey, bonus, penalty, mode:"ask" });
     });
 
+    console.log("voy a cargar dispatcher.js desde", new URL("../rolls/dispatcher.js", import.meta.url).href);
     // IMPACTO
     html.find('[data-action="imp-roll"]').on("click", async (ev) => {
       ev.preventDefault();

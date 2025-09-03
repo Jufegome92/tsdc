@@ -13,8 +13,8 @@ Hooks.once("init", () => {
   CONFIG.Actor.documentClass = TSDCActor;
 
   // Registrar hoja por defecto
-  Actors.unregisterSheet("core", ActorSheet);
-  Actors.registerSheet("tsdc", TSDCActorSheet, { types: ["character", "creature"], makeDefault: true });
+  foundry.documents.collections.Actors.unregisterSheet("core", foundry.appv1.sheets.ActorSheet);
+  foundry.documents.collections.Actors.registerSheet("tsdc", TSDCActorSheet, { types: ["character", "creature"], makeDefault: true });
   console.log("TSDC | sheet registered");
 
   game.transcendence = {

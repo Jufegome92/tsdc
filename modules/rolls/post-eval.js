@@ -71,7 +71,7 @@ function evaluateWithDC(flags, dc) {
   return { success, learned, usedPolicy: policy };
 }
 
-Hooks.on("renderChatMessage", (message, html) => {
+Hooks.on("renderChatMessageHTML", (message, html /*HTMLElement*/) => {
   const f = message?.flags?.tsdc;
   if (!f) return;
 
@@ -79,8 +79,11 @@ Hooks.on("renderChatMessage", (message, html) => {
   if (!game.user?.isGM) return;
 
   // Botón
-  const btn = $(`<a class="button t-btn secondary" style="margin-top:6px;">Evaluar</a>`);
-  btn.on("click", async () => {
+  const btn = document.createElement('a');
+  btn.className = "button t-btn secondary";
+  btn.style.marginTop = "6px";
+  btn.textContent = "Evaluar";
+  btn.addEventListener("click", async () => {
     const dc = await Dialog.prompt({
       title: "Evaluar Tirada (DC oculto)",
       label: "Aplicar",
@@ -124,9 +127,9 @@ Hooks.on("renderChatMessage", (message, html) => {
       content: `<p><strong>Evaluación</strong> — ${summary}</p>`,
       speaker: message.speaker
     });
-  });
+  }, { once: true });
 
   // Inserta el botón al final de la carta
-  const footer = html.find(".message-content, .dice-result").last();
-  if (footer.length) footer.append(btn);
+  const footer = html.querySelector(".message-content, .dice-result") ?? html;
+  footer.appendChild(btn);
 });

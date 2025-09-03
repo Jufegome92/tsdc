@@ -1,17 +1,17 @@
 // modules/chat/listeners.js
 export function registerChatListeners() {
-  Hooks.on('renderChatMessage', (message, html, data) => {
-    const $btn = html.find('.tsdc-break-eval');
-    if (!$btn.length) return;
+  Hooks.on('renderChatMessageHTML', (message, html /*HTMLElement*/) => {
+    const btn = html.querySelector('.tsdc-break-eval');
+    if (!btn) return;
 
-    $btn.on('click', async (ev) => {
+    $btn.addEventListener('click', async (ev) => {
       ev.preventDefault();
       if (!game.user.isGM) {
         ui.notifications?.warn("Solo el GM puede evaluar rotura.");
         return;
       }
 
-      const power = Number(ev.currentTarget.dataset.power || 0);
+      const power = Number(btn.dataset.power || 0);
 
       const form = `
         <form class="t-col" style="gap:8px;">
@@ -50,6 +50,6 @@ export function registerChatListeners() {
         `,
         speaker: message.speaker
       });
-    });
+    }, { once: false });
   });
 }
