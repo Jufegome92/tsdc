@@ -267,33 +267,5 @@ export class TSDCActorSheet extends ActorSheet {
       actor: this.actor,
       meta: { key }
     });
-
-
-    // Progreso si aprendió en modo "learning"
-    if (usedPolicy === "learning" && learned) {
-      const cat = row.closest('[data-category]').attr('data-category');
-      const threshold = getThresholdForSpec(this.actor, cat); // 5 si afín, 10 si no
-      const pathBase = `system.progression.skills.${key}`;
-      const current = foundry.utils.getProperty(this.actor, pathBase) || {};
-      const nextProgress = Number(current.progress || 0) + 1;
-
-      // Subidas de nivel/rango simples (nivel++ cuando llega al umbral; rango = ⌊nivel/3⌋)
-      let level = Number(current.level || 0);
-      let rankNow = Number(current.rank || 0);
-      let progress = nextProgress;
-
-      if (nextProgress >= threshold) {
-        level += 1;
-        progress = 0; // resetea progreso tras alcanzar umbral
-        rankNow = Math.floor(level / 3);
-        ui.notifications?.info(`¡Progresas en ${row.find("strong").text()}! Nivel ${level} (Rango ${rankNow})`);
-      }
-
-      await this.actor.update({
-        [`${pathBase}.progress`]: progress,
-        [`${pathBase}.level`]: level,
-        [`${pathBase}.rank`]: rankNow
-      });
-    }
   }
 }

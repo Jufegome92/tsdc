@@ -1,4 +1,4 @@
-import { TSDC } from "../config.js";
+import { TSDC } from "./config.js";
 
 /** Nivel → Rango (cada 3 niv) */
 export function levelToRank(level=0) {
