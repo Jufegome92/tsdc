@@ -108,6 +108,63 @@ export class TSDCActorSheet extends ActorSheet {
     // Favoritos y tiradas
     html.find('[data-action="spec-fav"]').on("click", (ev) => this._onToggleFavorite(ev));
     html.find('[data-action="spec-roll"]').on("click", (ev) => this._onSpecRoll(ev));
+
+    // ATAQUE
+    html.find('[data-action="atk-roll"]').on("click", async (ev) => {
+      ev.preventDefault();
+      const r = this.element;
+      const key = String(r.find('input[name="atkKey"]').val() || "").trim();
+      const isManeuver = r.find('input[name="atkIsManeuver"]').is(':checked');
+      const attrKey = String(r.find('select[name="atkAttr"]').val() || "agility");
+      const dc = Number(r.find('input[name="atkDC"]').val() || 10);
+      const bonus = Number(r.find('input[name="atkBonus"]').val() || 0);
+      const penalty = Number(r.find('input[name="atkPenalty"]').val() || 0);
+
+      const { rollAttack } = await import("../rolls/dispatcher.js");
+      await rollAttack(this.actor, { key, isManeuver, attrKey, dc, bonus, penalty, mode:"ask" });
+    });
+
+    // IMPACTO
+    html.find('[data-action="imp-roll"]').on("click", async (ev) => {
+      ev.preventDefault();
+      const r = this.element;
+      const key   = String(r.find('input[name="impKey"]').val() || "").trim();
+      const die   = String(r.find('select[name="impDie"]').val() || "d6");
+      const grade = Number(r.find('input[name="impGrade"]').val() || 1);
+      const attrKey = String(r.find('select[name="impAttr"]').val() || "agility");
+      const bonus = Number(r.find('input[name="impBonus"]').val() || 0);
+
+      const { rollImpact } = await import("../rolls/dispatcher.js");
+      await rollImpact(this.actor, { key, die, grade, attrKey, bonus });
+    });
+
+    // DEFENSA
+    html.find('[data-action="def-roll"]').on("click", async (ev) => {
+      ev.preventDefault();
+      const r = this.element;
+      const armorType  = String(r.find('select[name="defArmorType"]').val() || "light"); // para progreso en fallo
+      const armorBonus = Number(r.find('input[name="defArmorBonus"]').val() || 0);
+      const dc = Number(r.find('input[name="defDC"]').val() || 10);
+      const bonus = Number(r.find('input[name="defBonus"]').val() || 0);
+      const penalty = Number(r.find('input[name="defPenalty"]').val() || 0);
+
+      const { rollDefense } = await import("../rolls/dispatcher.js");
+      await rollDefense(this.actor, { armorType, armorBonus, dc, bonus, penalty, mode:"ask" });
+    });
+
+    // RESISTENCIA
+    html.find('[data-action="res-roll"]').on("click", async (ev) => {
+      ev.preventDefault();
+      const r = this.element;
+      const type = String(r.find('select[name="resType"]').val() || "poison");
+      const dc = Number(r.find('input[name="resDC"]').val() || 10);
+      const bonus = Number(r.find('input[name="resBonus"]').val() || 0);
+      const penalty = Number(r.find('input[name="resPenalty"]').val() || 0);
+
+      const { rollResistance } = await import("../rolls/dispatcher.js");
+      await rollResistance(this.actor, { type, dc, bonus, penalty });
+    });
+
   }
 
   async _onDemoEvoRoll(ev) {

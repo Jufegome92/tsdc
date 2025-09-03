@@ -1,64 +1,67 @@
+// modules/rolls/dispatcher.js
 import { resolveEvolution } from "../features/advantage/index.js";
 import { addProgress } from "../progression.js";
+import { buildAttackFormula, buildImpactFormula, buildDefenseFormula, buildResistanceFormula } from "./formulas.js";
 
-/**
- * Decide política y a qué “track” se aplica el progreso según el tipo de tirada.
- * @param {Actor} actor
- * @param {object} p  { type, key, mode?, formula, rank, target, flavor?, armorType? }
- */
-export async function rollWithProgress(actor, p) {
-  const type = (p.type||"").toLowerCase();
+/** TIRADA: ataque con armas o maniobra */
+export async function rollAttack(actor, { key, isManeuver=false, attrKey, dc=10, bonus=0, penalty=0, mode="ask", flavor } = {}) {
+  const { formula } = buildAttackFormula(actor, { isManeuver, key, attrKey, bonus, penalty });
+  const rank =  Number(foundry.utils.getProperty(actor, isManeuver ? `system.progression.maneuvers.${key}.rank` : `system.progression.weapons.${key}.rank`) || 0);
 
-  // 1) Forzar política según reglas
-  // - specialization / attack / defense: requieren "execution" o "learning" (o "ask" → UI)
-  // - resistance: NO requiere decisión (un dado, "none")
-  // - attribute / impact / personality: nunca progreso (podemos dejar "none")
-  let mode = p.mode;
-  if (["resistance","attribute","impact","personality"].includes(type)) mode = "none";
-  if (!mode && ["attack","defense","specialization"].includes(type)) mode = "ask";
-
-  // 2) Resolver tirada (devuelve success & learned si aplica)
-  const { resultRoll, success, learned, usedPolicy } = await resolveEvolution({
-    ...p,
-    mode
+  const { success, learned, usedPolicy, resultRoll } = await resolveEvolution({
+    type: "attack",
+    mode, formula, rank, target: dc,
+    flavor: flavor ?? (isManeuver ? `Maniobra • ${key}` : `Ataque • ${key}`)
   });
 
-  // 3) Aplicar progreso según resultado y tipo
-  let progressInfo = null;
+  if (success === true && learned === true) {
+    const trackType = isManeuver ? "maneuvers" : "weapons";
+    await addProgress(actor, trackType, key, 1);
+  }
+  return { success, learned, usedPolicy, resultRoll };
+}
 
-  if (type === "attack") {
-    // éxito → progreso en weapon o maneuver según key
-    // *Regla*: “ataque con arma” → track weapons[key]; “maniobra” → track maneuvers[key]
-    if (success === true && learned === true) {
-      const trackType = p.isManeuver ? "maneuvers" : "weapons";
-      progressInfo = await addProgress(actor, trackType, p.key, 1);
+/** TIRADA: impacto cuerpo a cuerpo */
+export async function rollImpact(actor, { key, die="d6", grade=1, attrKey, bonus=0, flavor } = {}) {
+  const { formula } = buildImpactFormula(actor, { key, die, grade, attrKey, bonus });
+  // No hay progreso por impacto
+  const r = await (new Roll(formula)).roll({ async: true });
+  await r.toMessage({ flavor: flavor ?? `Impacto • ${key}` });
+  return { resultRoll: r };
+}
+
+/** TIRADA: defensa (evasión / armadura) */
+export async function rollDefense(actor, { armorType, armorBonus=0, dc=10, bonus=0, penalty=0, mode="ask", flavor } = {}) {
+  const { formula } = buildDefenseFormula(actor, { armorBonus, bonus, penalty });
+  const rank = Number(foundry.utils.getProperty(actor, `system.progression.defense.evasion.rank`) || 0);
+
+  const { success, learned, usedPolicy, resultRoll } = await resolveEvolution({
+    type: "defense",
+    mode, formula, rank, target: dc,
+    flavor: flavor ?? `Defensa`
+  });
+
+  // éxito → evasion; fallo → armor[type]
+  if (learned === true) {
+    if (success === true) {
+      await addProgress(actor, "defense", "evasion", 1);
+    } else if (success === false && armorType) {
+      await addProgress(actor, "armor", armorType, 1);
     }
   }
+  return { success, learned, usedPolicy, resultRoll };
+}
 
-  else if (type === "defense") {
-    // éxito → evasion; fallo → armor[type]
-    if (success === true && learned === true) {
-      progressInfo = await addProgress(actor, "defense", "evasion", 1);
-    } else if (success === false && learned === true && p.armorType) {
-      progressInfo = await addProgress(actor, "armor", p.armorType, 1); // "light"|"medium"|"heavy"
-    }
+/** TIRADA: resistencia (un solo dado, no elige política) */
+export async function rollResistance(actor, { type, dc=10, bonus=0, penalty=0, flavor } = {}) {
+  const { formula } = buildResistanceFormula(actor, { type, bonus, penalty });
+  const r = await (new Roll(formula)).roll({ async: true });
+  const success = (r.total >= Number(dc||10));
+  await r.toMessage({ flavor: flavor ?? `Resistencia • ${type}` });
+
+  // fallo → progresa la resistencia específica
+  if (success === false) {
+    await addProgress(actor, "resistances", type, 1);
   }
-
-  else if (type === "specialization") {
-    // éxito → skill[key]
-    if (success === true && learned === true) {
-      progressInfo = await addProgress(actor, "skills", p.key, 1);
-    }
-  }
-
-  else if (type === "resistance") {
-    // un dado; fallo → resistance[key]
-    if (success === false) {
-      progressInfo = await addProgress(actor, "resistances", p.key, 1);
-    }
-  }
-
-  // attribute / impact / personality → nunca progreso
-
-  return { resultRoll, success, learned, usedPolicy, progressInfo };
+  return { resultRoll: r, success };
 }
