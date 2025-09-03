@@ -2,6 +2,8 @@
 import { listSpecs, getAttributeForSpec, baseFromSpec, requiresEvolutionChoice, usesCalc } from "../features/specializations/index.js";
 import { resolveEvolution } from "../features/advantage/index.js";
 import { BACKGROUNDS, getBackground, setBackground, getThresholdForSpec } from "../features/affinities/index.js";
+import * as Inv from "../features/inventory/index.js";
+import { getWeapon } from "../features/weapons/index.js";
 
 export class TSDCActorSheet extends ActorSheet {
   static get defaultOptions() {
@@ -85,6 +87,35 @@ export class TSDCActorSheet extends ActorSheet {
     }));
 
     data.specs = { favorites, groups };
+
+    // --- Inventario (para UI de slots) ---
+    const eq = Inv.getEquipped(this.actor);
+    const optFor = (slot) => {
+      const list = Inv.listForSlot(this.actor, slot);
+      return list.map(it => ({
+        id: it.id,
+        label: Inv.itemLabel(it),
+        selected: eq[slot] === it.id
+      }));
+    };
+
+    data.inventory = {
+      options: {
+        mainHand: optFor("mainHand"),
+        offHand:  optFor("offHand"),
+        shield:   optFor("shield"),
+        head:     optFor("head"),
+        chest:    optFor("chest"),
+        legs:     optFor("legs"),
+        bracers:  optFor("bracers"),
+        boots:    optFor("boots"),
+        insignia: optFor("insignia"),
+        amulet:   optFor("amulet"),
+        pendant1: optFor("pendant1"),
+        pendant2: optFor("pendant2")
+      }
+    };
+
     return data;
   }
 
@@ -127,14 +158,25 @@ export class TSDCActorSheet extends ActorSheet {
     html.find('[data-action="imp-roll"]').on("click", async (ev) => {
       ev.preventDefault();
       const r = this.element;
-      const key   = String(r.find('input[name="impKey"]').val() || "").trim();
-      const die   = String(r.find('select[name="impDie"]').val() || "d6");
-      const grade = Number(r.find('input[name="impGrade"]').val() || 1);
+
+      // Lo que viene de la UI
+      let   key     = String(r.find('input[name="impKey"]').val() || "").trim();
+      const die     = String(r.find('select[name="impDie"]').val() || "d6");
+      const grade   = Number(r.find('input[name="impGrade"]').val() || 1);
       const attrKey = String(r.find('select[name="impAttr"]').val() || "agility");
-      const bonus = Number(r.find('input[name="impBonus"]').val() || 0);
+      const bonus   = Number(r.find('input[name="impBonus"]').val() || 0);
+
+      // Arma equipada en mano principal (para potencia de rotura)
+      const mainItem = Inv.getEquippedItem(this.actor, "mainHand");
+      // Si no se especificó key, usa la del arma equipada
+      if (!key && mainItem?.type === "weapon" && mainItem.key) key = String(mainItem.key);
 
       const { rollImpact } = await import("../rolls/dispatcher.js");
-      await rollImpact(this.actor, { key, die, grade, attrKey, bonus });
+      await rollImpact(this.actor, {
+        key, die, grade, attrKey, bonus,
+        weaponItem: mainItem ?? null // ← necesario para críticos / romper partes
+        // Puedes añadir aquí breakBonus / targetDurability si quieres pedirlos por diálogo
+      });
     });
 
     // DEFENSA
@@ -160,6 +202,15 @@ export class TSDCActorSheet extends ActorSheet {
 
       const { rollResistance } = await import("../rolls/dispatcher.js");
       await rollResistance(this.actor, { type, bonus, penalty });
+    });
+
+    // Equipar / Desequipar por slot
+    html.find('select[name^="slot."]').on("change", async (ev) => {
+      const name = String(ev.currentTarget.name || "slot.?");
+      const slot = name.split(".")[1];
+      const val = String(ev.currentTarget.value || "");
+      const id = val || null;
+      await Inv.equip(this.actor, slot, id);
     });
 
   }

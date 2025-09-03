@@ -315,6 +315,126 @@
 
       <span class="muted">Consejo: marca con ★ las que más usas para tenerlas arriba.</span>
     </div>
+    
+    {{!-- === EQUIPO (SLOTS) === --}}
+    <div class="t-card t-col">
+      <h3 style="margin:0 0 6px 0;">Equipo</h3>
 
+      <div class="t-grid t-grid-2" style="gap:12px;">
+        <div class="t-field">
+          <label>Mano principal</label>
+          <select name="slot.mainHand">
+            <option value="">— Ninguna —</option>
+            {{#each inventory.options.mainHand}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Mano secundaria</label>
+          <select name="slot.offHand">
+            <option value="">— Ninguna —</option>
+            {{#each inventory.options.offHand}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+
+        <div class="t-field">
+          <label>Escudo</label>
+          <select name="slot.shield">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.shield}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+
+        <div class="t-field">
+          <label>Casco</label>
+          <select name="slot.head">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.head}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Peto</label>
+          <select name="slot.chest">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.chest}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Pantalón</label>
+          <select name="slot.legs">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.legs}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Brazales</label>
+          <select name="slot.bracers">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.bracers}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Botas</label>
+          <select name="slot.boots">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.boots}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+
+        <div class="t-field">
+          <label>Insignia</label>
+          <select name="slot.insignia">
+            <option value="">— Ninguna —</option>
+            {{#each inventory.options.insignia}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Amuleto</label>
+          <select name="slot.amulet">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.amulet}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Colgante 1</label>
+          <select name="slot.pendant1">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.pendant1}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="t-field">
+          <label>Colgante 2</label>
+          <select name="slot.pendant2">
+            <option value="">— Ninguno —</option>
+            {{#each inventory.options.pendant2}}
+              <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+      </div>
+
+      <span class="muted">Consejo: equipa un arma en la mano principal para que las tiradas la tomen por defecto.</span>
+    </div>
   </section>
 </section>

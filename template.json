@@ -2,7 +2,30 @@
   "Actor": {
     "types": ["character", "creature"],
     "character": {
-      "background": "martial",              
+      "background": "martial", 
+      "inventory": {
+        "bag": [
+          { "id": "w1", "type": "weapon", "key": "katana", "name": "Katana", "qty": 1 },
+          { "id": "w2", "type": "weapon", "key": "sai",    "name": "Sai",    "qty": 1 },
+          { "id": "s1", "type": "shield", "name": "Escudo Ligero", "grade": 1, "qty": 1 },
+          { "id": "a1", "type": "armor",  "slot": "chest", "name": "Peto Ligero", "grade": 1, "qty": 1 }
+        ],
+        "equipped": {
+          "head": null,
+          "chest": null,
+          "legs": null,
+          "bracers": null,
+          "boots": null,
+          "mainHand": null,
+          "offHand": null,
+          "shield": null,
+          "insignia": null,
+          "amulet": null,
+          "pendant1": null,
+          "pendant2": null
+        }
+      }
+      ,             
       "attributes": {
         "strength": 0,
         "agility": 0,
