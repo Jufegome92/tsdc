@@ -3,7 +3,10 @@ import { listSpecs, getAttributeForSpec, baseFromSpec, requiresEvolutionChoice, 
 import { resolveEvolution } from "../features/advantage/index.js";
 import { BACKGROUNDS, getBackground, setBackground, getThresholdForSpec } from "../features/affinities/index.js";
 import * as Inv from "../features/inventory/index.js";
-import { getWeapon } from "../features/weapons/index.js";
+import { getWeapon as getWeaponDef } from "../features/weapons/index.js";
+import { computeArmorBonusFromEquipped } from "../features/defense/index.js";
+import { trackThreshold } from "../progression.js";
+import { WEAPONS } from "../features/weapons/data.js"; 
 
 console.log("actor-sheet import base:", import.meta.url);
 
@@ -90,6 +93,74 @@ export class TSDCActorSheet extends foundry.appv1.sheets.ActorSheet {
 
     data.specs = { favorites, groups };
 
+    // ===== COMPETENCIAS (para el tab nuevo) =====
+    const prog = this.actor.system?.progression ?? {};
+    const asPct = (p,t) => {
+      const pct = Math.max(0, Math.min(100, Math.round((Number(p||0) / Math.max(1, Number(t||0))) * 100)));
+      return isFinite(pct) ? pct : 0;
+    };
+    const row = (trackType, key, label, extraHint="") => {
+      const p = foundry.utils.getProperty(this.actor, `system.progression.${trackType}.${key}`) ?? { level:0, rank:0, progress:0, fails:0 };
+      const threshold = trackThreshold(this.actor, trackType, key);
+      return {
+        key, trackType,
+        label,
+        level: Number(p.level||0),
+        rank: Number(p.rank||0),
+        progress: Number(p.progress||0),
+        fails: Number(p.fails||0),
+        threshold,
+        pct: asPct(p.progress, threshold),
+        bonusHint: extraHint
+      };
+    };
+
+    // Armas: usa claves existentes en progression.weapons (las que realmente usó el PJ)
+    const weaponKeys = Object.keys(prog.weapons ?? {});
+    const weapons = weaponKeys
+      .sort((a,b) => (WEAPONS[a]?.label ?? a).localeCompare(WEAPONS[b]?.label ?? b, "es"))
+      .map(k => row("weapons", k, WEAPONS[k]?.label ?? k, "+nivel al Ataque • +rango dados al Impacto"));
+
+    // Maniobras (cuando las uses, ya aparecerán aquí al progresar)
+    const maneuverKeys = Object.keys(prog.maneuvers ?? {});
+    const maneuvers = maneuverKeys
+      .sort((a,b) => a.localeCompare(b, "es"))
+      .map(k => row("maneuvers", k, k, "+nivel al Ataque (maniobra)"));
+
+    // Defensa (evasión)
+    const defense = [row("defense", "evasion", "Evasión", "+nivel a Defensa")];
+
+    // Armaduras (tipos fijos)
+    const armor = ["light","medium","heavy"].map(k => row("armor", k,
+      k==="light"?"Ligera":k==="medium"?"Intermedia":"Pesada",
+      "Progresa en fallos de Defensa"));
+
+    // Resistencias (tipos fijos)
+    const RES_LABEL = {
+      poison:"Veneno", infection:"Infección", affliction:"Aflicción", curse:"Maldición",
+      alteration:"Alteración", water:"Agua", fire:"Fuego", earth:"Tierra", air:"Viento",
+      light:"Luz", dark:"Oscuridad"
+    };
+    const resKeys = Object.keys(RES_LABEL);
+    const resists = resKeys.map(k => row("resistances", k, RES_LABEL[k], "+nivel en Tiradas de Resistencia"));
+
+    // Especializaciones (usa tus labels ya calculados en la vista de specs)
+    const skills = Object.entries(prog.skills ?? {}).map(([k,v]) => {
+      const lbl = (data.specs?.groups?.flatMap(g => g.items).find(i => i.key===k)?.label) || k;
+      const cat = data.specs?.groups?.flatMap(g => g.items).find(i => i.key===k)?.category || v?.category || "—";
+      const r = row("skills", k, lbl, "+nivel a tiradas relacionadas");
+      r.categoryLabel = (
+        cat==="physical"?"Física":
+        cat==="mental"?"Mental":
+        cat==="social"?"Social":
+        cat==="arts"?"Artes y Oficios":
+        cat==="knowledge"?"Saberes": cat
+      );
+      return r;
+    }).sort((a,b)=>a.label.localeCompare(b.label,"es"));
+
+    data.comps = { weapons, maneuvers, defense, armor, resists, skills };
+
     // --- Inventario (para UI de slots) ---
     const eq = Inv.getEquipped(this.actor);
     const optFor = (slot) => {
@@ -146,14 +217,21 @@ export class TSDCActorSheet extends foundry.appv1.sheets.ActorSheet {
     html.find('[data-action="atk-roll"]').on("click", async (ev) => {
       ev.preventDefault();
       const r = this.element;
-      const key = String(r.find('input[name="atkKey"]').val() || "").trim();
+      const selId = String(r.find('select[name="atkWeapon"]').val() || "");
+      const selItem = selId ? Inv.getItemById?.(this.actor, selId) : Inv.getEquippedItem(this.actor, "mainHand");
+      const wKey = selItem?.key || null;
       const isManeuver = r.find('input[name="atkIsManeuver"]').is(':checked');
-      const attrKey = String(r.find('select[name="atkAttr"]').val() || "agility");
+      let attrKey = String(r.find('select[name="atkAttr"]').val() || "");
+      if (!attrKey) {
+        // si no lo forzó el usuario, toma el atributo por defecto del arma
+        const def = wKey ? getWeaponDef(wKey) : null;
+        attrKey = def?.attackAttr || "agility";
+      }
       const bonus = Number(r.find('input[name="atkBonus"]').val() || 0);
       const penalty = Number(r.find('input[name="atkPenalty"]').val() || 0);
 
       const { rollAttack } = await import("../rolls/dispatcher.js");
-      await rollAttack(this.actor, { key, isManeuver, attrKey, bonus, penalty, mode:"ask" });
+      await rollAttack(this.actor, { key: wKey, isManeuver, attrKey, bonus, penalty, mode:"ask" });
     });
 
     console.log("voy a cargar dispatcher.js desde", new URL("../rolls/dispatcher.js", import.meta.url).href);
@@ -163,16 +241,15 @@ export class TSDCActorSheet extends foundry.appv1.sheets.ActorSheet {
       const r = this.element;
 
       // Lo que viene de la UI
-      let   key     = String(r.find('input[name="impKey"]').val() || "").trim();
-      const die     = String(r.find('select[name="impDie"]').val() || "d6");
-      const grade   = Number(r.find('input[name="impGrade"]').val() || 1);
-      const attrKey = String(r.find('select[name="impAttr"]').val() || "agility");
+      const selId = String(r.find('select[name="impWeapon"]').val() || "");
+      const mainItem = selId ? Inv.getItemById?.(this.actor, selId) : Inv.getEquippedItem(this.actor, "mainHand");
+      const key = mainItem?.key || null;
+      const def = key ? getWeaponDef(key) : null;
+      const die   = def?.damageDie || "d6";
+      const grade = Number(mainItem?.grade ?? def?.grade ?? 1);
+      const attrKey = def?.attackAttr || "agility";
       const bonus   = Number(r.find('input[name="impBonus"]').val() || 0);
 
-      // Arma equipada en mano principal (para potencia de rotura)
-      const mainItem = Inv.getEquippedItem(this.actor, "mainHand");
-      // Si no se especificó key, usa la del arma equipada
-      if (!key && mainItem?.type === "weapon" && mainItem.key) key = String(mainItem.key);
 
       const { rollImpact } = await import("../rolls/dispatcher.js");
       await rollImpact(this.actor, {
@@ -187,7 +264,7 @@ export class TSDCActorSheet extends foundry.appv1.sheets.ActorSheet {
       ev.preventDefault();
       const r = this.element;
       const armorType  = String(r.find('select[name="defArmorType"]').val() || "light"); // para progreso en fallo
-      const armorBonus = Number(r.find('input[name="defArmorBonus"]').val() || 0);
+      const armorBonus = computeArmorBonusFromEquipped(this.actor);
       const bonus = Number(r.find('input[name="defBonus"]').val() || 0);
       const penalty = Number(r.find('input[name="defPenalty"]').val() || 0);
 

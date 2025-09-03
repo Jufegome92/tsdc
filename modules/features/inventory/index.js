@@ -145,3 +145,8 @@ export function itemLabel(it) {
   }
   return it.type ?? "item";
 }
+
+export function getItemById(actor, id) {
+  const bag = actor.system?.inventory?.bag ?? [];
+  return bag.find(it => it.id === id) ?? null;
+}

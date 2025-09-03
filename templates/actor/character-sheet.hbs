@@ -9,12 +9,18 @@
       <a class="item" data-tab="main">Básico</a>
       <a class="item" data-tab="rolls">Tiradas</a>
       <a class="item" data-tab="specs">Especializaciones</a>
+      <a class="item" data-tab="competences">Competencias</a>
+      <a class="item" data-tab="equipment">Equipo</a>
     </nav>
 
     <section class="sheet-body">
-      <div class="tab t-col" data-group="primary" data-tab="main">
-        <div class="t-grid t-grid-3">
 
+      {{!-- ================================
+           TAB: BÁSICO
+           ================================ --}}
+      <div class="tab t-col" data-group="primary" data-tab="main" style="gap:12px;">
+
+        <div class="t-grid t-grid-3">
           {{!-- Atributos --}}
           <div class="t-card t-col">
             <h3 style="margin:0 0 6px 0;">Atributos</h3>
@@ -78,30 +84,68 @@
             <h3 style="margin:0 0 6px 0;">Notas</h3>
             <textarea name="system.notes" rows="8">{{system.notes}}</textarea>
           </div>
-
         </div>
+
+        {{!-- Trasfondo / Afinidad --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Trasfondo / Afinidad</h3>
+          <div class="t-row" style="gap:8px;">
+            <div class="t-field">
+              <label>Trasfondo</label>
+              <select name="background">
+                {{#each background.options}}
+                  <option value="{{this.key}}" {{#if (eq ../background.current this.key)}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+            <div class="t-col muted" style="justify-content:center;">
+              <span>• Categoría afín progresa con umbral <strong>5</strong></span>
+              <span>• Otras categorías con umbral <strong>10</strong></span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      {{!-- Tiradas (ATAQUE / IMPACTO / DEFENSA / RESISTENCIA) --}}
+      {{!-- ================================
+           TAB: TIRADAS
+           ================================ --}}
       <div class="tab t-col" data-group="primary" data-tab="rolls" style="gap:12px;">
 
         {{!-- ATAQUE --}}
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Ataque</h3>
           <div class="t-row" style="gap:12px; align-items:flex-end;">
-            <div class="t-field" style="min-width:180px;">
-              <label>Clave (arma o maniobra)</label>
-              <input type="text" name="atkKey" placeholder="p.ej. katana, barrido, etc." />
+            <div class="t-field" style="min-width:220px;">
+              <label>Arma equipada</label>
+              <select name="atkWeapon">
+                <option value="">— Principal (si hay) —</option>
+                {{#if inventory.options.mainHand.length}}
+                  <optgroup label="Mano principal">
+                    {{#each inventory.options.mainHand}}
+                      <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                    {{/each}}
+                  </optgroup>
+                {{/if}}
+                {{#if inventory.options.offHand.length}}
+                  <optgroup label="Mano secundaria">
+                    {{#each inventory.options.offHand}}
+                      <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                    {{/each}}
+                  </optgroup>
+                {{/if}}
+              </select>
             </div>
             <div class="t-field" style="width:120px;">
               <label>¿Es maniobra?</label>
               <input type="checkbox" name="atkIsManeuver" />
             </div>
             <div class="t-field" style="min-width:160px;">
-              <label>Atributo (ataque)</label>
+              <label>Atributo (por defecto: el del arma)</label>
               <select name="atkAttr">
+                <option value="">— Automático —</option>
                 <option value="strength">Fuerza</option>
-                <option value="agility" selected>Agilidad</option>
+                <option value="agility">Agilidad</option>
                 <option value="tenacity">Tenacidad</option>
                 <option value="cunning">Astucia</option>
                 <option value="wisdom">Sabiduría</option>
@@ -121,52 +165,40 @@
             </div>
             <button type="button" class="t-btn" data-action="atk-roll">Tirar Ataque</button>
           </div>
-          <span class="muted">Usa 1d10 + nivel de competencia (arma/maniobra) + atributo + bono - penal. Aplica Ventaja Evolutiva.</span>
+          <span class="muted">Usa 1d10 + competencia (arma/maniobra) + atributo + bono - penal. El atributo por defecto lo da el arma.</span>
         </div>
 
         {{!-- IMPACTO --}}
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Impacto (cuerpo a cuerpo)</h3>
           <div class="t-row" style="gap:12px; align-items:flex-end;">
-            <div class="t-field" style="min-width:180px;">
-              <label>Clave de arma</label>
-              <input type="text" name="impKey" placeholder="p.ej. katana, lancea, etc." />
-            </div>
-            <div class="t-field" style="width:120px;">
-              <label>Dado</label>
-              <select name="impDie">
-                <option value="d4">d4</option>
-                <option value="d6" selected>d6</option>
-                <option value="d8">d8</option>
-                <option value="d10">d10</option>
-                <option value="d12">d12</option>
+            <div class="t-field" style="min-width:220px;">
+              <label>Arma equipada</label>
+              <select name="impWeapon">
+                <option value="">— Principal (si hay) —</option>
+                {{#if inventory.options.mainHand.length}}
+                  <optgroup label="Mano principal">
+                    {{#each inventory.options.mainHand}}
+                      <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                    {{/each}}
+                  </optgroup>
+                {{/if}}
+                {{#if inventory.options.offHand.length}}
+                  <optgroup label="Mano secundaria">
+                    {{#each inventory.options.offHand}}
+                      <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                    {{/each}}
+                  </optgroup>
+                {{/if}}
               </select>
             </div>
             <div class="t-field" style="width:120px;">
-              <label>Grado</label>
-              <input type="number" name="impGrade" value="1"/>
-            </div>
-            <div class="t-field" style="min-width:160px;">
-              <label>Atributo (impacto)</label>
-              <select name="impAttr">
-                <option value="strength">Fuerza</option>
-                <option value="agility" selected>Agilidad</option>
-                <option value="tenacity">Tenacidad</option>
-                <option value="cunning">Astucia</option>
-                <option value="wisdom">Sabiduría</option>
-                <option value="intellect">Intelecto</option>
-                <option value="aura">Aura</option>
-                <option value="composure">Compostura</option>
-                <option value="presence">Presencia</option>
-              </select>
-            </div>
-            <div class="t-field" style="width:100px;">
               <label>Bono</label>
               <input type="number" name="impBonus" value="0"/>
             </div>
             <button type="button" class="t-btn" data-action="imp-roll">Tirar Impacto</button>
           </div>
-          <span class="muted">(rango × dado) + (atributo × grado + bono). Sin progreso.</span>
+          <span class="muted">(rango × dadoDelArma) + (atributoDelArma × gradoDelArma + bono). Todo se lee del arma equipada.</span>
         </div>
 
         {{!-- DEFENSA --}}
@@ -181,10 +213,6 @@
                 <option value="heavy">Pesada</option>
               </select>
             </div>
-            <div class="t-field" style="width:120px;">
-              <label>Bono de armadura</label>
-              <input type="number" name="defArmorBonus" value="0"/>
-            </div>
             <div class="t-field" style="width:100px;">
               <label>Bono</label>
               <input type="number" name="defBonus" value="0"/>
@@ -195,10 +223,10 @@
             </div>
             <button type="button" class="t-btn" data-action="def-roll">Tirar Defensa</button>
           </div>
-          <span class="muted">1d10 + competencia evasiva + Agilidad + armadura + bono - penal. Si aprendes: éxito → Evasión, fallo → tipo de armadura.</span>
+          <span class="muted">El bono de armadura se calcula automáticamente desde tus piezas equipadas y el escudo.</span>
         </div>
 
-        {{!-- RESISTENCIA --}}
+        {{!-- RESISTENCIAS --}}
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Resistencias</h3>
           <div class="t-row" style="gap:12px; align-items:flex-end;">
@@ -233,27 +261,9 @@
 
       </div>
 
-
-      <div class="t-card t-col">
-        <h3 style="margin:0 0 6px 0;">Trasfondo / Afinidad</h3>
-        <div class="t-row" style="gap:8px;">
-          <div class="t-field">
-            <label>Trasfondo</label>
-            <select name="background">
-              {{#each background.options}}
-                <option value="{{this.key}}" {{#if (eq ../background.current this.key)}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-col muted" style="justify-content:center;">
-            <span>• Categoría afín progresa con umbral <strong>5</strong></span>
-            <span>• Otras categorías con umbral <strong>10</strong></span>
-          </div>
-        </div>
-
       {{!-- ================================
-          NUEVA PESTAÑA: ESPECIALIZACIONES
-          ================================ --}}
+           TAB: ESPECIALIZACIONES
+           ================================ --}}
       <div class="tab t-col" data-group="primary" data-tab="specs" style="gap:12px;">
 
         <div class="t-row" style="gap:8px;">
@@ -275,7 +285,6 @@
           </div>
         </div>
 
-        {{!-- Favoritos arriba (si hay) --}}
         {{#if specs.favorites.length}}
         <div class="t-card t-col">
           <h3 style="margin:0;">⭐ Favoritas</h3>
@@ -294,7 +303,6 @@
         </div>
         {{/if}}
 
-        {{!-- Grupos por categoría --}}
         {{#each specs.groups as |group|}}
         <div class="t-card t-col" data-category="{{group.category}}">
           <h3 style="margin:0;">{{group.title}}</h3>
@@ -316,127 +324,256 @@
 
         <span class="muted">Consejo: marca con ★ las que más usas para tenerlas arriba.</span>
       </div>
-      
-      {{!-- === EQUIPO (SLOTS) === --}}
-      <div class="t-card t-col">
-        <h3 style="margin:0 0 6px 0;">Equipo</h3>
 
-        <div class="t-grid t-grid-2" style="gap:12px;">
-          <div class="t-field">
-            <label>Mano principal</label>
-            <select name="slot.mainHand">
-              <option value="">— Ninguna —</option>
-              {{#each inventory.options.mainHand}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Mano secundaria</label>
-            <select name="slot.offHand">
-              <option value="">— Ninguna —</option>
-              {{#each inventory.options.offHand}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
+      {{!-- ================================
+           TAB: COMPETENCIAS
+           ================================ --}}
+      <div class="tab t-col" data-group="primary" data-tab="competences" style="gap:12px;">
 
-          <div class="t-field">
-            <label>Escudo</label>
-            <select name="slot.shield">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.shield}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-
-          <div class="t-field">
-            <label>Casco</label>
-            <select name="slot.head">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.head}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Peto</label>
-            <select name="slot.chest">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.chest}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Pantalón</label>
-            <select name="slot.legs">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.legs}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Brazales</label>
-            <select name="slot.bracers">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.bracers}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Botas</label>
-            <select name="slot.boots">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.boots}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-
-          <div class="t-field">
-            <label>Insignia</label>
-            <select name="slot.insignia">
-              <option value="">— Ninguna —</option>
-              {{#each inventory.options.insignia}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Amuleto</label>
-            <select name="slot.amulet">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.amulet}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Colgante 1</label>
-            <select name="slot.pendant1">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.pendant1}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
-          <div class="t-field">
-            <label>Colgante 2</label>
-            <select name="slot.pendant2">
-              <option value="">— Ninguno —</option>
-              {{#each inventory.options.pendant2}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
-          </div>
+        {{!-- ARMAS --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0;">Armas</h3>
+          {{#if comps.weapons.length}}
+            {{#each comps.weapons}}
+              <div class="t-row" style="align-items:center; gap:8px;">
+                <strong style="min-width:160px;">{{this.label}}</strong>
+                <span class="muted">Nivel {{this.level}} • Rango {{this.rank}}</span>
+                <span class="muted">Progreso {{this.progress}} / {{this.threshold}}</span>
+                <span class="muted">Fallos {{this.fails}}</span>
+                <span class="t-right muted">{{this.bonusHint}}</span>
+                {{#if this.pct}}
+                  <div style="width:120px; height:6px; background:#eee; border-radius:4px; overflow:hidden;">
+                    <div style="height:100%; width:{{this.pct}}%;"></div>
+                  </div>
+                {{/if}}
+              </div>
+            {{/each}}
+          {{else}}
+            <span class="muted">Sin competencias registradas aún.</span>
+          {{/if}}
         </div>
 
-        <span class="muted">Consejo: equipa un arma en la mano principal para que las tiradas la tomen por defecto.</span>
+        {{!-- MANIOBRAS --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0;">Maniobras</h3>
+          {{#if comps.maneuvers.length}}
+            {{#each comps.maneuvers}}
+              <div class="t-row" style="align-items:center; gap:8px;">
+                <strong style="min-width:160px;">{{this.label}}</strong>
+                <span class="muted">Nivel {{this.level}} • Rango {{this.rank}}</span>
+                <span class="muted">Progreso {{this.progress}} / {{this.threshold}}</span>
+                <span class="muted">Fallos {{this.fails}}</span>
+                <span class="t-right muted">{{this.bonusHint}}</span>
+                {{#if this.pct}}<div style="width:120px;height:6px;background:#eee;border-radius:4px;overflow:hidden;"><div style="height:100%;width:{{this.pct}}%;"></div></div>{{/if}}
+              </div>
+            {{/each}}
+          {{else}}
+            <span class="muted">Aún no has practicado maniobras.</span>
+          {{/if}}
+        </div>
+
+        {{!-- DEFENSA --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0;">Defensa</h3>
+          {{#each comps.defense}}
+            <div class="t-row" style="align-items:center; gap:8px;">
+              <strong style="min-width:160px;">{{this.label}}</strong>
+              <span class="muted">Nivel {{this.level}} • Rango {{this.rank}}</span>
+              <span class="muted">Progreso {{this.progress}} / {{this.threshold}}</span>
+              <span class="muted">Fallos {{this.fails}}</span>
+              <span class="t-right muted">{{this.bonusHint}}</span>
+              {{#if this.pct}}<div style="width:120px;height:6px;background:#eee;border-radius:4px;overflow:hidden;"><div style="height:100%;width:{{this.pct}}%;"></div></div>{{/if}}
+            </div>
+          {{/each}}
+        </div>
+
+        {{!-- ARMADURAS --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0;">Armaduras</h3>
+          {{#each comps.armor}}
+            <div class="t-row" style="align-items:center; gap:8px;">
+              <strong style="min-width:160px;">{{this.label}}</strong>
+              <span class="muted">Nivel {{this.level}} • Rango {{this.rank}}</span>
+              <span class="muted">Progreso {{this.progress}} / {{this.threshold}}</span>
+              <span class="muted">Fallos {{this.fails}}</span>
+              <span class="t-right muted">{{this.bonusHint}}</span>
+              {{#if this.pct}}<div style="width:120px;height:6px;background:#eee;border-radius:4px;overflow:hidden;"><div style="height:100%;width:{{this.pct}}%;"></div></div>{{/if}}
+            </div>
+          {{/each}}
+        </div>
+
+        {{!-- RESISTENCIAS --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0;">Resistencias</h3>
+          {{#each comps.resists}}
+            <div class="t-row" style="align-items:center; gap:8px;">
+              <strong style="min-width:160px;">{{this.label}}</strong>
+              <span class="muted">Nivel {{this.level}} • Rango {{this.rank}}</span>
+              <span class="muted">Progreso {{this.progress}} / {{this.threshold}}</span>
+              <span class="muted">Fallos {{this.fails}}</span>
+              <span class="t-right muted">{{this.bonusHint}}</span>
+              {{#if this.pct}}<div style="width:120px;height:6px;background:#eee;border-radius:4px;overflow:hidden;"><div style="height:100%;width:{{this.pct}}%;"></div></div>{{/if}}
+            </div>
+          {{/each}}
+        </div>
+
+        {{!-- ESPECIALIZACIONES (resumen) --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0;">Especializaciones</h3>
+          {{#if comps.skills.length}}
+            {{#each comps.skills}}
+              <div class="t-row" style="align-items:center; gap:8px;">
+                <strong style="min-width:200px;">{{this.label}}</strong>
+                <span class="muted">{{this.categoryLabel}}</span>
+                <span class="muted">Nivel {{this.level}} • Rango {{this.rank}}</span>
+                <span class="muted">Progreso {{this.progress}} / {{this.threshold}}</span>
+                <span class="muted">Fallos {{this.fails}}</span>
+                <span class="t-right muted">{{this.bonusHint}}</span>
+                {{#if this.pct}}<div style="width:120px;height:6px;background:#eee;border-radius:4px;overflow:hidden;"><div style="height:100%;width:{{this.pct}}%;"></div></div>{{/if}}
+              </div>
+            {{/each}}
+          {{else}}
+            <span class="muted">Aún no tienes progreso en especializaciones.</span>
+          {{/if}}
+        </div>
+
       </div>
+
+      {{!-- ================================
+           TAB: EQUIPO
+           ================================ --}}
+      <div class="tab t-col" data-group="primary" data-tab="equipment" style="gap:12px;">
+
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Equipo</h3>
+
+          <div class="t-grid t-grid-2" style="gap:12px;">
+            <div class="t-field">
+              <label>Mano principal</label>
+              <select name="slot.mainHand">
+                <option value="">— Ninguna —</option>
+                {{#each inventory.options.mainHand}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Mano secundaria</label>
+              <select name="slot.offHand">
+                <option value="">— Ninguna —</option>
+                {{#each inventory.options.offHand}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Escudo</label>
+              <select name="slot.shield">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.shield}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Casco</label>
+              <select name="slot.head">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.head}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Peto</label>
+              <select name="slot.chest">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.chest}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Pantalón</label>
+              <select name="slot.legs">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.legs}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Brazales</label>
+              <select name="slot.bracers">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.bracers}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Botas</label>
+              <select name="slot.boots">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.boots}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Insignia</label>
+              <select name="slot.insignia">
+                <option value="">— Ninguna —</option>
+                {{#each inventory.options.insignia}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Amuleto</label>
+              <select name="slot.amulet">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.amulet}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Colgante 1</label>
+              <select name="slot.pendant1">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.pendant1}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+
+            <div class="t-field">
+              <label>Colgante 2</label>
+              <select name="slot.pendant2">
+                <option value="">— Ninguno —</option>
+                {{#each inventory.options.pendant2}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+          </div>
+
+          <span class="muted">Consejo: equipa un arma en la mano principal para que las tiradas la tomen por defecto.</span>
+        </div>
+
+      </div>
+
     </section>
   </section>
 </form>

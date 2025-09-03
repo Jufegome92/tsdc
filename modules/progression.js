@@ -1,3 +1,4 @@
+// modules/progression.js
 import { TSDC } from "./config.js";
 
 /** Nivel → Rango (cada 3 niv) */
@@ -18,13 +19,38 @@ export function trackThreshold(actor, trackType, key) {
   return TSDC.MINOR_THRESHOLD;
 }
 
-/** Aplica 1 punto de progreso; si supera umbral sube nivel y recalcula rango */
+/** Asegura que exista system.progression.<trackType>.<key> con {level,rank,progress} */
+async function ensureTrackShape(actor, trackType, key) {
+  if (!key) return false;
+  const base = `system.progression.${trackType}`;
+  const existing = foundry.utils.getProperty(actor, `${base}.${key}`);
+  if (existing) return false;
+  const patch = {};
+  patch[`${base}.${key}`] = { level: 0, rank: 0, progress: 0 };
+  await actor.update(patch);
+  return true;
+}
+
+export async function addFail(actor, trackType, key, amount=1) {
+  await ensureTrackShape(actor, trackType, key);
+  const path = `system.progression.${trackType}.${key}`;
+  const data = foundry.utils.getProperty(actor, path);
+  if (!data) return 0;
+  data.fails = Number(data.fails||0) + Number(amount||0);
+  await actor.update({ [path]: data });
+  return data.fails;
+}
+
+/** Aplica progreso; si supera umbral sube nivel y recalcula rango */
 export async function addProgress(actor, trackType, key, amount=1) {
+  // crea el nodo si no existía (primera vez que se progresa esa pista)
+  await ensureTrackShape(actor, trackType, key);
+
   const path = `system.progression.${trackType}.${key}`;
   const data = foundry.utils.getProperty(actor, path);
   if (!data) return { leveled:false };
 
-  data.progress = Number(data.progress||0) + amount;
+  data.progress = Number(data.progress||0) + Number(amount||0);
 
   const threshold = trackThreshold(actor, trackType, key);
   let leveled = false;
