@@ -4,7 +4,7 @@ import * as Evo from "./features/advantage/index.js";
 import { TSDCActor } from "./documents/actor.js";
 import { TSDCActorSheet } from "./sheets/actor-sheet.js";
 import "./rolls/post-eval.js";
-import { registerChatListeners } from "./modules/chat/listeners.js";
+import { registerChatListeners } from "./chat/listeners.js";
 
 Hooks.once("init", () => {
   console.log("Transcendence | init");
