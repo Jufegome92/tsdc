@@ -1,7 +1,7 @@
 // modules/features/combat/critical.js
 // Detecta críticos en tiradas de IMPACTO y calcula "poder de rotura"
 
-import { computeCritPowerFromItem } from "../features/weapons/index.js";
+import { computeCritPowerFromItem } from "../weapons/index.js";
 
 /** Devuelve info de crítico a partir de un Roll de IMPACTO.
  * Considera crítico si ALGÚN dado de impacto obtiene su cara máxima.

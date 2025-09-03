@@ -4,7 +4,7 @@ export function registerChatListeners() {
     const btn = html.querySelector('.tsdc-break-eval');
     if (!btn) return;
 
-    $btn.addEventListener('click', async (ev) => {
+    btn.addEventListener('click', async (ev) => {
       ev.preventDefault();
       if (!game.user.isGM) {
         ui.notifications?.warn("Solo el GM puede evaluar rotura.");
