@@ -194,6 +194,21 @@ export class TSDCActorSheet extends foundry.appv1.sheets.ActorSheet {
 
   activateListeners(html) {
     super.activateListeners(html);
+    // Fallback de tabs (por si Tabs V1 no se inicializa en tu hoja)
+    const $navItems = html.find('.sheet-tabs .item');
+    const $allTabs  = html.find('.tab[data-group="primary"]');
+    function showTab(tab) {
+      $navItems.removeClass('active').filter(`[data-tab="${tab}"]`).addClass('active');
+      $allTabs.hide().filter(`[data-tab="${tab}"]`).show();
+    }
+    // click handler
+    $navItems.on('click', ev => {
+      ev.preventDefault();
+      const tab = String($(ev.currentTarget).data('tab') || 'main');
+      showTab(tab);
+    });
+    // estado inicial
+    showTab('main');
     if (!this.isEditable) return;
 
     // Demo evo-roll

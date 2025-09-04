@@ -29,7 +29,9 @@ export async function resolveEvolution(p = {}) {
   const usesEvo = EVO_TYPES.has(String(type || "").toLowerCase());
   if (!usesEvo) {
     // Tirada simple (1 dado)
-    const r = await (new Roll(formula)).roll({ async: true });
+    const r = await (new Roll(formula))
+    r.evaluateSync();
+    const tooltip = await r.getTooltip();
     if (toChat) {
       await r.toMessage({
         flavor: `Transcendence • ${flavor}`,
@@ -51,9 +53,13 @@ export async function resolveEvolution(p = {}) {
   if (mode === "ask") mode = await promptPolicy();
 
   // Dos tiradas idénticas (para execution/learning)
-  const rA = await (new Roll(formula)).roll({ async: true });
-  const rB = await (new Roll(formula)).roll({ async: true });
+  const rA = await (new Roll(formula))
+  rA.evaluateSync();
+  const tooltipA = await rA.getTooltip();
 
+  const rB = await (new Roll(formula))
+  rB.evaluateSync();
+  const tooltipB = await rB.getTooltip();
   const high = rA.total >= rB.total ? rA : rB;
   const low  = rA.total >= rB.total ? rB : rA;
 

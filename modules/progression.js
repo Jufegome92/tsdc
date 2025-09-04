@@ -1,6 +1,16 @@
 // modules/progression.js
 import { TSDC } from "./config.js";
 
+export async function setTrackLevel(actor, trackType, key, level=1) {
+  if (!key) return;
+  const path = `system.progression.${trackType}.${key}`;
+  const cur  = foundry.utils.getProperty(actor, path) ?? { level: 0, rank: 0, progress: 0, fails: 0 };
+  cur.level = Number(level)||0;
+  cur.rank  = levelToRank(cur.level);
+  cur.progress = 0;
+  await actor.update({ [path]: cur });
+}
+
 /** Nivel → Rango (cada 3 niv) */
 export function levelToRank(level=0) {
   return Math.floor(Number(level||0) / 3);
