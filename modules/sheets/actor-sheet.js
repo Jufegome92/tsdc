@@ -14,12 +14,14 @@ console.log("actor-sheet import base:", import.meta.url);
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 
 export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applications.sheets.ActorSheetV2) {
+  #activeTab = "main";
   static DEFAULT_OPTIONS = {
     ...super.DEFAULT_OPTIONS,
     classes: ["tsdc", "sheet", "actor"],
     window: { title: "Hoja de personaje" },
-    width: 720,
-    height: 680
+    width: 820,
+    height: 760,
+    resizable: true
   };
 
   static PARTS = {
@@ -181,6 +183,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     const nav = el.querySelector(".sheet-tabs");
     const allTabs = Array.from(el.querySelectorAll('.tab[data-group="primary"]'));
     const showTab = (tab) => {
+      this.#activeTab = tab;
       nav?.querySelectorAll(".item").forEach(a => a.classList.toggle("active", a.dataset.tab === tab));
       allTabs.forEach(t => t.style.display = (t.dataset.tab === tab ? "" : "none"));
     };
@@ -190,7 +193,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       ev.preventDefault();
       showTab(a.dataset.tab || "main");
     });
-    showTab("main");
+    showTab(this.#activeTab || "main");
 
     if (!this.isEditable) return;
 

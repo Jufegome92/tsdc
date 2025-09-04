@@ -159,3 +159,22 @@ body.system-tsdc .dialog .dialog-buttons button {
    =============================== */
 body.system-tsdc .muted { color: var(--t-muted); }
 body.system-tsdc .accent { color: var(--t-accent-2); }
+
+/* el contenedor raíz de la hoja debe ser flex/col y poder encogerse */
+body.system-tsdc .tsdc.sheet.actor .sheet-root { 
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0; /* IMPORTANTE para que los hijos con overflow puedan encoger */
+}
+
+/* el área scrolleable de la hoja */
+body.system-tsdc .tsdc.sheet.actor .sheet-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0; /* evita que el flex-hijo “empuje” y quite el scroll */
+}
+
+body.system-tsdc .tsdc.sheet.actor .window-content { 
+  min-height:0; 
+}
