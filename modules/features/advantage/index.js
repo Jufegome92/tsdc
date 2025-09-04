@@ -1,8 +1,4 @@
-// Ventaja Evolutiva (actorless) — Attack/Defense/Specialization usan evolución.
-// Reglas:
-// - execution: usa MAYOR; no aprendizaje.
-// - learning:  usa MENOR; si MENOR >= DC y (MAYOR - MENOR) > rank => aprende.
-
+// modules/features/advantage/index.js
 const EVO_TYPES = new Set(["attack", "defense", "specialization"]);
 
 /**
@@ -13,9 +9,8 @@ const EVO_TYPES = new Set(["attack", "defense", "specialization"]);
  * @param {number} [p.rank=0]
  * @param {string} [p.flavor]
  * @param {boolean} [p.toChat=true]
- * @param {object} [p.meta]   // { key?, isManeuver?, armorType? }  — se guardará en flags
- * @param {Actor}  [p.actor]  // para guardar actorId en flags
- * @returns {Promise<{resultRoll: Roll, otherRoll?: Roll, usedPolicy: string}>}
+ * @param {object} [p.meta]
+ * @param {Actor}  [p.actor]
  */
 export async function resolveEvolution(p = {}) {
   const {
@@ -27,11 +22,11 @@ export async function resolveEvolution(p = {}) {
   if (!formula) throw new Error("resolveEvolution: formula requerida.");
 
   const usesEvo = EVO_TYPES.has(String(type || "").toLowerCase());
+
+  // Tirada simple (sin evolución)
   if (!usesEvo) {
-    // Tirada simple (1 dado)
-    const r = await (new Roll(formula))
-    r.evaluateSync();
-    const tooltip = await r.getTooltip();
+    const r = new Roll(formula);
+    await r.evaluate(); // async
     if (toChat) {
       await r.toMessage({
         flavor: `Transcendence • ${flavor}`,
@@ -52,26 +47,22 @@ export async function resolveEvolution(p = {}) {
 
   if (mode === "ask") mode = await promptPolicy();
 
-  // Dos tiradas idénticas (para execution/learning)
-  const rA = await (new Roll(formula))
-  rA.evaluateSync();
-  const tooltipA = await rA.getTooltip();
+  // Dos tiradas (alto/bajo)
+  const rA = new Roll(formula);
+  await rA.evaluate();
+  const rB = new Roll(formula);
+  await rB.evaluate();
 
-  const rB = await (new Roll(formula))
-  rB.evaluateSync();
-  const tooltipB = await rB.getTooltip();
   const high = rA.total >= rB.total ? rA : rB;
   const low  = rA.total >= rB.total ? rB : rA;
 
-  let resultRoll = low; // por defecto (learning)
-  let usedPolicy = mode;
-
-  if (mode === "execution") resultRoll = high;
+  let resultRoll = (mode === "execution") ? high : low;
+  const usedPolicy = mode;
 
   if (toChat) {
     const policyTag = (mode === "execution") ? "Execution" : (mode === "learning" ? "Learning" : "None");
     await resultRoll.toMessage({
-      flavor: `Transcendence • ${flavor}${usesEvo ? ` (${policyTag})` : ""}`,
+      flavor: `Transcendence • ${flavor}${policyTag ? ` (${policyTag})` : ""}`,
       flags: {
         tsdc: {
           version: 1,
@@ -94,14 +85,12 @@ export async function resolveEvolution(p = {}) {
 
 /** Diálogo para elegir política cuando mode === "ask" */
 export async function promptPolicy() {
-  return await Dialog.prompt({
-    title: "Transcendence • Roll Choice",
-    label: "Confirmar",
-    callback: html => html.find('select[name="policy"]').val(),
+  const v = await foundry.applications.api.DialogV2.prompt({
+    window: { title: "Transcendence • Roll Choice" },
     content: `
-      <form>
-        <div class="form-group">
-          <label>Elige:</label>
+      <form class="t-col" style="gap:8px;">
+        <div class="t-field">
+          <label>Elige</label>
           <select name="policy">
             <option value="execution">Ejecución (mantén el mayor)</option>
             <option value="learning">Aprender (usa el menor; evalúa aprendizaje)</option>
@@ -109,6 +98,11 @@ export async function promptPolicy() {
           </select>
         </div>
       </form>
-    `
+    `,
+    ok: {
+      label: "Confirmar",
+      callback: (_ev, button) => String(button.form.elements.policy?.value || "none")
+    }
   });
+  return v ?? "none";
 }

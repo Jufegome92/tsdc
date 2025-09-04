@@ -6,7 +6,6 @@ import { detectImpactCrit, computeBreakPower } from "../features/combat/critical
 
 /** Util: crea una tarjetita para el GM con los datos necesarios para evaluar */
 async function gmEvalCard({ actor, kind, payload }) {
-  // Empaqueto datos en data-* (URI encoded JSON para seguridad)
   const blob = encodeURIComponent(JSON.stringify(payload));
   const title =
     kind === "attack"     ? "Evaluar Ataque"
@@ -30,7 +29,7 @@ async function gmEvalCard({ actor, kind, payload }) {
   });
 }
 
-/** ATAQUE: arma o maniobra (a ciegas) */
+/** ATAQUE */
 export async function rollAttack(actor, { key, isManeuver=false, attrKey, bonus=0, penalty=0, mode="ask", flavor } = {}) {
   if (!isManeuver && (!key || !key.trim())) {
     const k = getEquippedWeaponKey(actor, "main");
@@ -46,7 +45,6 @@ export async function rollAttack(actor, { key, isManeuver=false, attrKey, bonus=
     actor, meta: { key, isManeuver }
   });
 
-  // Datos para que el GM evalúe luego (no mostrados al jugador)
   await gmEvalCard({
     actor, kind: "attack",
     payload: {
@@ -55,15 +53,13 @@ export async function rollAttack(actor, { key, isManeuver=false, attrKey, bonus=
       isManeuver: !!isManeuver,
       rank,
       policy: usedPolicy,
-      // guardo ambos totales por si el GM quiere ver el “alto/bajo”
       totalShown: resultRoll.total,
-      // por si quieres usar ambos (se guardaron en flags, pero lo paso directo)
       otherTotal: otherRoll?.total ?? null
     }
   });
 }
 
-/** TIRADA: impacto cuerpo a cuerpo — sin progreso */
+/** IMPACTO — sin progreso; con crítico/rotura opcional */
 export async function rollImpact(actor, {
   key,
   die = "d6",
@@ -71,18 +67,15 @@ export async function rollImpact(actor, {
   attrKey,
   bonus = 0,
   flavor,
-  // Crítico / Romper Partes
-  weaponItem = null,          // ítem equipado (mano principal/secundaria)
-  breakBonus = 0,             // bonos situacionales para romper partes
-  targetDurability = null,    // si se pasa, auto-evalúa rotura (si hay crítico)
-  whisperBreakToGM = true     // susurrar evaluación de rotura al GM
+  weaponItem = null,
+  breakBonus = 0,
+  targetDurability = null,
+  whisperBreakToGM = true
 } = {}) {
   const { formula } = buildImpactFormula(actor, { key, die, grade, attrKey, bonus });
 
-  // Tirada de IMPACTO normal
   const r = new Roll(formula);
-  r.evaluateSync();
-  const tooltip = await r.getTooltip();
+  await r.evaluate();
   await r.toMessage({
     flavor: flavor ?? (key ? `Impacto • ${key}` : `Impacto`),
     flags: {
@@ -98,13 +91,11 @@ export async function rollImpact(actor, {
     }
   });
 
-  // === Crítico en IMPACTO ===
   const crit = detectImpactCrit(r);
   if (!crit.isCrit) return { resultRoll: r, isCrit: false };
 
   const breakPower = computeBreakPower(weaponItem, breakBonus);
 
-  // Mensaje con botón "Evaluar rotura…" (embed power en data-*)
   const msgHtml = `
     <div class="tsdc-crit">
       <p><strong>Impacto Crítico</strong> — Poder de Rotura: <b>${breakPower}</b></p>
@@ -121,7 +112,6 @@ export async function rollImpact(actor, {
     speaker: ChatMessage.getSpeaker({ actor })
   });
 
-  // Auto-evaluar (opcional) si vino targetDurability
   if (targetDurability != null) {
     const ok = (breakPower >= Number(targetDurability));
     if (whisperBreakToGM) {
@@ -137,7 +127,7 @@ export async function rollImpact(actor, {
   return { resultRoll: r, isCrit: true, breakPower };
 }
 
-/** DEFENSA (evasión/armadura): a ciegas + tarjeta GM */
+/** DEFENSA */
 export async function rollDefense(actor, { armorType, armorBonus=0, bonus=0, penalty=0, mode="ask", flavor } = {}) {
   const { formula } = buildDefenseFormula(actor, { armorBonus, bonus, penalty });
   const rank = Number(foundry.utils.getProperty(actor, `system.progression.defense.evasion.rank`) || 0);
@@ -160,7 +150,7 @@ export async function rollDefense(actor, { armorType, armorBonus=0, bonus=0, pen
   });
 }
 
-/** RESISTENCIA: a ciegas + tarjeta GM */
+/** RESISTENCIA */
 export async function rollResistance(actor, { type, bonus=0, penalty=0, flavor } = {}) {
   const { formula } = buildResistanceFormula(actor, { type, bonus, penalty });
   const { resultRoll } = await resolveEvolution({
