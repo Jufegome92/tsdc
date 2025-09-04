@@ -28,6 +28,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
 
   /** Contexto para el HBS (tu antiguo getData) */
   async _prepareContext(context = {}, _options = {}) {
+    console.log("TSDCActorSheet::_prepareContext IN");
     // Deja que el mixin inicialice lo suyo
     context = await super._prepareContext?.(context, _options) ?? {};
 
@@ -165,12 +166,13 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         pendant2: optFor("pendant2")
       }
     };
-
+    console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!ctx.inventory });
     return context;
   }
 
   /** Se llama tras montar el HTML (aquí enganchamos listeners) */
   _onRender(_context, _options) {
+    console.log("TSDCActorSheet::_onRender");
     const el = this.element;
     // Tabs
     const nav = el.querySelector(".sheet-tabs");
