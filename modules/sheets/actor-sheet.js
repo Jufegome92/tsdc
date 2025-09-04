@@ -10,7 +10,10 @@ import { WEAPONS } from "../features/weapons/data.js";
 
 console.log("actor-sheet import base:", import.meta.url);
 
-export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
+// 👇 Hereda ActorSheetV2 + mixin de Handlebars
+const { HandlebarsApplicationMixin } = foundry.applications.api;
+
+export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applications.sheets.ActorSheetV2) {
   static DEFAULT_OPTIONS = {
     ...super.DEFAULT_OPTIONS,
     classes: ["tsdc", "sheet", "actor"],
@@ -19,22 +22,20 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
     height: 680
   };
 
-  /** Deja el getter de plantilla para mantener tu HBS actual */
   get template() {
     return "systems/tsdc/templates/actor/character-sheet.hbs";
   }
 
-  // ========= Ciclo V2 =========
+  /** Contexto para el HBS (tu antiguo getData) */
+  async _prepareContext(context = {}, _options = {}) {
+    // Deja que el mixin inicialice lo suyo
+    context = await super._prepareContext?.(context, _options) ?? {};
 
-  /** Prepara el contexto para la plantilla (port de tu getData actual) */
-  async _prepareContext(_context = {}, _options = {}) {
-    const data = await super._prepareContext?.(_context, _options) ?? {};
-    // Asegura atajos útiles
-    data.actor  = this.actor;
-    data.system = this.actor.system ?? {};
+    context.actor  = this.actor;
+    context.system = this.actor.system ?? {};
 
     // Labels
-    data.labels = {
+    context.labels = {
       strength:  game.i18n.localize("TSDC.Attr.strength"),
       agility:   game.i18n.localize("TSDC.Attr.agility"),
       tenacity:  game.i18n.localize("TSDC.Attr.tenacity"),
@@ -48,67 +49,53 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
       resi:      game.i18n.localize("TSDC.Derived.resilience")
     };
 
-    // Background (afinidades)
+    // Background
     const bg = getBackground(this.actor);
-    data.background = {
-      current: bg.key,
-      options: Object.values(BACKGROUNDS)
-    };
+    context.background = { current: bg.key, options: Object.values(BACKGROUNDS) };
 
-    // Especializaciones (vista)
-    const specState = data.system.progression?.skills ?? {};
+    // ---- Especializaciones (vista) ----
+    const specState = context.system.progression?.skills ?? {};
     const getState = (key) => {
       const s = specState[key] || {};
-      return {
-        level: s.level ?? 0,
-        rank: s.rank ?? 0,
-        progress: s.progress ?? 0,
-        fav: !!s.fav
-      };
+      return { level: s.level ?? 0, rank: s.rank ?? 0, progress: s.progress ?? 0, fav: !!s.fav };
     };
 
     const all = listSpecs().map(({ key, label, category }) => {
       const st = getState(key);
-      const attrKey = getAttributeForSpec(key);
-      const attrLabel = data.labels[attrKey] ?? attrKey;
+      const attrKey   = getAttributeForSpec(key);
+      const attrLabel = context.labels[attrKey] ?? attrKey;
       const threshold = getThresholdForSpec(this.actor, category);
-      return {
-        key, label, category, attrKey, attrLabel,
-        rank: st.rank, progress: st.progress, threshold,
-        fav: st.fav, usesCalc: usesCalc(key)
-      };
+      return { key, label, category, attrKey, attrLabel, rank: st.rank, progress: st.progress, threshold, fav: st.fav, usesCalc: usesCalc(key) };
     });
 
     const favorites = all.filter(i => i.fav).sort((a,b) => a.label.localeCompare(b.label, "es"));
     const CATS = [
-      { id: "physical",   title: "Físicas" },
-      { id: "mental",     title: "Mentales" },
-      { id: "social",     title: "Sociales" },
-      { id: "arts",       title: "Artes y Oficios" },
-      { id: "knowledge",  title: "Saberes" }
+      { id: "physical",  title: "Físicas" },
+      { id: "mental",    title: "Mentales" },
+      { id: "social",    title: "Sociales" },
+      { id: "arts",      title: "Artes y Oficios" },
+      { id: "knowledge", title: "Saberes" }
     ];
     const groups = CATS.map(c => ({
       category: c.id,
       title: c.title,
       items: all.filter(i => i.category === c.id).sort((a,b) => a.label.localeCompare(b.label, "es"))
     }));
+    context.specs = { favorites, groups };
 
-    data.specs = { favorites, groups };
-
-    // ===== COMPETENCIAS (tab) =====
-    const prog = data.system.progression ?? {};
+    // ---- Competencias (tab) ----
+    const prog  = context.system.progression ?? {};
     const asPct = (p,t) => {
-      const pct = Math.max(0, Math.min(100, Math.round((Number(p||0) / Math.max(1, Number(t||0))) * 100)));
+      const pct = Math.max(0, Math.min(100, Math.round((Number(p||0)/Math.max(1,Number(t||0)))*100)));
       return isFinite(pct) ? pct : 0;
     };
     const row = (trackType, key, label, extraHint="") => {
       const p = foundry.utils.getProperty(this.actor, `system.progression.${trackType}.${key}`) ?? { level:0, rank:0, progress:0, fails:0 };
       const threshold = trackThreshold(this.actor, trackType, key);
       return {
-        key, trackType,
-        label,
+        key, trackType, label,
         level: Number(p.level||0),
-        rank: Number(p.rank||0),
+        rank:  Number(p.rank||0),
         progress: Number(p.progress||0),
         fails: Number(p.fails||0),
         threshold,
@@ -117,68 +104,52 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
       };
     };
 
-    // Armas: solo las usadas
     const weaponKeys = Object.keys(prog.weapons ?? {});
-    const weapons = weaponKeys
-      .sort((a,b) => (WEAPONS[a]?.label ?? a).localeCompare(WEAPONS[b]?.label ?? b, "es"))
-      .map(k => row("weapons", k, WEAPONS[k]?.label ?? k, "+nivel al Ataque • +rango dados al Impacto"));
+    const weapons = weaponKeys.sort((a,b) => (WEAPONS[a]?.label ?? a).localeCompare(WEAPONS[b]?.label ?? b, "es"))
+                              .map(k => row("weapons", k, WEAPONS[k]?.label ?? k, "+nivel al Ataque • +rango dados al Impacto"));
 
-    // Maniobras
     const maneuverKeys = Object.keys(prog.maneuvers ?? {});
-    const maneuvers = maneuverKeys
-      .sort((a,b) => a.localeCompare(b, "es"))
-      .map(k => row("maneuvers", k, k, "+nivel al Ataque (maniobra)"));
+    const maneuvers = maneuverKeys.sort((a,b) => a.localeCompare(b, "es"))
+                                  .map(k => row("maneuvers", k, k, "+nivel al Ataque (maniobra)"));
 
-    // Defensa (evasión)
     const defense = [row("defense", "evasion", "Evasión", "+nivel a Defensa")];
 
-    // Armaduras
-    const armor = ["light","medium","heavy"].map(k => row(
-      "armor",
-      k,
+    const armor = ["light","medium","heavy"].map(k => row("armor", k,
       k==="light"?"Ligera":k==="medium"?"Intermedia":"Pesada",
       "Progresa en fallos de Defensa"
     ));
 
-    // Resistencias
     const RES_LABEL = {
       poison:"Veneno", infection:"Infección", affliction:"Aflicción", curse:"Maldición",
       alteration:"Alteración", water:"Agua", fire:"Fuego", earth:"Tierra", air:"Viento",
       light:"Luz", dark:"Oscuridad"
     };
-    const resKeys = Object.keys(RES_LABEL);
-    const resists = resKeys.map(k => row("resistances", k, RES_LABEL[k], "+nivel en Tiradas de Resistencia"));
+    const resists = Object.keys(RES_LABEL).map(k => row("resistances", k, RES_LABEL[k], "+nivel en Tiradas de Resistencia"));
 
-    // Especializaciones resumidas
+    // Resumen de especializaciones existentes en progreso
     const allSpecItems = groups.flatMap(g => g.items);
     const skills = Object.entries(prog.skills ?? {}).map(([k,v]) => {
       const i = allSpecItems.find(s => s.key === k);
       const lbl = i?.label || k;
       const cat = i?.category || v?.category || "—";
       const r = row("skills", k, lbl, "+nivel a tiradas relacionadas");
-      r.categoryLabel = (
-        cat==="physical"?"Física":
-        cat==="mental"?"Mental":
-        cat==="social"?"Social":
-        cat==="arts"?"Artes y Oficios":
-        cat==="knowledge"?"Saberes": cat
-      );
+      r.categoryLabel =
+        cat==="physical" ? "Física" :
+        cat==="mental"   ? "Mental" :
+        cat==="social"   ? "Social" :
+        cat==="arts"     ? "Artes y Oficios" :
+        cat==="knowledge"? "Saberes" : cat;
       return r;
     }).sort((a,b)=>a.label.localeCompare(b.label,"es"));
 
-    data.comps = { weapons, maneuvers, defense, armor, resists, skills };
+    context.comps = { weapons, maneuvers, defense, armor, resists, skills };
 
     // Inventario (slots)
     const eq = Inv.getEquipped(this.actor);
-    const optFor = (slot) => {
-      const list = Inv.listForSlot(this.actor, slot);
-      return list.map(it => ({
-        id: it.id,
-        label: Inv.itemLabel(it),
-        selected: eq[slot] === it.id
-      }));
-    };
-    data.inventory = {
+    const optFor = (slot) => Inv.listForSlot(this.actor, slot).map(it => ({
+      id: it.id, label: Inv.itemLabel(it), selected: eq[slot] === it.id
+    }));
+    context.inventory = {
       options: {
         mainHand: optFor("mainHand"),
         offHand:  optFor("offHand"),
@@ -195,24 +166,13 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
       }
     };
 
-    return data;
+    return context;
   }
 
-  /** Renderiza el HTML final de la app V2 (inyectamos el HBS) */
-  async _renderHTML(context, _options) {
-    const html = await renderTemplate(this.template, context);
-    const root = document.createElement("form");
-    root.classList.add("tsdc", "sheet", "v2");
-    root.innerHTML = html;
-    return root;
-  }
-
-  /** Primer render: aquí enganchamos listeners con DOM nativo */
-  _onFirstRender(_context, _options) {
-    super._onFirstRender?.(_context, _options);
+  /** Se llama tras montar el HTML (aquí enganchamos listeners) */
+  _onRender(_context, _options) {
     const el = this.element;
-
-    // Tabs (V2 soporta changeTab)
+    // Tabs
     const nav = el.querySelector(".sheet-tabs");
     const allTabs = Array.from(el.querySelectorAll('.tab[data-group="primary"]'));
     const showTab = (tab) => {
@@ -229,7 +189,7 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
 
     if (!this.isEditable) return;
 
-    // Acciones por data-action
+    // Acciones
     el.addEventListener("click", async (ev) => {
       const btn = ev.target.closest("[data-action]");
       if (!btn) return;
@@ -250,7 +210,7 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
       await setBackground(this.actor, key);
     });
 
-    // Filtros de especializaciones
+    // Filtros
     el.querySelector('input[name="specSearch"]')?.addEventListener("input", (ev) => this.#onSpecSearch(ev));
     el.querySelector('select[name="specFilter"]')?.addEventListener("change", (ev) => this.#onSpecFilter(ev));
 
@@ -260,13 +220,12 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
         const name = String(ev.currentTarget.name || "slot.?");
         const slot = name.split(".")[1];
         const val = String(ev.currentTarget.value || "");
-        const id = val || null;
-        await Inv.equip(this.actor, slot, id);
+        await Inv.equip(this.actor, slot, val || null);
       });
     });
   }
 
-  // ========= Handlers (DOM nativo + DialogV2) =========
+  // ==== Handlers ====
 
   async #onDemoEvoRoll(ev) {
     ev.preventDefault();
@@ -292,11 +251,17 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
     const v = String(ev.currentTarget.value || "all");
     const el = this.element;
     const groups = el.querySelectorAll('[data-category]');
-    const favCard = el.querySelector("h3:contains('Favoritas')")?.closest(".t-card"); // puede no existir
+
+    // ⚠️ CSS :contains no existe → buscar por texto
+    const favHeader = Array.from(el.querySelectorAll("h3"))
+      .find(h => (h.textContent || "").trim().toLowerCase().includes("favoritas"));
+    const favCard = favHeader ? favHeader.closest(".t-card") : null;
+
     groups.forEach(g => {
       const cat = g.getAttribute("data-category");
       g.style.display = (v === "all" || v === cat) ? "" : "none";
     });
+
     if (favCard) {
       if (v === "favorites") {
         favCard.style.display = "";
@@ -328,7 +293,7 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
 
     const res = await foundry.applications.api.DialogV2.prompt({
       window: { title },
-      content: /* html */ `
+      content: `
         <form class="t-col" style="gap:8px;">
           ${needs ? `
           <div class="t-field">
@@ -407,10 +372,7 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
     const bonus   = Number(el.querySelector('input[name="impBonus"]')?.value || 0);
 
     const { rollImpact } = await import("../rolls/dispatcher.js");
-    await rollImpact(this.actor, {
-      key, die, grade, attrKey, bonus,
-      weaponItem: mainItem ?? null
-    });
+    await rollImpact(this.actor, { key, die, grade, attrKey, bonus, weaponItem: mainItem ?? null });
   }
 
   async #onDefRoll() {
@@ -419,7 +381,6 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
     const armorBonus = computeArmorBonusFromEquipped(this.actor);
     const bonus   = Number(el.querySelector('input[name="defBonus"]')?.value || 0);
     const penalty = Number(el.querySelector('input[name="defPenalty"]')?.value || 0);
-
     const { rollDefense } = await import("../rolls/dispatcher.js");
     await rollDefense(this.actor, { armorType, armorBonus, bonus, penalty, mode: "ask" });
   }
@@ -429,7 +390,6 @@ export class TSDCActorSheet extends foundry.applications.sheets.ActorSheetV2 {
     const type    = String(el.querySelector('select[name="resType"]')?.value || "poison");
     const bonus   = Number(el.querySelector('input[name="resBonus"]')?.value || 0);
     const penalty = Number(el.querySelector('input[name="resPenalty"]')?.value || 0);
-
     const { rollResistance } = await import("../rolls/dispatcher.js");
     await rollResistance(this.actor, { type, bonus, penalty });
   }
