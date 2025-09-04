@@ -166,7 +166,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         pendant2: optFor("pendant2")
       }
     };
-    console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!ctx.inventory });
+    console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!context.inventory });
     return context;
   }
 
