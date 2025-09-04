@@ -22,9 +22,12 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     height: 680
   };
 
-  get template() {
-    return "systems/tsdc/templates/actor/character-sheet.hbs";
-  }
+  static PARTS = {
+    content: {
+      template: "systems/tsdc/templates/actor/character-sheet.hbs",
+      scrollable: [".sheet-body"]
+    }
+  };
 
   /** Contexto para el HBS (tu antiguo getData) */
   async _prepareContext(context = {}, _options = {}) {
