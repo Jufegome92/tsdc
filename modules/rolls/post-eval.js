@@ -59,7 +59,7 @@ function evaluateWithDC(flags, dc) {
 
   let learned = false;
   if (policy === "learning" && success) {
-    learned = (Math.abs(high - low) > Number(rank || 0));
+    learned = (Math.abs(high - low) >= Number(rank || 0));
   }
   return { success, learned, usedPolicy: policy };
 }
