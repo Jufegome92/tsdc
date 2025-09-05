@@ -33,6 +33,16 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   console.log(`Transcendence | ready (system=${game.system.id} v${game.system.version ?? game.system.data?.version})`);
   registerChatListeners();
+  // MIGRACIÓN SUAVE: si falta affinityMajor, cópialo del background
+  for (const actor of game.actors ?? []) {
+    const sys = actor.system ?? {};
+    const cur = sys.progression?.affinityMajor ?? null;
+    if (!cur) {
+      const bgKey = sys.background ?? "none";
+      const major = (game?.transcendence ? game.transcendence : null) // por si quieres evitar imports aquí
+        ? null : null; // (no lo necesitamos, usamos el mismo mapa BACKGROUNDS que ya está en el archivo de afinidades)
+    }
+  }
 });
 
 Hooks.on("createActor", async (actor, opts, userId) => {

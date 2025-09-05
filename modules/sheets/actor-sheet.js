@@ -353,8 +353,8 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       key,
       rank,
       policy: res.mode,
-      totalShown: null,  
-      otherTotal: null
+      totalShown: resultRoll?.total ?? null,
+      otherTotal: otherRoll?.total ?? null
     }));
     await ChatMessage.create({
       whisper: ChatMessage.getWhisperRecipients("GM"),

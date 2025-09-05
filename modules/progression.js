@@ -1,5 +1,6 @@
 // modules/progression.js
 import { TSDC } from "./config.js";
+import { getBackground } from "./features/affinities/index.js";
 
 export async function setTrackLevel(actor, trackType, key, level=1) {
   if (!key) return;
@@ -20,7 +21,7 @@ export function levelToRank(level=0) {
 export function trackThreshold(actor, trackType, key) {
   // skills dependen de category y del background
   if (trackType === "skills") {
-    const major = actor?.system?.progression?.affinityMajor ?? null;
+    const major = getBackground(actor)?.major ?? null;
     const cat = actor.system.progression?.skills?.[key]?.category;
     return (cat && major && cat === major) ? TSDC.MAJOR_THRESHOLD : TSDC.MINOR_THRESHOLD;
   }
@@ -59,6 +60,14 @@ export async function addProgress(actor, trackType, key, amount=1) {
   const data = foundry.utils.getProperty(actor, path);
   if (!data) return { leveled:false };
 
+  // Para skills: guarda la categoría si está vacía
+  if (trackType === "skills" && !data.category) {
+    const { getCategoryForSpec } = await import("./features/specializations/index.js");
+    const cat = getCategoryForSpec(key);
+    if (cat) {
+      data.category = cat;
+    }
+  }
   data.progress = Number(data.progress||0) + Number(amount||0);
 
   const threshold = trackThreshold(actor, trackType, key);
