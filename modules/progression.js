@@ -20,8 +20,7 @@ export function levelToRank(level=0) {
 export function trackThreshold(actor, trackType, key) {
   // skills dependen de category y del background
   if (trackType === "skills") {
-    const bg = actor.system.background;
-    const major = TSDC.BACKGROUNDS[bg]?.major ?? actor.system.progression?.affinityMajor;
+    const major = actor?.system?.progression?.affinityMajor ?? null;
     const cat = actor.system.progression?.skills?.[key]?.category;
     return (cat && major && cat === major) ? TSDC.MAJOR_THRESHOLD : TSDC.MINOR_THRESHOLD;
   }

@@ -3,7 +3,7 @@ import * as Attr from "./features/attributes/index.js";
 import * as Evo from "./features/advantage/index.js";
 import { TSDCActor } from "./documents/actor.js";
 import { TSDCActorSheet } from "./sheets/actor-sheet.js";
-import "./rolls/post-eval.js";
+//import "./rolls/post-eval.js";
 import { registerChatListeners } from "./chat/listeners.js";
 import { setTrackLevel } from "./progression.js";
 import { SPECIES_NATURAL_WEAPONS } from "./features/species/natural-weapons.js";
@@ -47,7 +47,6 @@ Hooks.on("createActor", async (actor, opts, userId) => {
     for (const k of (pack.fixed ?? [])) {
       await setTrackLevel(actor, "weapons", k, 1);
     }
-
     // Si hay elecciones: marca “pendiente”
     if ((pack.choices ?? []).length) {
       await actor.update({ "system.pendingChoices.naturalWeapons": pack.choices });

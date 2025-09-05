@@ -346,8 +346,30 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       actor: this.actor,
       meta: { key }
     });
+  
+  // Tarjeta de evaluación para el GM
+    const blob = encodeURIComponent(JSON.stringify({
+      actorId: this.actor.id ?? this.actor._id ?? null,
+      key,
+      rank,
+      policy: res.mode,
+      totalShown: null,  
+      otherTotal: null
+    }));
+    await ChatMessage.create({
+      whisper: ChatMessage.getWhisperRecipients("GM"),
+      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+      content: `
+        <div class="tsdc-eval">
+          <p><strong>Evaluar Especialización</strong> — Solo GM</p>
+          <div class="t-row" style="gap:6px; flex-wrap:wrap;">
+            <button class="t-btn tsdc-eval-btn" data-kind="specialization" data-blob="${blob}">Abrir evaluación…</button>
+          </div>
+          <div class="muted">No revela DC. Compara contra el TD/DF que elijas.</div>
+        </div>
+      `
+    });
   }
-
   async #onAtkRoll() {
     const el = this.element;
     const selId = String(el.querySelector('select[name="atkWeapon"]')?.value || "");

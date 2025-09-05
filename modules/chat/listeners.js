@@ -19,6 +19,7 @@ export function registerChatListeners() {
         if (kind === "attack")      await evalAttack(input);
         else if (kind === "defense")    await evalDefense(input);
         else if (kind === "resistance") await evalResistance(input);
+        else if (kind === "specialization") await evalSpecialization(input);
       } catch (err) {
         console.error("Eval error", err);
       }
@@ -62,12 +63,15 @@ async function evalAttack(p) {
 
   const success = (Number(p.totalShown) >= Number(res.td));
   const margin  = Number(p.totalShown) - Number(res.td);
+  const canLearn = (p.policy === "learning" && success && p.otherTotal != null);
+  const diff     = canLearn ? Math.abs(Number(p.totalShown) - Number(p.otherTotal)) : 0;
+  const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
   await ChatMessage.create({
     whisper: ChatMessage.getWhisperRecipients("GM"),
-    content: `<p><b>Ataque</b> ${success ? "ACIERTO ✅" : "FALLO ❌"} — margen <b>${margin}</b>${res.targetName?` vs <b>${res.targetName}</b>`:""}.</p>`
+    content: `<p><b>Ataque</b> ${success ? "ACIERTO ✅" : "FALLO ❌"} — margen <b>${margin}</b>${res.targetName?` vs <b>${res.targetName}</b>`:""}${p.policy==="learning" ? ` • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>` : ""}.</p>`
   });
 
-  if (success && p.policy === "learning") {
+  if (success && p.policy === "learning" && learned) {
     const trackType = p.isManeuver ? "maneuvers" : "weapons";
     await addProgress(actor, trackType, p.key, 1);
   }
@@ -131,8 +135,14 @@ async function evalDefense(p) {
   if (!res) return;
 
   if (res.defended) {
-    await ChatMessage.create({ whisper: ChatMessage.getWhisperRecipients("GM"), content: `<p><b>Defensa</b> exitosa: sin daño.</p>` });
-    if (p.policy === "learning") await addProgress(actor, "defense", "evasion", 1);
+    const canLearn = (p.policy === "learning" && p.otherTotal != null);
+    const diff     = canLearn ? Math.abs(Number(p.totalShown) - Number(p.otherTotal)) : 0;
+    const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
+    await ChatMessage.create({
+      whisper: ChatMessage.getWhisperRecipients("GM"),
+      content: `<p><b>Defensa</b> exitosa — Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
+    });
+    if (learned) await addProgress(actor, "defense", "evasion", 1);
     return;
   }
 
@@ -144,6 +154,50 @@ async function evalDefense(p) {
   });
 
   // Aquí enlazas tu pipeline real de daño/heridas/alteraciones.
+}
+
+/* ============ ESPECIALIZACIÓN ============ */
+async function evalSpecialization(p) {
+  const actor = game.actors?.get(p.actorId);
+  if (!actor) return;
+
+  // Recupera la última tirada (alto/bajo) desde el mensaje anterior (flags.tsdc) si vienen null.
+  // Si prefieres, puedes pasar totalShown/otherTotal en el blob desde la hoja.
+  // Aquí asumimos que ya están en p; si no, los dejamos en 0 para no romper.
+  const shown = Number(p.totalShown ?? 0);
+  const other = (p.otherTotal != null) ? Number(p.otherTotal) : null;
+
+  const res = await foundry.applications.api.DialogV2.prompt({
+    window: { title: "Evaluar Especialización" },
+    content: `
+      <form class="t-col" style="gap:8px;">
+        <div class="t-field">
+          <label>TD / DC objetivo</label>
+          <input type="number" name="td" value="10">
+        </div>
+        <div class="muted">Tirada mostrada: <b>${shown || "?"}</b>${other!=null?` • Otra: <b>${other}</b>`:""} • Política: <b>${p.policy}</b></div>
+      </form>
+    `,
+    ok: {
+      label: "Resolver",
+      callback: (_ev, button) => Number(button.form.elements.td?.value || 10)
+    }
+  });
+  if (res == null) return;
+
+  const success = (shown >= Number(res));
+  const canLearn = (p.policy === "learning" && success && other != null);
+  const diff     = canLearn ? Math.abs(shown - other) : 0;
+  const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
+
+  await ChatMessage.create({
+    whisper: ChatMessage.getWhisperRecipients("GM"),
+    content: `<p><b>Especialización</b> ${success ? "ÉXITO ✅" : "FALLO ❌"} • TD ${res} • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
+  });
+
+  if (success && p.policy === "learning" && learned && p.key) {
+    await addProgress(actor, "skills", p.key, 1);
+  }
 }
 
 /* ============ RESISTENCIA ============ */

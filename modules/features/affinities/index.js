@@ -76,7 +76,11 @@ export function getBackground(actor) {
 export async function setBackground(actor, key) {
   if (!actor) return;
   const bg = BACKGROUNDS[key] ? key : "none";
-  await actor.update({ "system.background": bg });
+  const major = BACKGROUNDS[bg]?.major ?? null;
+ await actor.update({
+   "system.background": bg,
+   "system.progression.affinityMajor": major
+ });
 }
 
 /**
