@@ -95,9 +95,18 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       const pct = Math.max(0, Math.min(100, Math.round((Number(p||0)/Math.max(1,Number(t||0)))*100)));
       return isFinite(pct) ? pct : 0;
     };
-    const row = (trackType, key, label, extraHint="") => {
+    const row = (trackType, key, label, extraHint = "", categoryOverride = null) => {
       const p = foundry.utils.getProperty(this.actor, `system.progression.${trackType}.${key}`) ?? { level:0, rank:0, progress:0, fails:0 };
-      const threshold = trackThreshold(this.actor, trackType, key);
+      let threshold = trackThreshold(this.actor, trackType, key);
+      if (trackType === "skills" && categoryOverride) {
+        threshold = getThresholdForSpec(this.actor, categoryOverride);
+      }
+
+      const asPct = (val, thr) => {
+        const pct = Math.max(0, Math.min(100, Math.round((Number(val||0)/Math.max(1,Number(thr||0)))*100)));
+        return isFinite(pct) ? pct : 0;
+      };
+
       return {
         key, trackType, label,
         level: Number(p.level||0),
@@ -138,7 +147,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       const i = allSpecItems.find(s => s.key === k);
       const lbl = i?.label || k;
       const cat = i?.category || v?.category || "—";
-      const r = row("skills", k, lbl, "+nivel a tiradas relacionadas");
+      const r = row("skills", k, lbl, "+nivel a tiradas relacionadas", cat);
       r.categoryLabel =
         cat==="physical" ? "Física" :
         cat==="mental"   ? "Mental" :
@@ -337,24 +346,24 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     const formula = `1d10 + ${base} + ${res.bonus} - ${res.diff}`;
     const rank = Number(foundry.utils.getProperty(this.actor, `system.progression.skills.${key}.rank`) || 0);
 
-    await resolveEvolution({
+    const { resultRoll, otherRoll, usedPolicy } = await resolveEvolution({
       type: "specialization",
-      mode: res.mode,
+      mode: res.mode,          // puede ser "ask"; usedPolicy trae la elección real
       formula,
       rank,
       flavor: `Especialización • ${row.querySelector("strong")?.textContent ?? key}`,
       actor: this.actor,
       meta: { key }
     });
-  
-  // Tarjeta de evaluación para el GM
+
+    // Tarjeta de evaluación para el GM con TOTALES reales
     const blob = encodeURIComponent(JSON.stringify({
       actorId: this.actor.id ?? this.actor._id ?? null,
       key,
       rank,
-      policy: res.mode,
-      totalShown: resultRoll?.total ?? null,
-      otherTotal: otherRoll?.total ?? null
+      policy: usedPolicy,
+      totalShown: resultRoll?.total ?? null,      // el total que se mostró (alto o bajo)
+      otherTotal: otherRoll?.total ?? null        // el otro total (para aprendizaje)
     }));
     await ChatMessage.create({
       whisper: ChatMessage.getWhisperRecipients("GM"),
