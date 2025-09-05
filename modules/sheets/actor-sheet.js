@@ -180,6 +180,32 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         pendant2: optFor("pendant2")
       }
     };
+
+    // Defaults de tirada persistidos en el actor
+    const rollDefaults = this.actor.system?.ui?.rollDefaults ?? {};
+    context.rollDefaults = {
+      attack: {
+        bonus:   Number(rollDefaults?.attack?.bonus   ?? 0),
+        penalty: Number(rollDefaults?.attack?.penalty ?? 0),
+        attr:    String(rollDefaults?.attack?.attr ?? "")
+      },
+      defense: {
+        bonus:     Number(rollDefaults?.defense?.bonus     ?? 0),
+        penalty:   Number(rollDefaults?.defense?.penalty   ?? 0),
+        armorType: String(rollDefaults?.defense?.armorType ?? "light")
+      },
+      resistance: {
+        bonus:   Number(rollDefaults?.resistance?.bonus   ?? 0),
+        penalty: Number(rollDefaults?.resistance?.penalty ?? 0),
+        type:    String(rollDefaults?.resistance?.type ?? "poison")
+      },
+      spec: {
+        bonus: Number(rollDefaults?.spec?.bonus ?? 0),
+        diff:  Number(rollDefaults?.spec?.diff  ?? 0),
+        mode:  String(rollDefaults?.spec?.mode  ?? "learning")
+      }
+    };
+
     console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!context.inventory });
     return context;
   }
@@ -240,6 +266,32 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         await Inv.equip(this.actor, slot, val || null);
       });
     });
+
+    // Guarda un input/select en system.ui.rollDefaults.*
+    const saveDefault = (selector, path, kind = "number") => {
+      const input = this.element.querySelector(selector);
+      if (!input) return;
+      const read = () => kind === "number" ? Number(input.value || 0) : String(input.value || "");
+      input.addEventListener("change", async () => {
+        await this.actor.update({ [path]: read() });
+      });
+    };
+
+    // Ataque
+    saveDefault('input[name="atkBonus"]',   "system.ui.rollDefaults.attack.bonus");
+    saveDefault('input[name="atkPenalty"]', "system.ui.rollDefaults.attack.penalty");
+    saveDefault('select[name="atkAttr"]',   "system.ui.rollDefaults.attack.attr", "string");
+
+    // Defensa
+    saveDefault('input[name="defBonus"]',     "system.ui.rollDefaults.defense.bonus");
+    saveDefault('input[name="defPenalty"]',   "system.ui.rollDefaults.defense.penalty");
+    saveDefault('select[name="defArmorType"]',"system.ui.rollDefaults.defense.armorType", "string");
+
+    // Resistencias
+    saveDefault('input[name="resBonus"]',   "system.ui.rollDefaults.resistance.bonus");
+    saveDefault('input[name="resPenalty"]', "system.ui.rollDefaults.resistance.penalty");
+    saveDefault('select[name="resType"]',   "system.ui.rollDefaults.resistance.type", "string");
+
   }
 
   // ==== Handlers ====
@@ -308,6 +360,9 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     const title = `Tirada • ${row.querySelector("strong")?.textContent ?? key}`;
     const needs = requiresEvolutionChoice(key);
 
+    // Defaults guardados
+    const d = this.actor.system?.ui?.rollDefaults?.spec ?? { bonus:0, diff:0, mode:"learning" };
+
     const res = await foundry.applications.api.DialogV2.prompt({
       window: { title },
       content: `
@@ -316,16 +371,17 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
           <div class="t-field">
             <label>Modo</label>
             <select name="mode">
-              <option value="execution">Ejecución (mejor)</option>
-              <option value="learning" selected>Aprender (peor)</option>
+              <option value="execution" ${d.mode==="execution"?"selected":""}>Ejecución (mejor)</option>
+              <option value="learning"  ${d.mode==="learning" ?"selected":""}>Aprender (peor)</option>
+              <option value="none"      ${d.mode==="none"     ?"selected":""}>Sin ventaja</option>
             </select>
           </div>` : ``}
           <div class="t-row" style="gap:8px;">
             <div class="t-field"><label>Base</label><input type="number" value="${base}" disabled></div>
           </div>
           <div class="t-row" style="gap:8px;">
-            <div class="t-field"><label>Bono</label><input type="number" name="bonus" value="0"></div>
-            <div class="t-field"><label>Penal.</label><input type="number" name="diff" value="0"></div>
+            <div class="t-field"><label>Bono</label><input type="number" name="bonus" value="${Number(d.bonus||0)}"></div>
+            <div class="t-field"><label>Penal.</label><input type="number" name="diff" value="${Number(d.diff||0)}"></div>
           </div>
         </form>
       `,
@@ -333,22 +389,26 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         label: "Tirar",
         callback: (_event, button) => {
           const f = button.form;
-          return {
-            mode: needs ? (f.elements.mode?.value || "learning") : "none",
-            bonus: Number(f.elements.bonus?.value || 0),
-            diff:  Number(f.elements.diff?.value || 0)
+          const out = {
+            mode: needs ? (f.elements.mode?.value || d.mode || "learning") : "none",
+            bonus: Number(f.elements.bonus?.value ?? d.bonus ?? 0),
+            diff:  Number(f.elements.diff?.value  ?? d.diff  ?? 0)
           };
+          return out;
         }
       }
     });
     if (!res) return;
+
+    // Guarda lo que eligió para siguientes diálogos
+    await this.actor.update({ "system.ui.rollDefaults.spec": { bonus: res.bonus, diff: res.diff, mode: res.mode } });
 
     const formula = `1d10 + ${base} + ${res.bonus} - ${res.diff}`;
     const rank = Number(foundry.utils.getProperty(this.actor, `system.progression.skills.${key}.rank`) || 0);
 
     const { resultRoll, otherRoll, usedPolicy } = await resolveEvolution({
       type: "specialization",
-      mode: res.mode,          // puede ser "ask"; usedPolicy trae la elección real
+      mode: res.mode,
       formula,
       rank,
       flavor: `Especialización • ${row.querySelector("strong")?.textContent ?? key}`,
@@ -356,14 +416,13 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       meta: { key }
     });
 
-    // Tarjeta de evaluación para el GM con TOTALES reales
+    // (… resto igual: tarjeta GM con totals …)
     const blob = encodeURIComponent(JSON.stringify({
       actorId: this.actor.id ?? this.actor._id ?? null,
-      key,
-      rank,
+      key, rank,
       policy: usedPolicy,
-      totalShown: resultRoll?.total ?? null,      // el total que se mostró (alto o bajo)
-      otherTotal: otherRoll?.total ?? null        // el otro total (para aprendizaje)
+      totalShown: resultRoll?.total ?? null,
+      otherTotal: otherRoll?.total ?? null
     }));
     await ChatMessage.create({
       whisper: ChatMessage.getWhisperRecipients("GM"),

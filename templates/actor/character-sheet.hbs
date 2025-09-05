@@ -142,25 +142,25 @@
           <div class="t-field" style="min-width:160px;">
             <label>Atributo (por defecto: el del arma)</label>
             <select name="atkAttr">
-              <option value="">— Automático —</option>
-              <option value="strength">Fuerza</option>
-              <option value="agility">Agilidad</option>
-              <option value="tenacity">Tenacidad</option>
-              <option value="cunning">Astucia</option>
-              <option value="wisdom">Sabiduría</option>
-              <option value="intellect">Intelecto</option>
-              <option value="aura">Aura</option>
-              <option value="composure">Compostura</option>
-              <option value="presence">Presencia</option>
+              <option value="" {{#if (eq rollDefaults.attack.attr "")}}selected{{/if}}>— Automático —</option>
+              <option value="strength" {{#if (eq rollDefaults.attack.attr "strength")}}selected{{/if}}>Fuerza</option>
+              <option value="agility"  {{#if (eq rollDefaults.attack.attr "agility")}}selected{{/if}}>Agilidad</option>
+              <option value="tenacity" {{#if (eq rollDefaults.attack.attr "tenacity")}}selected{{/if}}>Tenacidad</option>
+              <option value="cunning" {{#if (eq rollDefaults.attack.attr "cunning")}}selected{{/if}}>Astucia</option>
+              <option value="wisdom" {{#if (eq rollDefaults.attack.attr "wisdom")}}selected{{/if}}>Sabiduria</option>
+              <option value="intellect" {{#if (eq rollDefaults.attack.attr "intellect")}}selected{{/if}}>Intelecto</option>
+              <option value="aura" {{#if (eq rollDefaults.attack.attr "aura")}}selected{{/if}}>Aura</option>
+              <option value="composure" {{#if (eq rollDefaults.attack.attr "composure")}}selected{{/if}}>Compostura</option>
+              <option value="presence" {{#if (eq rollDefaults.attack.attr "presence")}}selected{{/if}}>Presencia</option>
             </select>
           </div>
           <div class="t-field" style="width:100px;">
             <label>Bono</label>
-            <input type="number" name="atkBonus" value="0"/>
+            <input type="number" name="atkBonus" value="{{rollDefaults.attack.bonus}}"/>
           </div>
           <div class="t-field" style="width:100px;">
             <label>Penal.</label>
-            <input type="number" name="atkPenalty" value="0"/>
+            <input type="number" name="atkPenalty" value="{{rollDefaults.attack.penalty}}"/>
           </div>
           <button type="button" class="t-btn" data-action="atk-roll">Tirar Ataque</button>
         </div>
@@ -207,18 +207,18 @@
           <div class="t-field" style="min-width:160px;">
             <label>Tipo de armadura (para progreso si fallas)</label>
             <select name="defArmorType">
-              <option value="light">Ligera</option>
-              <option value="medium">Intermedia</option>
-              <option value="heavy">Pesada</option>
+              <option value="light"   {{#if (eq rollDefaults.defense.armorType "light")}}selected{{/if}}>Ligera</option>
+              <option value="medium"  {{#if (eq rollDefaults.defense.armorType "medium")}}selected{{/if}}>Intermedia</option>
+              <option value="heavy"   {{#if (eq rollDefaults.defense.armorType "heavy")}}selected{{/if}}>Pesada</option>
             </select>
           </div>
           <div class="t-field" style="width:100px;">
             <label>Bono</label>
-            <input type="number" name="defBonus" value="0"/>
+            <input type="number" name="defBonus"   value="{{rollDefaults.defense.bonus}}"/>
           </div>
           <div class="t-field" style="width:100px;">
             <label>Penal.</label>
-            <input type="number" name="defPenalty" value="0"/>
+            <input type="number" name="defPenalty" value="{{rollDefaults.defense.penalty}}"/>
           </div>
           <button type="button" class="t-btn" data-action="def-roll">Tirar Defensa</button>
         </div>
@@ -232,17 +232,17 @@
           <div class="t-field" style="min-width:180px;">
             <label>Tipo</label>
             <select name="resType">
-              <option value="poison">Veneno</option>
-              <option value="infection">Infección</option>
-              <option value="affliction">Aflicción</option>
-              <option value="curse">Maldición</option>
-              <option value="alteration">Alteración</option>
-              <option value="water">Agua</option>
-              <option value="fire">Fuego</option>
-              <option value="earth">Tierra</option>
-              <option value="air">Viento</option>
-              <option value="light">Luz</option>
-              <option value="dark">Oscuridad</option>
+              <option value="poison"     {{#if (eq rollDefaults.resistance.type "poison")}}selected{{/if}}>Veneno</option>
+              <option value="infection"  {{#if (eq rollDefaults.resistance.type "infection")}}selected{{/if}}>Infección</option>
+              <option value="affliction" {{#if (eq rollDefaults.resistance.type "affliction")}}selected{{/if}}>Aflicción</option>
+              <option value="curse"      {{#if (eq rollDefaults.resistance.type "curse")}}selected{{/if}}>Maldición</option>
+              <option value="alteration"  {{#if (eq rollDefaults.resistance.type "alteration")}}selected{{/if}}>Alteración</option>
+              <option value="water"      {{#if (eq rollDefaults.resistance.type "water")}}selected{{/if}}>Agua</option>         
+              <option value="fire"       {{#if (eq rollDefaults.resistance.type "fire")}}selected{{/if}}>Fuego</option>
+              <option value="earth"      {{#if (eq rollDefaults.resistance.type "earth")}}selected{{/if}}>Tierra</option>
+              <option value="air"        {{#if (eq rollDefaults.resistance.type "air")}}selected{{/if}}>Viento</option>
+              <option value="light"      {{#if (eq rollDefaults.resistance.type "light")}}selected{{/if}}>Luz</option>      
+              <option value="dark"       {{#if (eq rollDefaults.resistance.type "dark")}}selected{{/if}}>Oscuridad</option>
             </select>
           </div>
           <div class="t-field" style="width:100px;">
