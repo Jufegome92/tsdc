@@ -252,6 +252,30 @@ export const CATALOG = {
   // =========================
   // INFECCIONES (selección)
   // =========================
+
+  INFECCION_TRAUMATICA: {
+    id: "INFECCION_TRAUMATICA",
+    group: AILMENT_GROUP.INFECTION,
+    label: "Infección Traumática",
+    contagio: "Grave",
+    incubacion: "1 hora",
+    duration: { type: "untilTreated" },
+    severable: true,
+    /**
+     * grantsBySeverity: qué otras alteraciones se aplican automáticamente
+     * cuando se activa esta afección, según severidad.
+     */
+    grantsBySeverity: {
+      leve:   ["DESANGRADO"],
+      grave:  ["DESANGRADO", "DESEQUILIBRADO", "DESORIENTADO"],
+      critico:["DESANGRADO", "DESEQUILIBRADO", "DESORIENTADO", "DEBILITADO"]
+    },
+    effectsText: [
+      "Herida profunda contaminada que desencadena fiebre e inflamación.",
+      "Aplica alteraciones adicionales según severidad (ver ficha)."
+    ]
+  },
+
   PIEL_DE_ESCARCHA: {
     id: "PIEL_DE_ESCARCHA", group: AILMENT_GROUP.INFECTION,
     label: "Piel de Escarcha",

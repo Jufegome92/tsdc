@@ -2,6 +2,50 @@
 import { addProgress, addFail } from "../progression.js";
 import { applyNaturalWeaponEffect } from "../features/effects/index.js";
 import * as Ail from "../ailments/index.js";
+import { computeBlockingAt } from "../features/armors/index.js";
+
+/* ===== Helpers locales ===== */
+
+// Etiqueta bonita para la localización
+function locLabel(part) {
+  switch (String(part || "")) {
+    case "head":    return "Cabeza";
+    case "chest":   return "Torso";
+    case "bracers": return "Brazos";
+    case "legs":    return "Piernas";
+    case "boots":   return "Pies";
+    default:        return String(part || "—");
+  }
+}
+
+// Severidad en función de Impacto vs Bloqueo (x1 / x2 / x3)
+function severityFromImpactBlock(impact, block) {
+  const I = Number(impact || 0);
+  const B = Math.max(0, Number(block || 0));
+  if (I <= B) return null;                 // sin herida
+  if (I <  2 * B) return "leve";
+  if (I <  3 * B) return "grave";
+  return "critico";
+}
+
+// Mapeo rápido de tipo de daño → ID del catálogo según severidad
+// Nota: Perforante pide “Infección Traumática”; si no tienes aún ese ID en tu catálogo,
+// devolvemos null para que caiga en carga de agravios (puedes crear ese entry luego).
+function mapDamageToAilmentId(dtype, severity) {
+  const t = String(dtype || "").toLowerCase();
+  switch (t) {
+    case "cut":    return "DESANGRADO"; // severable
+    case "blunt":  return "FRACTURADO"; // severable
+    case "pierce": return "INFECCION_TRAUMATICA";        
+    case "fire":   return "QUEMADURA_TAUMATICA_FUEGO";
+    case "air":    return "LACERACION_DE_PRESION_VIENTO";
+    case "earth":  return "APLASTAMIENTO_TAUMATICO_TIERRA";
+    case "water":  return "CONGELACION_TAUMATICA_AGUA";
+    case "light":  return "SOBRECARGA_NERVIOSA_LUZ";
+    case "dark":   return "DEVORACION_SENSORIAL_OSCURIDAD";
+    default:       return null;
+  }
+}
 
 export function registerChatListeners() {
   Hooks.on("renderChatMessageHTML", (_message, html /*HTMLElement*/) => {
@@ -16,9 +60,9 @@ export function registerChatListeners() {
         const blob  = decodeURIComponent(String(btn.dataset.blob || "%7B%7D"));
         const input = JSON.parse(blob);
 
-        if (kind === "attack")      await evalAttack(input);
-        else if (kind === "defense")    await evalDefense(input);
-        else if (kind === "resistance") await evalResistance(input);
+        if (kind === "attack")           await evalAttack(input);
+        else if (kind === "defense")     await evalDefense(input);
+        else if (kind === "resistance")  await evalResistance(input);
         else if (kind === "specialization") await evalSpecialization(input);
       } catch (err) {
         console.error("Eval error", err);
@@ -66,6 +110,7 @@ async function evalAttack(p) {
   const canLearn = (p.policy === "learning" && success && p.otherTotal != null);
   const diff     = canLearn ? Math.abs(Number(p.totalShown) - Number(p.otherTotal)) : 0;
   const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
+
   await ChatMessage.create({
     whisper: ChatMessage.getWhisperRecipients("GM"),
     content: `<p><b>Ataque</b> ${success ? "ACIERTO ✅" : "FALLO ❌"} — margen <b>${margin}</b>${res.targetName?` vs <b>${res.targetName}</b>`:""}${p.policy==="learning" ? ` • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>` : ""}.</p>`
@@ -93,67 +138,123 @@ async function evalDefense(p) {
   const actor = game.actors?.get(p.actorId);
   if (!actor) return;
 
-  const res = await foundry.applications.api.DialogV2.prompt({
+  const defShown = Number(p.totalShown ?? 0);
+  const bodyPart = p.bodyPart || "chest";
+  const d100roll = Number(p.d100 ?? NaN);
+
+  const res1 = await foundry.applications.api.DialogV2.prompt({
     window: { title: "Evaluar Defensa" },
     content: `
       <form class="t-col" style="gap:10px;">
         <div class="t-field">
-          <label>Resultado</label>
-          <select name="result">
-            <option value="success">Defensa exitosa (evita daño)</option>
-            <option value="fail">Defensa fallida (hay impacto)</option>
-          </select>
+          <label>Total del atacante</label>
+          <input type="number" name="atk" placeholder="p.ej. 17" />
         </div>
         <div class="t-field">
-          <label>Total del atacante (opcional)</label>
-          <input type="number" name="atk" placeholder="p.ej. 17">
-        </div>
-        <div class="t-field">
-          <label>Zona impactada (si falló)</label>
-          <select name="body">
-            <option value="head">Cabeza</option>
-            <option value="torso">Torso</option>
-            <option value="arm">Brazo</option>
-            <option value="leg">Pierna</option>
+          <label>Tipo de daño (para heridas si falla)</label>
+          <select name="dtype">
+            <option value="cut">Cortante</option>
+            <option value="pierce">Perforante</option>
+            <option value="blunt">Contundente</option>
+            <option value="fire">Fuego</option>
+            <option value="air">Viento</option>
+            <option value="earth">Tierra</option>
+            <option value="water">Agua</option>
+            <option value="light">Luz</option>
+            <option value="dark">Oscuridad</option>
           </select>
         </div>
-        <div class="muted">Defensa tirada: <b>${p.totalShown}</b>${p.otherTotal!=null?` • Otra: <b>${p.otherTotal}</b>`:""} • Política: <b>${p.policy}</b></div>
+        <div class="muted">Localización preasignada: <b>${locLabel(bodyPart)}</b>${isNaN(d100roll) ? "" : ` • d100=${d100roll}`}</div>
+        <div class="muted">Defensa tirada: <b>${isNaN(defShown) ? "?" : defShown}</b> • Otra: <b>${p.otherTotal ?? "—"}</b> • Política: <b>${p.policy ?? "-"}</b></div>
       </form>
     `,
     ok: {
-      label: "Resolver",
-      callback: (_ev, button) => {
-        const f = button.form;
-        return {
-          defended: (f.elements.result?.value === "success"),
-          attackerTotal: Number(f.elements.atk?.value || 0),
-          bodyPart: String(f.elements.body?.value || "torso")
-        };
-      }
+      label: "Continuar",
+      callback: (_ev, button) => ({
+        atkTotal: Number(button.form.elements.atk?.value || 0),
+        dtype: String(button.form.elements.dtype?.value || "cut")
+      })
     }
   });
-  if (!res) return;
+  if (!res1) return;
 
-  if (res.defended) {
-    const canLearn = (p.policy === "learning" && p.otherTotal != null);
-    const diff     = canLearn ? Math.abs(Number(p.totalShown) - Number(p.otherTotal)) : 0;
-    const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
+  const atkTotal = Number(res1.atkTotal || 0);
+  const damageType = res1.dtype;
+  const success = (defShown >= atkTotal);
+
+  const other = (p.otherTotal != null) ? Number(p.otherTotal) : null;
+  const canLearn = (p.policy === "learning" && success && other != null);
+  const diff     = canLearn ? Math.abs(defShown - other) : 0;
+  const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
+
+  if (success) {
     await ChatMessage.create({
       whisper: ChatMessage.getWhisperRecipients("GM"),
-      content: `<p><b>Defensa</b> exitosa — Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `<p><b>Defensa</b> ÉXITO ✅ — margen ${defShown - atkTotal} • Localización: <b>${locLabel(bodyPart)}</b> • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
     });
     if (learned) await addProgress(actor, "defense", "evasion", 1);
     return;
   }
 
-  if (p.armorType) await addFail(actor, "armor", p.armorType, 1);
+  // Fallo → bloqueo y herida
+  const blocking = computeBlockingAt(actor, bodyPart);
+  const bVal = Number(blocking?.value || 0);
+
+  const res2 = await foundry.applications.api.DialogV2.prompt({
+    window: { title: `Impacto vs Bloqueo (${locLabel(bodyPart)})` },
+    content: `
+      <form class="t-col" style="gap:8px;">
+        <div class="t-field">
+          <label>Total de Impacto del atacante</label>
+          <input type="number" name="imp" placeholder="p.ej. 9" />
+        </div>
+        <div class="muted">
+          Bloqueo (${locLabel(bodyPart)}): <b>${bVal}</b>
+          <span class="muted">(BC ${blocking?.breakdown?.BC ?? 0} • BM ${blocking?.breakdown?.BM ?? 0} • CD ${blocking?.breakdown?.CD ?? 0} • CO ${blocking?.breakdown?.CO ?? 0})</span>
+        </div>
+        <div class="muted">Regla: ≤×1 sin herida • ×1–<×2 leve • ×2–<×3 grave • ≥×3 crítico</div>
+      </form>
+    `,
+    ok: {
+      label: "Resolver Herida",
+      callback: (_ev, button) => Number(button.form.elements.imp?.value || 0)
+    }
+  });
+  if (res2 == null) return;
+
+  const impactTotal = Number(res2 || 0);
+  const sev = severityFromImpactBlock(impactTotal, bVal);
 
   await ChatMessage.create({
     whisper: ChatMessage.getWhisperRecipients("GM"),
-    content: `<p><b>Impacto</b> en <b>${res.bodyPart}</b>. Aplica bloqueo y calcula herida según regla.</p>`
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `
+      <div>
+        <p><b>Defensa</b> FALLÓ ❌ — margen ${atkTotal - defShown} • Localización: <b>${locLabel(bodyPart)}</b>${isNaN(d100roll) ? "" : ` • d100=${d100roll}`}</p>
+        <p><b>Impacto</b>: ${impactTotal} vs <b>Bloqueo</b>: ${bVal} → ${sev ? `<b>Herida ${sev.toUpperCase()}</b>` : "sin herida"}</p>
+        <p><b>Tipo de daño</b>: ${damageType}</p>
+      </div>
+    `
   });
 
-  // Aquí enlazas tu pipeline real de daño/heridas/alteraciones.
+  if (sev) {
+    const aid = mapDamageToAilmentId(damageType, sev);
+    if (aid) {
+      await Ail.addAilment(actor, aid, {
+        severity: sev,
+        source: `defense:${damageType}`,
+        kind: bodyPart
+      });
+    } else {
+      await Ail.incrementAilmentLoad(actor, 1, `Fallo TD (${damageType}) → ${sev}`);
+      ui.notifications?.info(`No encontré en el catálogo un agravio para "${damageType}".`);
+    }
+    const catKey = String(blocking?.piece?.category ?? "").toLowerCase();
+    if (catKey) {
+      await addFail(actor, "armor", catKey, 1);
+    }
+  }
 }
 
 /* ============ ESPECIALIZACIÓN ============ */
@@ -161,9 +262,6 @@ async function evalSpecialization(p) {
   const actor = game.actors?.get(p.actorId);
   if (!actor) return;
 
-  // Recupera la última tirada (alto/bajo) desde el mensaje anterior (flags.tsdc) si vienen null.
-  // Si prefieres, puedes pasar totalShown/otherTotal en el blob desde la hoja.
-  // Aquí asumimos que ya están en p; si no, los dejamos en 0 para no romper.
   const shown = Number(p.totalShown ?? 0);
   const other = (p.otherTotal != null) ? Number(p.otherTotal) : null;
 
@@ -175,7 +273,7 @@ async function evalSpecialization(p) {
           <label>TD / DC objetivo</label>
           <input type="number" name="td" value="10">
         </div>
-        <div class="muted">Tirada mostrada: <b>${shown || "?"}</b>${other!=null?` • Otra: <b>${other}</b>`:""} • Política: <b>${p.policy}</b></div>
+        <div class="muted">Tirada mostrada: <b>${isNaN(shown) ? "?" : shown}</b>${other!=null?` • Otra: <b>${other}</b>`:""} • Política: <b>${p.policy}</b></div>
       </form>
     `,
     ok: {
@@ -195,7 +293,7 @@ async function evalSpecialization(p) {
     content: `<p><b>Especialización</b> ${success ? "ÉXITO ✅" : "FALLO ❌"} • TD ${res} • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
   });
 
-  if (success && p.policy === "learning" && learned && p.key) {
+  if (success && learned && p.key) {
     await addProgress(actor, "skills", p.key, 1);
   }
 }
@@ -205,64 +303,83 @@ async function evalResistance(p) {
   const actor = game.actors?.get(p.actorId);
   if (!actor) return;
 
-  const res = await foundry.applications.api.DialogV2.prompt({
-    window: { title: `Evaluar Resistencia (${p.resType})` },
-    content: `
-      <form class="t-col" style="gap:8px;">
-        <div class="t-field">
-          <label>Resultado</label>
-          <select name="result">
-            <option value="success">Exitosa (no pasa nada)</option>
-            <option value="fail">Fallida (aplica agravio/efecto)</option>
-          </select>
-        </div>
-        <div class="t-field">
-          <label>Tipo de efecto (si falló)</label>
-          <select name="kind">
-            <option value="infection">Infección</option>
-            <option value="poison">Veneno</option>
-            <option value="affliction">Aflicción</option>
-            <option value="curse">Maldición</option>
-            <option value="alteration">Alteración</option>
-            <option value="element">Elemento</option>
-          </select>
-        </div>
-        <div class="t-field">
-          <label>ID (catálogo) opcional</label>
-          <input type="text" name="key" placeholder="p.ej. PIEL_DE_ESCARCHA, PLAGA_ALMAS_ERRANTES…">
-        </div>
-        <div class="muted">Tirada mostrada: <b>${p.totalShown}</b></div>
-      </form>
-    `,
-    ok: {
-      label: "Resolver",
-      callback: (_ev, button) => {
-        const f = button.form;
-        return {
-          ok: (f.elements.result?.value === "success"),
-          kind: String(f.elements.kind?.value || "alteration"),
-          key: String(f.elements.key?.value || "").trim()
-        };
-      }
-    }
-  });
-  if (!res) return;
+  const shown = Number(p.totalShown ?? 0);
 
-  if (res.ok) {
-    await ChatMessage.create({ whisper: ChatMessage.getWhisperRecipients("GM"), content: `<p><b>Resistencia</b> exitosa: no se aplica efecto.</p>` });
+  let DC = (p.dc != null) ? Number(p.dc) : null;
+  let kind = "alteration";
+  let key  = "";
+
+  if (DC == null) {
+    const res = await foundry.applications.api.DialogV2.prompt({
+      window: { title: `Evaluar Resistencia (${p.resType ?? "-"})` },
+      content: `
+        <form class="t-col" style="gap:10px;">
+          <div class="t-field">
+            <label>DC</label>
+            <input type="number" name="dc" placeholder="p.ej. 12" />
+          </div>
+          <div class="t-field">
+            <label>Tipo de efecto (si falla)</label>
+            <select name="kind">
+              <option value="infection">Infección</option>
+              <option value="poison">Veneno</option>
+              <option value="affliction">Aflicción</option>
+              <option value="curse">Maldición</option>
+              <option value="alteration" selected>Alteración</option>
+              <option value="element">Elemento</option>
+            </select>
+          </div>
+          <div class="t-field">
+            <label>ID (catálogo) opcional</label>
+            <input type="text" name="key" placeholder="p.ej. PIEL_DE_ESCARCHA" />
+          </div>
+          <div class="muted">Tirada mostrada: <b>${isNaN(shown) ? "?" : shown}</b> • Tipo: <b>${p.resType ?? "-"}</b></div>
+        </form>
+      `,
+      ok: {
+        label: "Resolver",
+        callback: (_ev, button) => {
+          const f = button.form;
+          return {
+            dc: Number(f.elements.dc?.value || 0),
+            kind: String(f.elements.kind?.value || "alteration"),
+            key: String(f.elements.key?.value || "").trim()
+          };
+        }
+      }
+    });
+    if (!res) return;
+    DC   = res.dc;
+    kind = res.kind;
+    key  = res.key;
+  } else {
+    kind = p.kind ?? "alteration";
+    key  = p.key  ?? "";
+  }
+
+  const success = (shown >= DC);
+  const margin  = success ? (shown - DC) : (DC - shown);
+
+  if (success) {
+    await ChatMessage.create({
+      whisper: ChatMessage.getWhisperRecipients("GM"),
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `<p><b>Resistencia</b> ÉXITO ✅ — margen ${margin} • Tipo: <b>${p.resType ?? "-"}</b>.</p>`
+    });
     return;
   }
 
-  if (res.key) {
-    await Ail.addAilment(actor, res.key, { source: p.resType, kind: res.kind });
+  // Fallo → aplicar efecto y progreso
+  if (key) {
+    await Ail.addAilment(actor, key, { source: p.resType, kind });
   } else {
     await Ail.incrementAilmentLoad(actor, 1, `Fallo TR ${p.resType}`);
   }
-
   await addProgress(actor, "resistances", p.resType, 1);
 
   await ChatMessage.create({
     whisper: ChatMessage.getWhisperRecipients("GM"),
-    content: `<p><b>Resistencia</b> fallida: aplicado <b>${res.key || res.kind}</b>.</p>`
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `<p><b>Resistencia</b> FALLO ❌ — margen ${margin} • Aplicado <b>${key || kind}</b>.</p>`
   });
 }

@@ -1,0 +1,273 @@
+// modules/features/species/data.js
+// Catálogo de especies con sus datos básicos para aplicar rasgos automáticos.
+// Las herencias/legados se manejarán en species/effects.js.
+
+export const SPECIES = {
+  naghii: {
+    key: "naghii",
+    label: "Naghii",
+    size: "medium",
+    lifespan: [90, 100],
+    heightM: [1.68, 1.83],
+    weightKg: [59, 77],
+    languages: ["Sssarith", "Common"],
+    speed: 10,
+    attrBonuses: { agility: 1, wisdom: 1, aura: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  sauri: {
+    key: "sauri",
+    label: "Sauri",
+    size: "large",
+    lifespan: [60, 80],
+    heightM: [2.00, 2.30],
+    weightKg: [150, 200],
+    languages: ["Zhirash", "Common"],
+    speed: 8,
+    attrBonuses: { strength: 1, wisdom: 1, composure: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  zarnag: {
+    key: "zarnag",
+    label: "Zarnag",
+    size: "medium",
+    lifespan: [50, 70],
+    heightM: [1.61, 1.73],
+    weightKg: [65, 73],
+    languages: ["Zarnog", "Common"],
+    speed: 10,
+    attrBonuses: { agility: 1, cunning: 1, presence: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  drakkai: {
+    key: "drakkai",
+    label: "Drak’kai",
+    size: "medium",
+    lifespan: [400, 450],
+    heightM: [1.60, 1.80],
+    weightKg: [100, 200],
+    languages: ["Drakar", "Common"],
+    speed: 8,
+    attrBonuses: { tenacity: 1, wisdom: 1, composure: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  rokhart: {
+    key: "rokhart",
+    label: "Rokhart",
+    size: "medium",
+    lifespan: [70, 80],
+    heightM: [1.60, 1.80],
+    weightKg: [50, 70],
+    languages: ["Rokha", "Common"],
+    speed: 9,
+    attrBonuses: { agility: 1, intellect: 1, composure: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  loxod: {
+    key: "loxod",
+    label: "Loxod",
+    size: "large",
+    lifespan: [200, 300],
+    heightM: [2.50, 3.00],
+    weightKg: [400, 500],
+    languages: ["Loxian", "Common"],
+    speed: 8,
+    attrBonuses: { tenacity: 1, intellect: 1, composure: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  ceratox: {
+    key: "ceratox",
+    label: "Ceratox",
+    size: "large",
+    lifespan: [70, 90],
+    heightM: [2.00, 2.50],
+    weightKg: [300, 400],
+    languages: ["Ceratík", "Common"],
+    speed: 8,
+    attrBonuses: { strength: 1, tenacity: 1, presence: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  formix: {
+    key: "formix",
+    label: "Formix",
+    size: "medium",
+    lifespan: [30, 80],
+    heightM: [1.50, 1.70],
+    weightKg: [70, 85],
+    languages: ["Common", "Extra"],
+    speed: 10,
+    attrBonuses: { agility: 1, cunning: 1, charm: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  chelicer: {
+    key: "chelicer",
+    label: "Chelicer",
+    size: "medium",
+    lifespan: [60, 90],
+    heightM: [1.70, 1.90],
+    weightKg: [80, 100],
+    languages: ["Chelí", "Common"],
+    speed: 10,
+    attrBonuses: { agility: 1, wisdom: 1, presence: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  panin: {
+    key: "panin",
+    label: "Panin",
+    size: "small",
+    lifespan: [40, 50],
+    heightM: [0.80, 1.20],
+    weightKg: [15, 30],
+    languages: ["Paní", "Common"],
+    speed: 12,
+    attrBonuses: { agility: 1, cunning: 1, charm: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  luphran: {
+    key: "luphran",
+    label: "Luphran",
+    size: "medium",
+    lifespan: [60, 70],
+    heightM: [1.70, 1.80],
+    weightKg: [80, 100],
+    languages: ["Lupino", "Common"],
+    speed: 9,
+    attrBonuses: { strength: 1, cunning: 1, presence: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  ursari: {
+    key: "ursari",
+    label: "Ursari",
+    size: "large",
+    lifespan: [70, 90],
+    heightM: [2.20, 2.70],
+    weightKg: [200, 220],
+    languages: ["Ursal", "Common"],
+    speed: 8,
+    attrBonuses: { tenacity: 1, wisdom: 1, presence: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  arakhel: {
+    key: "arakhel",
+    label: "Arakhel",
+    size: "medium",
+    lifespan: [40, 50],
+    heightM: [1.60, 1.75],
+    weightKg: [50, 70],
+    languages: ["Arakhi", "Common"],
+    speed: 10,
+    attrBonuses: { agility: 1, cunning: 1, intellect: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  bufoni: {
+    key: "bufoni",
+    label: "Bufoni",
+    size: "medium",
+    lifespan: [70, 90],
+    heightM: [1.40, 1.60],
+    weightKg: [50, 70],
+    languages: ["Grog", "Common"],
+    speed: 9,
+    attrBonuses: { agility: 1, wisdom: 1, intellect: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  vesper: {
+    key: "vesper",
+    label: "Vesper",
+    size: "medium",
+    lifespan: [150, 200],
+    heightM: [1.60, 1.80],
+    weightKg: [50, 70],
+    languages: ["Sangrath", "Common"],
+    speed: 9,
+    attrBonuses: { wisdom: 1, intellect: 1, composure: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  lapinni: {
+    key: "lapinni",
+    label: "Lapinni",
+    size: "small",
+    lifespan: [30, 40],
+    heightM: [0.80, 1.00],
+    weightKg: [10, 15],
+    languages: ["Lappi", "Common"],
+    speed: 11,
+    attrBonuses: { agility: 1, cunning: 1, wisdom: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  erin: {
+    key: "erin",
+    label: "Erin",
+    size: "medium",
+    lifespan: [20, 30],
+    heightM: [1.50, 1.80],
+    weightKg: [50, 80],
+    languages: ["Erino", "Common"],
+    speed: 10,
+    attrBonuses: { tenacity: 1, cunning: 1, composure: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  manto: {
+    key: "manto",
+    label: "Manto",
+    size: "medium",
+    lifespan: [50, 60],
+    heightM: [1.70, 2.00],
+    weightKg: [50, 70],
+    languages: ["Mántico", "Common"],
+    speed: 10,
+    attrBonuses: { agility: 1, wisdom: 1, presence: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  talpi: {
+    key: "talpi",
+    label: "Talpi",
+    size: "small",
+    lifespan: [70, 90],
+    heightM: [1.20, 1.40],
+    weightKg: [30, 45],
+    languages: ["Talpin", "Common"],
+    speed: 9,
+    attrBonuses: { agility: 1, intellect: 1, wisdom: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+
+  myo: {
+    key: "myo",
+    label: "Myo",
+    size: "small",
+    lifespan: [30, 40],
+    heightM: [1.00, 1.20],
+    weightKg: [18, 25],
+    languages: ["Myotánico", "Common"],
+    speed: 11,
+    attrBonuses: { tenacity: 1, cunning: 1, presence: 1 },
+    vigorStart: { level: 1, rank: 1 },
+  },
+};
+
+export function listSpecies() {
+  return Object.values(SPECIES);
+}
+
+export function getSpecies(key) {
+  return SPECIES[String(key || "").toLowerCase()] ?? null;
+}

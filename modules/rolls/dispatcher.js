@@ -3,6 +3,10 @@ import { resolveEvolution } from "../features/advantage/index.js";
 import { buildAttackFormula, buildImpactFormula, buildDefenseFormula, buildResistanceFormula } from "./formulas.js";
 import { getEquippedWeaponKey } from "../features/inventory/index.js";
 import { detectImpactCrit, computeBreakPower } from "../features/combat/critical.js";
+import { makeRollTotal } from "./engine.js";
+
+// 🔗 Context tags
+import { buildContextTags, normalizeTags } from "./context-tags.js";
 
 /** Util: crea una tarjetita para el GM con los datos necesarios para evaluar */
 async function gmEvalCard({ actor, kind, payload }) {
@@ -29,12 +33,59 @@ async function gmEvalCard({ actor, kind, payload }) {
   });
 }
 
+/** ==== Helpers de contexto (opcionales/defensivos) ==== */
+
+/** Intenta inferir el subtipo de ataque si no lo pasó la UI */
+function inferAttackKind(actor, { isManeuver=false, weaponKey=null } = {}) {
+  try {
+    // Si tu item de arma guarda un flag/propiedad para “ranged”
+    const k = weaponKey || getEquippedWeaponKey(actor, "main");
+    const item = k ? actor?.items?.get?.(k) || actor?.items?.find?.(i => i.name === k) : null;
+    const ranged = item?.system?.isRanged ?? item?.flags?.tsdc?.ranged ?? null;
+    if (ranged === true) return "ranged";
+    if (ranged === false) return "melee";
+  } catch (_) {}
+  return null; // deja que el builder lo omita si no hay dato
+}
+
+/** Construye tags comunes de entorno desde un objeto “context” suelto */
+function makeTagsFor(opts = {}) {
+  // opts es lo que pase la UI/macro: { phase, attackKind, element, cover, vision, visionRangeMeters,
+  // movement, terrain, soundDependent, verbal, envCondition, envFallbackDC, extra }
+  return buildContextTags({
+    phase: opts.phase,                        // "attack" | "defense" | "skill" | "save" | "impact"
+    attackKind: opts.attackKind ?? null,      // "melee" | "ranged" | "naturalRanged"
+    element: opts.element ?? null,            // "fire" | ...
+    cover: opts.cover ?? null,                // "none" | "partial" | "heavy" | "total"
+    vision: opts.vision ?? null,              // "normal" | "limited" | "none"
+    visionRangeMeters: opts.visionRange ?? null,
+    movement: opts.movement ?? false,         // true | "run" | "crawl"
+    terrain: opts.terrain ?? null,            // "difficult"
+    soundDependent: !!opts.soundDependent,
+    verbal: !!opts.verbal,
+    envCondition: opts.envCondition ?? null,  // "light" | "normal" | "moderate" | "severe" | "disastrous"
+    envFallbackDC: opts.envFallbackDC ?? null,// "fundamentos" | ... | "extremo"
+    extra: opts.extraTags ?? null             // strings o alias
+  });
+}
+
 /** ATAQUE */
-export async function rollAttack(actor, { key, isManeuver=false, attrKey, bonus=0, penalty=0, mode="ask", flavor } = {}) {
+export async function rollAttack(actor, {
+  key,
+  isManeuver = false,
+  attrKey,
+  bonus = 0,
+  penalty = 0,
+  mode = "ask",
+  flavor,
+  /** NUEVO: contexto opcional para tags (UI/macros pueden rellenarlo) */
+  context = {}
+} = {}) {
   if (!isManeuver && (!key || !key.trim())) {
     const k = getEquippedWeaponKey(actor, "main");
     if (k) key = k;
   }
+
   const { formula } = buildAttackFormula(actor, { isManeuver, key, attrKey, bonus, penalty });
   const path  = isManeuver ? `system.progression.maneuvers.${key}.rank` : `system.progression.weapons.${key}.rank`;
   const rank  = Number(foundry.utils.getProperty(actor, path) || 0);
@@ -45,6 +96,26 @@ export async function rollAttack(actor, { key, isManeuver=false, attrKey, bonus=
     actor, meta: { key, isManeuver }
   });
 
+  // ===== TAGS de contexto =====
+  const attackKind = context.attackKind ?? inferAttackKind(actor, { isManeuver, weaponKey: key });
+  const tags = makeTagsFor({
+    ...context,
+    phase: "attack",
+    attackKind
+  });
+
+  const patched = makeRollTotal(actor, resultRoll.total, {
+    phase: "attack",            // mantiene la fase esperada por el engine
+    tag: "TA",
+    weaponKey: getEquippedWeaponKey(actor),
+    tags                              // <<<<<<  Nuevo: array de context tags
+  });
+
+  const shownTotal = patched.total;
+  // Si en tu UI quieres notas/avances, ya los tienes en patched + resultRoll:
+  // const shownNotes = [...(resultRoll.notes || []), ...patched.notes];
+  // const shownDiceAdvances = (resultRoll.diceAdvances || 0) + (patched.diceAdvances || 0);
+
   await gmEvalCard({
     actor, kind: "attack",
     payload: {
@@ -53,8 +124,10 @@ export async function rollAttack(actor, { key, isManeuver=false, attrKey, bonus=
       isManeuver: !!isManeuver,
       rank,
       policy: usedPolicy,
-      totalShown: resultRoll.total,
-      otherTotal: otherRoll?.total ?? null
+      totalShown: shownTotal,
+      otherTotal: otherRoll?.total ?? null,
+      // Debug opcional para el evaluador (si lo quieres usar)
+      tags
     }
   });
 }
@@ -70,12 +143,18 @@ export async function rollImpact(actor, {
   weaponItem = null,
   breakBonus = 0,
   targetDurability = null,
-  whisperBreakToGM = true
+  whisperBreakToGM = true,
+  /** Opcional: context tags si quieres “elemento” o condiciones en el mensaje */
+  context = {}
 } = {}) {
   const { formula } = buildImpactFormula(actor, { key, die, grade, attrKey, bonus });
 
   const r = new Roll(formula);
   await r.evaluate();
+
+  // (Opcional) adjuntamos tags en flags para debug, aunque impacto no pasa por engine
+  const tags = makeTagsFor({ ...context, phase: "impact" });
+
   await r.toMessage({
     flavor: flavor ?? (key ? `Impacto • ${key}` : `Impacto`),
     flags: {
@@ -86,7 +165,8 @@ export async function rollImpact(actor, {
         policy: "none",
         rank: 0,
         meta: { key },
-        totals: { low: r.total, high: r.total }
+        totals: { low: r.total, high: r.total },
+        tags      // ← útil para inspección en el chat log / depurar efectos post-impacto
       }
     }
   });
@@ -128,14 +208,50 @@ export async function rollImpact(actor, {
 }
 
 /** DEFENSA */
-export async function rollDefense(actor, { armorType, armorBonus=0, bonus=0, penalty=0, mode="ask", flavor } = {}) {
+export async function rollDefense(actor, {
+  armorType,
+  armorBonus = 0,
+  bonus = 0,
+  penalty = 0,
+  mode = "ask",
+  flavor,
+  /** NUEVO: contexto opcional (visión/entorno/cobertura del defensor, etc.) */
+  context = {}
+} = {}) {
   const { formula } = buildDefenseFormula(actor, { armorBonus, bonus, penalty });
   const rank = Number(foundry.utils.getProperty(actor, `system.progression.defense.evasion.rank`) || 0);
+
+  // ─── Localización de impacto “tentativa” para el evaluador (puede no aplicar si defiende) ───
+  const d100 = new Roll("1d100"); await d100.evaluate();
+  const r = d100.total;
+  let bodyPart = "chest";
+  if (r <= 10) bodyPart = "head";
+  else if (r <= 45) bodyPart = "chest";
+  else if (r <= 60) bodyPart = "bracers";
+  else if (r <= 75) bodyPart = "bracers";
+  else if (r <= 85) bodyPart = "legs";
+  else if (r <= 95) bodyPart = "legs";
+  else bodyPart = "chest";
 
   const { resultRoll, otherRoll, usedPolicy } = await resolveEvolution({
     type: "defense", mode, formula, rank,
     flavor: flavor ?? `Defensa`, actor, meta: { armorType }
   });
+
+  // ===== TAGS de contexto =====
+  const tags = makeTagsFor({
+    ...context,
+    phase: "defense"
+    // (tip: aquí suele interesar vision/cobertura del DEFENSOR, terreno difícil, “movement” si se movió antes de defender, etc.)
+  });
+
+  const patched = makeRollTotal(actor, resultRoll.total, {
+    phase: "defense",
+    tag: "TD",
+    tags
+  });
+
+  const shownTotal = patched.total;
 
   await gmEvalCard({
     actor, kind: "defense",
@@ -144,26 +260,55 @@ export async function rollDefense(actor, { armorType, armorBonus=0, bonus=0, pen
       armorType: armorType ?? "light",
       rank,
       policy: usedPolicy,
-      totalShown: resultRoll.total,
-      otherTotal: otherRoll?.total ?? null
+      totalShown: shownTotal,
+      otherTotal: otherRoll?.total ?? null,
+      bodyPart,      // "head"|"chest"|"bracers"|"legs"
+      d100: r,
+      tags
     }
   });
 }
 
-/** RESISTENCIA */
-export async function rollResistance(actor, { type, bonus=0, penalty=0, flavor } = {}) {
+/** RESISTENCIA (salvaciones) */
+export async function rollResistance(actor, {
+  type,
+  bonus = 0,
+  penalty = 0,
+  flavor,
+  /** NUEVO: contexto opcional (elemento, entorno, etc.) */
+  context = {}
+} = {}) {
   const { formula } = buildResistanceFormula(actor, { type, bonus, penalty });
   const { resultRoll } = await resolveEvolution({
     type: "resistance", mode: "none", formula, rank: 0,
     flavor: flavor ?? `Resistencia • ${type}`, actor, meta: { key: type }
   });
 
+  // En tags usamos fase "save" (vocabulario canónico de tags) pero conservamos phase:"resistance" para el engine.
+  const tags = makeTagsFor({
+    ...context,
+    phase: "save"
+    // tip: aquí puedes pasar element si resiste un elemento ("element:fire", etc.)
+  });
+
+  const patched = makeRollTotal(actor, resultRoll.total, {
+    phase: "resistance", // ← mantenemos compatibilidad con tu engine actual
+    tag: "TR",
+    resType: type,
+    tags
+  });
+
+  const shownTotal = patched.total;
+  // const shownNotes = [...(resultRoll.notes || []), ...patched.notes];
+  // const shownDiceAdvances = (resultRoll.diceAdvances || 0) + (patched.diceAdvances || 0);
+
   await gmEvalCard({
     actor, kind: "resistance",
     payload: {
       actorId: actor.id ?? actor._id ?? null,
       resType: type,
-      totalShown: resultRoll.total
+      totalShown: shownTotal,
+      tags
     }
   });
 }

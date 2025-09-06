@@ -85,17 +85,17 @@
         </div>
       </div>
 
-      {{!-- Trasfondo / Afinidad --}}
+      {{!-- Trasfondo / Afinidad (solo lectura) --}}
       <div class="t-card t-col">
         <h3 style="margin:0 0 6px 0;">Trasfondo / Afinidad</h3>
-        <div class="t-row" style="gap:8px;">
+        <div class="t-grid t-grid-3" style="gap:12px;">
           <div class="t-field">
             <label>Trasfondo</label>
-            <select name="background">
-              {{#each background.options}}
-                <option value="{{this.key}}" {{#if (eq ../background.current this.key)}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
-            </select>
+            <input type="text" value="{{system.background.label}}" disabled />
+          </div>
+          <div class="t-field">
+            <label>Afinidad Mayor</label>
+            <input type="text" value="{{system.progression.affinityMajor}}" disabled />
           </div>
           <div class="t-col muted" style="justify-content:center;">
             <span>• Categoría afín progresa con umbral <strong>5</strong></span>
@@ -103,8 +103,6 @@
           </div>
         </div>
       </div>
-
-    </div>
 
     {{!-- ================================
           TAB: TIRADAS
@@ -572,6 +570,5 @@
       </div>
 
     </div>
-
   </section>
 </section>

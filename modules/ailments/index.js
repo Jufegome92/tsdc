@@ -93,6 +93,27 @@ export async function addAilment(actor, id, opts={}) {
     content: `<b>${actor.name}</b> sufre <b>${def.label}</b>${extra}${durationText}.`
   });
 
+  if (def.grantsBySeverity && state.severity) {
+    const grantIds = def.grantsBySeverity[state.severity] || [];
+    if (Array.isArray(grantIds) && grantIds.length) {
+      for (const gid of grantIds) {
+        if (gid === def.id) continue;
+        const childDef = CATALOG[gid];
+        const childOpts = {
+          source: `${def.id}:${state.severity}`,
+          kind: opts.kind || null
+        };
+        if (childDef?.severable) childOpts.severity = state.severity; // <-- hereda
+        await addAilment(actor, gid, childOpts);
+      }
+      // Mensaje-resumen opcional
+      await ChatMessage.create({
+        speaker: ChatMessage.getSpeaker({ actor }),
+        content: `<span class="muted">${def.label}: aplicadas alteraciones asociadas (${grantIds.join(", ")}).</span>`
+      });
+    }
+  }
+
   return state;
 }
 

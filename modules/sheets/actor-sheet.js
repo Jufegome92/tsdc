@@ -37,6 +37,15 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     // Deja que el mixin inicialice lo suyo
     context = await super._prepareContext?.(context, _options) ?? {};
 
+     // Fuerza solo lectura de identidad permanente
+    context.identityLocked = !!this.actor.system?.identity?.locked;
+    if (!context.identityLocked) {
+      // Si no está bloqueado, no muestres editores; el wizard se encargará
+      context.readonlyPermanent = false; // (la UI puede ocultar secciones)
+    } else {
+      context.readonlyPermanent = true;
+    }
+
     context.actor  = this.actor;
     context.system = this.actor.system ?? {};
 
@@ -214,21 +223,21 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
   _onRender(_context, _options) {
     console.log("TSDCActorSheet::_onRender");
     const el = this.element;
-    // Tabs
-    const nav = el.querySelector(".sheet-tabs");
-    const allTabs = Array.from(el.querySelectorAll('.tab[data-group="primary"]'));
-    const showTab = (tab) => {
-      this.#activeTab = tab;
-      nav?.querySelectorAll(".item").forEach(a => a.classList.toggle("active", a.dataset.tab === tab));
-      allTabs.forEach(t => t.style.display = (t.dataset.tab === tab ? "" : "none"));
-    };
-    nav?.addEventListener("click", (ev) => {
-      const a = ev.target.closest(".item");
-      if (!a) return;
-      ev.preventDefault();
-      showTab(a.dataset.tab || "main");
+
+    // --- Pestañas con API pública (v13) ---
+    // Si ya había una instancia previa (por re-render), desasóciala
+    this._tabs?.unbind?.();
+
+    // Usa el componente oficial de Foundry para tabs
+    this._tabs = new foundry.applications.ux.Tabs({
+      navSelector: ".sheet-tabs",
+      contentSelector: ".sheet-body",
+      initial: this.#activeTab || "main",
+      callback: (event, tabs, active) => {
+        // 'active' es el nombre de la pestaña activa
+        this.#activeTab = active || "main";
+      }
     });
-    showTab(this.#activeTab || "main");
 
     if (!this.isEditable) return;
 
@@ -249,6 +258,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
 
     // Selects
     el.querySelector('select[name="background"]')?.addEventListener("change", async (ev) => {
+      if (ev.currentTarget.disabled) return;
       const key = String(ev.currentTarget.value || "none");
       await setBackground(this.actor, key);
     });
@@ -291,7 +301,6 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     saveDefault('input[name="resBonus"]',   "system.ui.rollDefaults.resistance.bonus");
     saveDefault('input[name="resPenalty"]', "system.ui.rollDefaults.resistance.penalty");
     saveDefault('select[name="resType"]',   "system.ui.rollDefaults.resistance.type", "string");
-
   }
 
   // ==== Handlers ====

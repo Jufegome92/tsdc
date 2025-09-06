@@ -1,96 +1,149 @@
 // modules/features/affinities/index.js
-import { BACKGROUND_STARTING, ALWAYS_START } from "./starting.js";
 import { setTrackLevel } from "../../progression.js";
-import { listSpecs } from "../specializations/index.js";
 
-export async function applyBackgroundStartingCompetences(actor, bgKey) {
-  try {
-    // 1) Siempre "vigor" a nivel 1
-    for (const sk of (ALWAYS_START.skills ?? [])) {
-      await setTrackLevel(actor, "skills", sk, 1);
-      // guarda categoría si no existía
-      const cat = listSpecs().find(s => s.key === sk)?.category;
-      if (cat) await actor.update({ [`system.progression.skills.${sk}.category`]: cat });
-    }
-
-    const rule = BACKGROUND_STARTING[bgKey];
-    if (!rule) return;
-
-    // Preparamos un pool de especializaciones por categoría
-    const byCat = new Map();
-    for (const s of listSpecs()) {
-      const cat = s.category;
-      if (!byCat.has(cat)) byCat.set(cat, []);
-      byCat.get(cat).push(s.key);
-    }
-    // Función para “asignar” N de una categoría (simple y determinista)
-    async function assign(cat, n) {
-      const list = (byCat.get(cat) ?? []).slice().sort();
-      for (let i = 0; i < Math.min(n, list.length); i++) {
-        const key = list[i];
-        await setTrackLevel(actor, "skills", key, 1);
-        await actor.update({ [`system.progression.skills.${key}.category`]: cat });
-      }
-    }
-
-    // Aplica por categorías
-    const { physical=0, mental=0, social=0, arts=0, knowledge=0, any=0 } = rule;
-    await assign("physical",  physical);
-    await assign("mental",    mental);
-    await assign("social",    social);
-    await assign("arts",      arts);
-    await assign("knowledge", knowledge);
-
-    // “any” → rellena de cualquier categoría restante
-    const all = listSpecs().map(s => s.key);
-    const already = Object.keys(actor.system?.progression?.skills ?? {});
-    const remaining = all.filter(k => !already.includes(k)).sort();
-    for (let i=0; i<Math.min(any, remaining.length); i++) {
-      const key = remaining[i];
-      const cat = listSpecs().find(s=>s.key===key)?.category;
-      await setTrackLevel(actor, "skills", key, 1);
-      if (cat) await actor.update({ [`system.progression.skills.${key}.category`]: cat });
-    }
-  } catch (err) {
-    console.error("applyBackgroundStartingCompetences error", err);
-  }
-}
-
-// Categorías que ya usas en SPECIALIZATIONS: "physical" | "mental" | "social" | "arts" | "knowledge"
+/**
+ * Catálogo de trasfondos
+ * - affinityMajor: categoría con umbral 5 (las demás 10)
+ * - picks: array de { category, count } para el número de especializaciones iniciales a elegir
+ * - notes: texto opcional
+ * - flags: reglas especiales (ej. sustituciones)
+ */
 export const BACKGROUNDS = {
-  none:      { key: "none",      label: "— Sin trasfondo",       major: null },
-  martial:   { key: "martial",   label: "Artista Marcial",       major: "physical"  },
-  artisan:   { key: "artisan",   label: "Artesano",              major: "arts"      },
-  wanderer:  { key: "wanderer",  label: "Errante",               major: "mental"    },
-  custodian: { key: "custodian", label: "Custodio",              major: "knowledge" },
-  noble:     { key: "noble",     label: "Noble",                 major: "social"    }
+  martial: {
+    key: "martial",
+    label: "Artista Marcial",
+    affinityMajor: "physical",
+    picks: [
+      { category: "physical", count: 2 },
+      { category: "mental",  count: 1 },
+    ],
+    flags: { martialCanSwapNaturalWeaponsForFabricated: true },
+    notes:
+      "Competencias iniciales: 2 Físicas + 1 Mental. Puede sustituir competencias iniciales en armas naturales de su especie por armas fabricadas.",
+  },
+
+  artisan: {
+    key: "artisan",
+    label: "Artesano",
+    affinityMajor: "arts",
+    picks: [
+      { category: "arts", count: 2 },
+      // “+ 1 de Saberes o 1 Social”: lo modelamos como un cupo flexible (ver wizard)
+      { category: "flex:knowledge|social", count: 1 },
+    ],
+    notes: "Competencias iniciales: 2 de Artes/Oficios + 1 de Saberes o 1 Social.",
+  },
+
+  wanderer: {
+    key: "wanderer",
+    label: "Errante",
+    affinityMajor: "mental",
+    picks: [
+      { category: "mental",  count: 2 },
+      { category: "physical", count: 1 },
+    ],
+    notes: "Competencias iniciales: 2 Mentales + 1 Física.",
+  },
+
+  warden: {
+    key: "warden",
+    label: "Custodio",
+    affinityMajor: "knowledge",
+    // “2 Saberes + 1 Social o 1 Mental” → flex
+    picks: [
+      { category: "knowledge", count: 2 },
+      { category: "flex:mental|social", count: 1 },
+    ],
+    notes: "Competencias iniciales: 2 Saberes + 1 Social o 1 Mental.",
+  },
+
+  noble: {
+    key: "noble",
+    label: "Noble",
+    affinityMajor: "social",
+    // “1 Social + 2 de cualquier otra categoría (a elección)”
+    picks: [
+      { category: "social", count: 1 },
+      { category: "any",    count: 2 },
+    ],
+    notes: "Competencias iniciales: 1 Social + 2 de cualquier categoría.",
+  },
+
+  none: {
+    key: "none",
+    label: "Ninguno",
+    affinityMajor: null,
+    picks: [],
+  },
 };
 
-/** Devuelve el objeto background actual del actor */
-export function getBackground(actor) {
-  const k = actor?.system?.background ?? "none";
-  return BACKGROUNDS[k] ?? BACKGROUNDS.none;
-}
+/** Obtiene info de trasfondo del actor o por clave.
+ *  Devuelve { key, label, major } donde major es la affinity mayor.
+ */
+export function getBackground(actorOrKey) {
+  // Caso 1: te pasan el actor
+  if (actorOrKey?.system) {
+    const key = actorOrKey.system?.background?.key ?? "none";
+    const base = BACKGROUNDS[String(key).toLowerCase()] ?? BACKGROUNDS.none;
+    // Preferimos lo persistido en progression (lo pones en setBackground)
+    const major = actorOrKey.system?.progression?.affinityMajor ?? base.affinityMajor ?? null;
+    return { key: base.key, label: base.label, major };
+  }
 
-/** Cambia el background del actor (clave del BACKGROUNDS) */
-export async function setBackground(actor, key) {
-  if (!actor) return;
-  const bg = BACKGROUNDS[key] ? key : "none";
-  const major = BACKGROUNDS[bg]?.major ?? null;
-  await actor.update({
-    "system.background": bg,
-    "system.progression.affinityMajor": major
-  });
+  // Caso 2: te pasan la clave
+  const key = String(actorOrKey || "none").toLowerCase();
+  const base = BACKGROUNDS[key] ?? BACKGROUNDS.none;
+  return { key: base.key, label: base.label, major: base.affinityMajor ?? null };
 }
 
 /**
- * Umbral de progreso para una especialización dada.
- * - Si la categoría de la especialización coincide con la mayor del trasfondo → 5
- * - En caso contrario → 10
- * (Aquí puedes inyectar reglas extra más adelante.)
+ * Aplica trasfondo en el actor.
+ * Guarda la affinityMajor y el key del trasfondo.
  */
+export async function setBackground(actor, backgroundKey) {
+  const bg = BACKGROUNDS[String(backgroundKey || "none").toLowerCase()] ?? BACKGROUNDS.none;
+  const patch = {
+    "system.background.key": bg.key,
+    "system.background.label": bg.label,
+    "system.progression.affinityMajor": bg.affinityMajor ?? null,
+  };
+  await actor.update(patch);
+  return bg;
+}
+
+/**
+ * Aplica las competencias iniciales elegidas en el wizard.
+ * @param {Actor} actor
+ * @param {string} backgroundKey
+ * @param {{byCategory: Record<string,string[]>}} selections  p.ej. { byCategory: { physical: ['acrobacias','atletismo'], mental:['intuicion'] } }
+ */
+export async function applyBackgroundStartingCompetences(actor, backgroundKey, selections) {
+  const bg = BACKGROUNDS[String(backgroundKey || "none").toLowerCase()] ?? BACKGROUNDS.none;
+  const byCat = selections?.byCategory ?? {};
+
+  // Normaliza “flex:*” y “any” aquí mismo: ya nos llega resuelto desde el wizard,
+  // pero validamos por seguridad.
+  const totalToApply = [];
+  for (const k of Object.keys(byCat)) {
+    for (const specKey of (byCat[k] || [])) {
+      totalToApply.push({ category: k, specKey });
+    }
+  }
+
+  // Asigna RANGO 1 en cada especialización elegida
+  for (const pick of totalToApply) {
+    await setTrackLevel(actor, "skills", pick.specKey, 1);
+  }
+
+  // Regla especial (solo deja nota; la sustitución de armas naturales requiere
+  // conocer el set de armas naturales de la especie y tu UI de equipo):
+  if (bg.flags?.martialCanSwapNaturalWeaponsForFabricated) {
+    // Puedes guardar un flag para que el GM lo resuelva luego en la pestaña Competencias/Equipo
+    await actor.update({ "system.flags.martialSwapAllowed": true });
+  }
+}
+
 export function getThresholdForSpec(actor, specCategory) {
-  const bg = getBackground(actor);
-  if (bg.major && specCategory === bg.major) return 5;
-  return 10;
+  const major = getBackground(actor)?.major ?? null;
+  return major && specCategory === major ? 5 : 10;
 }
