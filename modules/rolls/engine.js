@@ -1,37 +1,228 @@
 // tsdc/modules/rolls/engine.js
 import { applySpeciesToRoll } from "../features/species/effects.js";
 
+/* =========================
+   Normalización de tags
+   ========================= */
+function normalizeTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  const out = Array.from(new Set(tags.map(t => String(t).trim()).filter(Boolean)));
+  out.sort((a, b) => a.localeCompare(b));
+  return out;
+}
+
+/* =========================
+   Buckets / Orígenes
+   ========================= */
+const ORIGINS = /** @type {const} */ ([
+  "species",         // especie
+  "maneuver",        // maniobra
+  "object",          // objeto/artefacto/consumible
+  "specialization",  // especialización / habilidad de especialización
+  "equipment",       // pieza de equipo (armas/armaduras)
+  "shield"           // excepción: escudo suma aparte del equipment
+]);
+
+function bucketFor(mod) {
+  let bucket = mod.sourceType;
+  if (bucket === "equipment" && mod.meta?.equipmentSlot === "shield") {
+    bucket = "shield";
+  }
+  if (!ORIGINS.includes(bucket)) bucket = "object";
+  return bucket;
+}
+
+function appliesToContext(mod, ctx) {
+  const w = mod.when || {};
+  if (w.phases?.length && !w.phases.includes(ctx.phase)) return false;
+
+  const tags = ctx.tags;
+  if (w.anyTags?.length) {
+    if (!w.anyTags.some(t => tags.includes(t))) return false;
+  }
+  if (w.allTags?.length) {
+    if (!w.allTags.every(t => tags.includes(t))) return false;
+  }
+  if (w.notTags?.length) {
+    if (!w.notTags.every(t => !tags.includes(t))) return false;
+  }
+  if (w.attackKind && ctx.attackKind && w.attackKind !== ctx.attackKind) return false;
+  if (w.resType && ctx.resType && w.resType !== ctx.resType) return false;
+
+  return true;
+}
+
+function pickWinnerByMagnitude(mods) {
+  if (!mods.length) return null;
+  const sorted = [...mods].sort((a, b) => {
+    const ma = Math.abs(a.value), mb = Math.abs(b.value);
+    if (mb !== ma) return mb - ma;
+    return b.value - a.value; // a igualdad de magnitud, prefiere el mayor positivo
+  });
+  return sorted[0];
+}
+
+/* =========================
+   Colector/Agrupador de modificadores
+   ========================= */
+function aggregateModifiers(ctx, extraCandidates = []) {
+  const candidates = [];
+
+  // 1) Candidatos “extra” (ej. especie simulada, ver makeRollTotal)
+  for (const c of extraCandidates) {
+    const m = { label: "Mod", sourceType: "object", ...c };
+    if (appliesToContext(m, ctx)) candidates.push(m);
+  }
+
+  // 2) Hook público para que ítems/estados/auras empujen mods
+  try {
+    if (globalThis.Hooks?.callAll) {
+      globalThis.Hooks.callAll("tsdc:collectModifiers", ctx, (mod) => {
+        if (!mod || typeof mod.value !== "number") return;
+        const m = { label: "Mod", sourceType: "object", ...mod };
+        if (appliesToContext(m, ctx)) candidates.push(m);
+      });
+    }
+  } catch (err) {
+    console.warn("[tsdc] collectModifiers hook error:", err);
+  }
+
+  // 3) Agrupar por origen/bucket y elegir 1 por grupo
+  const byBucket = new Map();
+  for (const c of candidates) {
+    const b = bucketFor(c);
+    if (!byBucket.has(b)) byBucket.set(b, []);
+    byBucket.get(b).push(c);
+  }
+
+  const buckets = [];
+  let modsTotal = 0;
+
+  for (const bucket of ORIGINS) {
+    const list = byBucket.get(bucket) ?? [];
+    const chosen = pickWinnerByMagnitude(list);
+    const dropped = list.filter(x => x !== chosen);
+
+    const val = chosen ? Number(chosen.value || 0) : 0;
+    modsTotal += val;
+
+    buckets.push({
+      bucket,
+      chosen: chosen
+        ? { id: chosen.id ?? null, label: chosen.label ?? bucket, value: val, itemId: chosen.itemId ?? null }
+        : null,
+      dropped: dropped.map(d => ({
+        id: d.id ?? null, label: d.label ?? bucket, value: Number(d.value || 0), itemId: d.itemId ?? null
+      }))
+    });
+  }
+
+  return { buckets, modsTotal, candidatesCount: candidates.length };
+}
+
+/* =========================
+   makeRollTotal (actualizado)
+   ========================= */
 /**
  * makeRollTotal: punto de entrada para "post-procesar" cualquier total.
- * - actor: el Actor que tira
- * - baseTotal: el total crudo que devuelve resolveEvolution()
- * - ctx: contexto mínimo para que species/effects pueda decidir (tipo de tirada, skill, tags, etc.)
+ * - actor: Actor que tira
+ * - baseTotal: número crudo (p.ej. devuelto por resolveEvolution)
+ * - ctx: { phase, tag, tags, weaponKey, resType, ... }
  *
- * Devuelve un objeto { total, diceAdvances, notes } que sustituye/acompaña al resultRoll original.
+ * Devuelve { total, diceAdvances, notes, breakdown }
+ * breakdown incluye: { phase, tag, base, tags, buckets, modsTotal, candidatesCount, total }
  */
 export function makeRollTotal(actor, baseTotal, ctx = {}) {
-  const roll = {
-    total: Number(baseTotal || 0),
-    diceAdvances: 0,      // si alguna especie concede avances de dado
-    notes: [],            // mensajes informativos a la carta/log
-    tags: new Set(ctx?.tags || []),
+  const phase = ctx?.phase ?? "generic";
+  const tag   = ctx?.tag ?? "GEN";
+
+  // 1) Tags base normalizados (Array) y Set para compat con species
+  const inputTags = normalizeTags(ctx?.tags ?? []);
+  const tagSetForSpecies = new Set(inputTags);
+
+  // 2) Simular especie como “candidato”
+  //    — No sumamos directo; calculamos delta y lo metemos como bucket species,
+  //      así respeta la regla “1 por origen” junto a otros aportes species (si los hay).
+  const base = Math.round(Number(baseTotal || 0));
+  const speciesProbe = { total: base, diceAdvances: 0, notes: [], tags: tagSetForSpecies };
+
+  try {
+    applySpeciesToRoll(actor, speciesProbe, { ...ctx, tags: Array.from(tagSetForSpecies) });
+  } catch (err) {
+    console.warn("[tsdc] applySpeciesToRoll error:", err);
+  }
+
+  const speciesDelta = Math.round(Number(speciesProbe.total || base) - base);
+  const speciesDiceAdv = Number(speciesProbe.diceAdvances || 0);
+  // Tags finales después de especie (por si la especie añade/quita condiciones contextuales)
+  const tags = normalizeTags(Array.from(speciesProbe.tags ?? tagSetForSpecies));
+
+  // Derivar attackKind a partir de tags conocidos (útil para reglas contextuales)
+  const attackKind =
+    tags.includes("attack:melee") ? "melee" :
+    tags.includes("attack:ranged") ? "ranged" :
+    tags.includes("attack:naturalRanged") ? "naturalRanged" : null;
+
+  // 3) Armar contexto para colectores
+  const aggCtx = {
+    actor,
+    phase,
+    tag,
+    tags,
+    weaponKey: ctx?.weaponKey ?? null,
+    resType: ctx?.resType ?? null,
+    attackKind
   };
 
-  // 1) Aplicar Especie (herencia/legados y bonificadores lineales/situacionales)
-  applySpeciesToRoll(actor, roll, ctx);
+  // 4) Preparar candidatos extras (especie ya simulada)
+  const extraCandidates = [{
+    id: "species:auto",
+    label: speciesDelta >= 0 ? "Especie" : "Especie (penalizador)",
+    value: speciesDelta,
+    sourceType: "species",
+    when: { phases: [phase] }
+  }];
 
-  // 2) (Futuro) Otros módulos que quieras encadenar: estados, equipo, auras, etc.
+  // 5) Agregar y seleccionar por buckets
+  const { buckets, modsTotal, candidatesCount } = aggregateModifiers(aggCtx, extraCandidates);
 
-  // Normalizar y devolver
-  roll.total = Math.round(roll.total); // por si acaso
-  return roll;
+  // 6) Total final: base + suma de elegidos
+  const finalTotal = base + modsTotal;
+
+  // 7) Notas combinadas (las de especie + detalle de elegidos)
+  const notes = [];
+  for (const n of (speciesProbe.notes || [])) notes.push(n);
+  for (const b of buckets) {
+    if (b.chosen) {
+      const sign = b.chosen.value >= 0 ? "+" : "";
+      notes.push(`${sign}${b.chosen.value} (${b.bucket}: ${b.chosen.label})`);
+    }
+  }
+
+  const breakdown = {
+    phase,
+    tag,
+    base,
+    tags,
+    buckets,
+    modsTotal,
+    candidatesCount,
+    total: finalTotal
+  };
+
+  return {
+    total: finalTotal,
+    diceAdvances: speciesDiceAdv, // si otros módulos también dan avances, pueden empujarlos vía ctx/hook en el futuro
+    notes,
+    breakdown
+  };
 }
 
 /* =========================
    SISTEMA DE HERIDAS (NPC→PJ)
    ========================= */
 
-/** Tabla humanoide d100. Puedes cambiar por especie/anatomía con ctx.table si hace falta */
+// Tabla humanoide d100. Puedes cambiar por especie/anatomía con ctx.table si hace falta
 const HUMANOID_HIT_TABLE = [
   { min: 1,  max: 10,  loc: "head" },
   { min: 11, max: 45,  loc: "torso" },
@@ -61,20 +252,18 @@ export function computeBlock(armor = {}) {
   const BC = (cat === "heavy") ? 6 : (cat === "medium") ? 4 : 2;
   const BM = Math.floor(Number(armor?.durability || 0) / 5);
   const CD = Number(armor?.compLevel || 0);
-  const CO = Number(armor?.quality || 0); // +1..+3 (si usas esa escala)
+  const CO = Number(armor?.quality || 0); // +1..+3
   return Math.max(0, BC + BM + CD + CO);
 }
 
 /**
  * resolveWoundSystem
  * Entrada mínima:
- *  - impact: número (resultado T.I. del atacante, tras aplicar lo que toque)
+ *  - impact: número (resultado T.I. del atacante)
  *  - block: número (computeBlock de la localización)
- *  - multipliers: { x1, x2, x3 } umbrales relativos para severidad (puedes usar defaults)
- *  - damageType: "slash|pierce|blunt|element:fire|element:wind|..." para mapear agravios
+ *  - multipliers: { x1, x2, x3 } (por defecto 1/2/3)
+ *  - damageType: "slash|pierce|blunt|element:fire|element:wind|..." (para agravio base)
  *  - hitLoc: string ("head","torso"...)
- *
- * Devuelve: { severity: "none|light|grave|critical", ailments: [ids], notes: [] }
  */
 export function resolveWoundSystem({ impact, block, multipliers, damageType, hitLoc }) {
   const x1 = multipliers?.x1 ?? 1.0;
@@ -86,11 +275,10 @@ export function resolveWoundSystem({ impact, block, multipliers, damageType, hit
   let severity = "none";
   if (ratio >= x3) severity = "critical";
   else if (ratio >= x2) severity = "grave";
-  else if (ratio > 1.0 /* >= x1 y < x2 */) severity = "light";
+  else if (ratio > 1.0) severity = "light";
 
   const ailments = [];
   if (severity !== "none") {
-    // Mapea tipo de daño → agravio base
     if (damageType === "slash") ailments.push("bleeding");
     else if (damageType === "pierce") ailments.push("traumatic-infection");
     else if (damageType === "blunt") ailments.push("fracture");
@@ -109,16 +297,9 @@ export function resolveWoundSystem({ impact, block, multipliers, damageType, hit
   return { severity, ailments, notes };
 }
 
-/* ======================================
-   SISTEMA DE PS PARA CRIATURAS (Jugador→NPC)
-   ====================================== */
-
-/**
- * resolveHPSystem (stub)
- * - damage: número (T.I. - mitigación)
- * - part: la parte del monstruo (ej. "head", "right-arm") con sus PS y RD
- * - Devuelve nuevo estado de esa parte.
- */
+/* =========================
+   SISTEMA DE PS (Jugador→NPC)
+   ========================= */
 export function resolveHPSystem({ damage, part }) {
   const rd = Number(part?.reduction || 0);
   const net = Math.max(0, Number(damage || 0) - rd);

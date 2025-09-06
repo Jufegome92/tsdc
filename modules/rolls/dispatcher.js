@@ -4,6 +4,7 @@ import { buildAttackFormula, buildImpactFormula, buildDefenseFormula, buildResis
 import { getEquippedWeaponKey } from "../features/inventory/index.js";
 import { detectImpactCrit, computeBreakPower } from "../features/combat/critical.js";
 import { makeRollTotal } from "./engine.js";
+import { emitModInspector } from "./inspector.js";
 
 // 🔗 Context tags
 import { buildContextTags, normalizeTags } from "./context-tags.js";
@@ -110,6 +111,8 @@ export async function rollAttack(actor, {
     weaponKey: getEquippedWeaponKey(actor),
     tags                              // <<<<<<  Nuevo: array de context tags
   });
+
+  await emitModInspector(actor, { phase: "attack", tag: "TA" }, patched.breakdown);
 
   const shownTotal = patched.total;
   // Si en tu UI quieres notas/avances, ya los tienes en patched + resultRoll:
@@ -251,6 +254,8 @@ export async function rollDefense(actor, {
     tags
   });
 
+  await emitModInspector(actor, { phase: "defense", tag: "TD" }, patched.breakdown);
+
   const shownTotal = patched.total;
 
   await gmEvalCard({
@@ -298,6 +303,8 @@ export async function rollResistance(actor, {
     tags
   });
 
+  await emitModInspector(actor, { phase: "resistance", tag: "TR" }, patched.breakdown);
+  
   const shownTotal = patched.total;
   // const shownNotes = [...(resultRoll.notes || []), ...patched.notes];
   // const shownDiceAdvances = (resultRoll.diceAdvances || 0) + (patched.diceAdvances || 0);

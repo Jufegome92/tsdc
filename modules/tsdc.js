@@ -11,6 +11,8 @@ import { SPECIES_NATURAL_WEAPONS } from "./features/species/natural-weapons.js";
 import * as Ail from "./ailments/index.js";
 import { openCharacterWizard } from "./wizard/character-wizard.js";
 import { applyBackgroundStartingCompetences } from "./features/affinities/index.js";
+import "./combat/loop.js";
+import { beginNewInitiativeDay } from "./combat/initiative.js";
 
 const _guardWizardOpen = new Set();
 
@@ -41,6 +43,10 @@ async function maybeOpenWizardForSheet(sheet) {
 Hooks.once("init", () => {
   console.log("Transcendence | init");
 
+  // Settings para iniciativa por “día”
+  game.settings.register("tsdc", "initiative.dayId", { scope:"world", config:false, type:String, default:"" });
+  game.settings.register("tsdc", "initiative.monstersDeck", { scope:"world", config:false, type:Object, default:null });
+
   // Helpers de Handlebars
   const H = globalThis.Handlebars ?? window.Handlebars;
   if (H) {
@@ -70,7 +76,10 @@ Hooks.once("init", () => {
       attributes: Attr,
       evo: Evo
     },
-    ailments: Ail
+    ailments: Ail,
+    initiative: {
+      beginNewInitiativeDay
+    }
   };
 
   console.log("TSDC | init done");
@@ -103,10 +112,20 @@ Hooks.once("ready", () => {
 Hooks.on("renderActorSheet", maybeOpenWizardForSheet);
 Hooks.on("renderActorSheetV2", maybeOpenWizardForSheet);
 
-/** Ticks de combate por turno/round */
-Hooks.on("updateCombat", async (combat, change) => {
-  if (!("turn" in change || "round" in change)) return;
-  const actor = combat?.combatant?.actor;
-  if (!actor) return;
+/** Ticks por turno/ronda: usa los hooks que emite el loop para timing exacto */
+Hooks.on("tsdc:onStartTurn", async (_combat, actor) => {
+  // Aquí gatillas efectos “por turno” del actor activo (fatiga por enfoque, venenos, etc.)
   await Ail.tickPerRound(actor);
+});
+
+// (Opcional) si quieres algo “por ronda” global:
+Hooks.on("tsdc:onStartRound", async (combat, round) => {
+  // ejemplo: timers globales, clima que escala, etc.
+  // no-op por ahora
+});
+
+// (Opcional) fin de ronda
+Hooks.on("tsdc:onEndRound", async (combat, round) => {
+  // ejemplo: expirar efectos que duran exactamente 1 ronda completa
+  // no-op por ahora
 });
