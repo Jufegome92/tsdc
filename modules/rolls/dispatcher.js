@@ -177,6 +177,13 @@ export async function rollImpact(actor, {
   const crit = detectImpactCrit(r);
   if (!crit.isCrit) return { resultRoll: r, isCrit: false };
 
+  if (!weaponItem) {
+    try {
+      const k = key || getEquippedWeaponKey(actor, "main");
+      weaponItem = actor?.items?.get?.(k) ||
+                  actor?.items?.find?.(i => i.id === k || i.name === k) || null;
+    } catch (_) {}
+  }
   const breakPower = computeBreakPower(weaponItem, breakBonus);
 
   const msgHtml = `
@@ -304,7 +311,7 @@ export async function rollResistance(actor, {
   });
 
   await emitModInspector(actor, { phase: "resistance", tag: "TR" }, patched.breakdown);
-  
+
   const shownTotal = patched.total;
   // const shownNotes = [...(resultRoll.notes || []), ...patched.notes];
   // const shownDiceAdvances = (resultRoll.diceAdvances || 0) + (patched.diceAdvances || 0);

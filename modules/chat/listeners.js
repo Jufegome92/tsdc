@@ -29,14 +29,12 @@ function severityFromImpactBlock(impact, block) {
 }
 
 // Mapeo rápido de tipo de daño → ID del catálogo según severidad
-// Nota: Perforante pide “Infección Traumática”; si no tienes aún ese ID en tu catálogo,
-// devolvemos null para que caiga en carga de agravios (puedes crear ese entry luego).
-function mapDamageToAilmentId(dtype, severity) {
+function mapDamageToAilmentId(dtype, _severity) {
   const t = String(dtype || "").toLowerCase();
   switch (t) {
-    case "cut":    return "DESANGRADO"; // severable
-    case "blunt":  return "FRACTURADO"; // severable
-    case "pierce": return "INFECCION_TRAUMATICA";        
+    case "cut":    return "DESANGRADO";
+    case "blunt":  return "FRACTURADO";
+    case "pierce": return "INFECCION_TRAUMATICA";
     case "fire":   return "QUEMADURA_TAUMATICA_FUEGO";
     case "air":    return "LACERACION_DE_PRESION_VIENTO";
     case "earth":  return "APLASTAMIENTO_TAUMATICO_TIERRA";
@@ -47,22 +45,102 @@ function mapDamageToAilmentId(dtype, severity) {
   }
 }
 
+// Sugerir Durabilidad desde el primer token objetivo (si existe)
+function suggestDurabilityFromTarget() {
+  try {
+    const tgt = Array.from(game.user?.targets ?? [])[0];
+    if (!tgt?.actor) return 0;
+    const sys = tgt.actor.system ?? {};
+    // Prueba varios lugares comunes
+    return Number(
+      sys?.defense?.durability ??
+      sys?.durability ??
+      sys?.resilience?.durability ??
+      0
+    ) || 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
 export function registerChatListeners() {
-  Hooks.on("renderChatMessageHTML", (_message, html /*HTMLElement*/) => {
+  Hooks.on("renderChatMessageHTML", (message, html /*HTMLElement*/) => {
     html.addEventListener("click", async (ev) => {
-      const btn = ev.target.closest(".tsdc-eval-btn");
-      if (!btn) return;
+      // Detecta botones de evaluación general y de rotura
+      const evalBtn  = ev.target.closest(".tsdc-eval-btn");
+      const breakBtn = ev.target.closest(".tsdc-break-eval");
+      if (!evalBtn && !breakBtn) return;
+
       ev.preventDefault();
-      if (!game.user.isGM) return ui.notifications?.warn("Solo el GM puede evaluar.");
+
+      // ─────────────────────────────────────────
+      // Evaluar Rotura (impacto crítico)
+      // ─────────────────────────────────────────
+      if (breakBtn) {
+        if (!game.user.isGM) {
+          return ui.notifications?.warn("Solo el GM puede evaluar roturas.");
+        }
+        try {
+          const power   = Number(breakBtn.dataset.power || 0);
+          const actorId = breakBtn.dataset.actor || null;
+
+          const result = await foundry.applications.api.DialogV2.prompt({
+            window: { title: "Evaluar Rotura" },
+            content: `
+              <form class="t-col" style="gap:10px;">
+                <div class="muted">Poder de Rotura: <b>${power}</b></div>
+                <div class="t-field">
+                  <label>Durabilidad del objetivo</label>
+                  <input type="number" name="durability" value="${suggestDurabilityFromTarget()}" min="0" step="1" style="width:120px;">
+                </div>
+                <div class="muted">Tip: selecciona un token objetivo para autocompletar.</div>
+              </form>
+            `,
+            ok: {
+              label: "Evaluar",
+              callback: (_ev, btn) => Number(btn.form.elements.durability?.value || 0)
+            }
+          });
+          if (result == null) return;
+
+          const durability = Number(result || 0);
+          const broke = power >= durability;
+
+          const whisper = ChatMessage.getWhisperRecipients("GM");
+          const actor = actorId ? game.actors.get(actorId) : null;
+
+          await ChatMessage.create({
+            whisper,
+            speaker: actor ? ChatMessage.getSpeaker({ actor }) : null,
+            content:
+              `<p><strong>Evaluación de Rotura</strong> — Potencia ${power} vs Durabilidad ${durability} ` +
+              `→ ${broke ? "💥 <b>ROMPE</b>" : "no rompe"}</p>`
+          });
+
+          Hooks.callAll("tsdcBreakEvaluated", {
+            actorId, power, durability, broke, messageId: message?.id
+          });
+        } catch (err) {
+          console.error("TSDC | break-eval failed:", err);
+        }
+        return; // no continuar con eval general
+      }
+
+      // ─────────────────────────────────────────
+      // Evaluaciones generales (ataque/defensa/etc.)
+      // ─────────────────────────────────────────
+      if (!game.user.isGM) {
+        return ui.notifications?.warn("Solo el GM puede evaluar.");
+      }
 
       try {
-        const kind  = String(btn.dataset.kind || "");
-        const blob  = decodeURIComponent(String(btn.dataset.blob || "%7B%7D"));
+        const kind  = String(evalBtn.dataset.kind || "");
+        const blob  = decodeURIComponent(String(evalBtn.dataset.blob || "%7B%7D"));
         const input = JSON.parse(blob);
 
-        if (kind === "attack")           await evalAttack(input);
-        else if (kind === "defense")     await evalDefense(input);
-        else if (kind === "resistance")  await evalResistance(input);
+        if (kind === "attack")              await evalAttack(input);
+        else if (kind === "defense")        await evalDefense(input);
+        else if (kind === "resistance")     await evalResistance(input);
         else if (kind === "specialization") await evalSpecialization(input);
       } catch (err) {
         console.error("Eval error", err);
