@@ -161,12 +161,13 @@ export class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   activateListeners(html) {
     super.activateListeners(html);
-    const root = (html instanceof HTMLElement) ? html : (html?.[0] || null);
-    if (!root) return;
+    const root = this?.element ?? (html instanceof HTMLElement ? html : (html?.[0] || html?.el || null));
+    if (!root) { console.warn('ATBTrackerApp: no root element to bind listeners'); return; }
+    console.log('ATBTrackerApp: listeners binding on', root);
     root.querySelector('[data-act="plan"]')
-        ?.addEventListener("click", () => openPlanDialogForSelection());
+        ?.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); console.log('ATBTrackerApp: Planear click'); openPlanDialogForSelection(); });
     root.querySelector('[data-act="close"]')
-        ?.addEventListener("click", () => this.close());
+        ?.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); console.log('ATBTrackerApp: Cerrar click'); this.close(); });
     }
 
   // Singleton + open
