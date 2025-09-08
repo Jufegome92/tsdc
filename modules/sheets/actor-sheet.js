@@ -241,8 +241,11 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
 
     if (!this.isEditable) return;
 
+    if (this._rootClickHandler) {
+      try { el.removeEventListener("click", this._rootClickHandler); } catch (_) {}
+    }
     // Acciones
-    el.addEventListener("click", async (ev) => {
+    this._rootClickHandler = async (ev) => {
       const btn = ev.target.closest("[data-action]");
       if (!btn) return;
       const action = btn.dataset.action;
@@ -254,7 +257,8 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       if (action === "imp-roll")  return this.#onImpRoll();
       if (action === "def-roll")  return this.#onDefRoll();
       if (action === "res-roll")  return this.#onResRoll();
-    });
+    };
+    el.addEventListener("click", this._rootClickHandler);
 
     // Selects
     el.querySelector('select[name="background"]')?.addEventListener("change", async (ev) => {

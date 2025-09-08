@@ -1,8 +1,14 @@
 // systems/tsdc/modules/atb/tracker.js
 import { listSimpleActions, makeSpecializationAction } from "./actions.js";
 
+const { ApplicationV2 } = foundry.applications.api;
+
 const FLAG_SCOPE = "tsdc";
 const FLAG_KEY   = "atb";
+
+/* ===========================
+ * Helpers de estado y render
+ * =========================== */
 
 function getState() {
   const c = game.combat;
@@ -38,7 +44,7 @@ function labelFromKey(key) {
 
 function buildRow(c, state, combatantId, horizon) {
   const row = { name: c?.combatants?.get(combatantId)?.name ?? "—", segments: [] };
-  const S = state.actors?.[combatantId] ?? { queue: [], current: null };
+  const S = state?.actors?.[combatantId] ?? { queue: [], current: null };
 
   let pos = 0;
 
@@ -104,51 +110,79 @@ function buildRow(c, state, combatantId, horizon) {
   return row;
 }
 
-export class ATBTrackerApp extends Application {
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      id: "tsdc-atb-tracker",
-      title: "ATB — Tracker",
-      template: "systems/tsdc/templates/apps/atb-tracker.hbs",
-      width: 980,
-      height: "auto",
-      resizable: true
-    });
+/* ===========================
+ * Application V2: Tracker
+ * =========================== */
+
+export class ATBTrackerApp extends ApplicationV2 {
+  static DEFAULT_OPTIONS = {
+    id: "tsdc-atb-tracker",
+    classes: ["tsdc", "atb", "app"],
+    window: { title: "ATB — Tracker", resizable: true, minimizable: true },
+    position: { width: 860, height: "auto" }
+  };
+
+  static PARTS = {
+    body: { template: "systems/tsdc/templates/apps/atb-tracker.hbs" }
+  };
+
+  constructor(options = {}) {
+    super(options);
+    // Re-render cuando cambie el combate o nuestros flags
+    this._onUpdateCombat = (combat, changes) => {
+      const flagsChanged = changes?.flags?.[FLAG_SCOPE]?.[FLAG_KEY] !== undefined;
+      const turnOrRound  = ("turn" in (changes || {})) || ("round" in (changes || {}));
+      if (flagsChanged || turnOrRound) this.render(false);
+    };
+    Hooks.on("updateCombat", this._onUpdateCombat);
   }
 
-  async getData() {
+  async close(options) {
+    Hooks.off("updateCombat", this._onUpdateCombat);
+    return super.close(options);
+  }
+
+  async _prepareContext(_options) {
+    return this.#getContext();
+  }
+
+  #getContext() {
     const c = game.combat;
-    const state = getState() ?? { tick: 0, actors: {} };
-    const horizon = 12; // columnas a mostrar
-    const cols = Array.from({ length: horizon }, (_ , i) => state.tick + i);
+    const horizon = 12;
+    const ticks = Array.from({ length: horizon }, (_v, i) => i);
     const rows = [];
-    for (const ct of (c?.combatants ?? [])) {
-      rows.push(buildRow(c, state, ct.id, horizon));
+
+    if (c) {
+      const state = getState() ?? { actors: {} };
+      const list  = c.turns?.length ? c.turns : (c.combatants?.contents ?? []);
+      const ids   = list.map(t => t.id).filter(Boolean);
+
+      for (const id of ids) rows.push(buildRow(c, state, id, horizon));
     }
-    return { tick: state.tick, horizon, cols, rows };
+
+    return { horizon, ticks, rows };
   }
 
   activateListeners(html) {
     super.activateListeners(html);
-    // re-render cuando cambian flags del combat (ATB avanza)
-    this._refreshHook = (_combat, changes) => {
-      if (changes?.flags?.[FLAG_SCOPE]?.[FLAG_KEY] !== undefined) this.render(false);
-    };
-    Hooks.on("updateCombat", this._refreshHook);
-    html[0]?.querySelector('[data-act="close"]')?.addEventListener("click", () => this.close());
+    const root = html[0];
+    root.querySelector('[data-act="plan"]')
+      ?.addEventListener("click", () => game.transcendence?.openPlanDialog?.());
+    root.querySelector('[data-act="close"]')
+      ?.addEventListener("click", () => this.close());
   }
 
-  async close(options) {
-    Hooks.off("updateCombat", this._refreshHook);
-    return super.close(options);
-  }
-
+  // Singleton + open
   static open() {
-    this._instance ??= new this();
+    if (!this._instance) this._instance = new this();
     this._instance.render(true);
     return this._instance;
   }
 }
+
+/* ===========================
+ * Registro de botones / auto-open
+ * =========================== */
 
 export function registerAtbTrackerButton() {
   Hooks.on("getCombatTrackerHeaderButtons", (_tracker, buttons) => {
@@ -159,6 +193,32 @@ export function registerAtbTrackerButton() {
       onclick: () => ATBTrackerApp.open()
     });
   });
+
   game.transcendence = game.transcendence || {};
   game.transcendence.openAtbTracker = () => ATBTrackerApp.open();
+}
+
+export function registerAtbAutoOpen() {
+  // Abrir en todos los clientes vía socket cuando el GM lo pida
+  game.socket?.on("module.tsdc", (data) => {
+    if (data?.action === "open-atb-tracker") ATBTrackerApp.open();
+  });
+
+  // Al crear combate, abrir automáticamente y avisar a todos
+  Hooks.on("createCombat", () => {
+    if (game.user?.isGM) {
+      ATBTrackerApp.open();
+      game.socket?.emit("module.tsdc", { action: "open-atb-tracker" });
+    }
+  });
+
+  // Al avanzar ronda, re-abrir si alguien lo cerró
+  Hooks.on("updateCombat", (combat, changes) => {
+    const started = (combat?.started === true);
+    const roundChanged = Object.prototype.hasOwnProperty.call(changes || {}, "round");
+    if (game.user?.isGM && started && roundChanged) {
+      ATBTrackerApp.open();
+      game.socket?.emit("module.tsdc", { action: "open-atb-tracker" });
+    }
+  });
 }

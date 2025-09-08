@@ -13,9 +13,9 @@ import { openCharacterWizard } from "./wizard/character-wizard.js";
 import { applyBackgroundStartingCompetences } from "./features/affinities/index.js";
 //import "./combat/loop.js";
 //import { beginNewInitiativeDay } from "./combat/initiative.js";
+import { registerAtbTrackerButton, registerAtbAutoOpen } from "./atb/tracker.js";
 import { registerAtbUI } from "./atb/ui.js";
 import { ATB_API } from "./atb/engine.js";
-import { registerAtbTrackerButton } from "./atb/tracker.js";
 
 const _guardWizardOpen = new Set();
 
@@ -92,6 +92,7 @@ Hooks.once("ready", () => {
   registerChatListeners();
   registerAtbUI();
   registerAtbTrackerButton();    
+  registerAtbAutoOpen();
   game.transcendence = game.transcendence || {};
   game.transcendence.atb = ATB_API;
 });
