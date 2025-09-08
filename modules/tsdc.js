@@ -11,10 +11,11 @@ import { SPECIES_NATURAL_WEAPONS } from "./features/species/natural-weapons.js";
 import * as Ail from "./ailments/index.js";
 import { openCharacterWizard } from "./wizard/character-wizard.js";
 import { applyBackgroundStartingCompetences } from "./features/affinities/index.js";
-import "./combat/loop.js";
-import { beginNewInitiativeDay } from "./combat/initiative.js";
+//import "./combat/loop.js";
+//import { beginNewInitiativeDay } from "./combat/initiative.js";
 import { registerAtbUI } from "./atb/ui.js";
 import { ATB_API } from "./atb/engine.js";
+import { registerAtbTrackerButton } from "./atb/tracker.js";
 
 const _guardWizardOpen = new Set();
 
@@ -78,10 +79,7 @@ Hooks.once("init", () => {
       attributes: Attr,
       evo: Evo
     },
-    ailments: Ail,
-    initiative: {
-      beginNewInitiativeDay
-    }
+    ailments: Ail
   };
 
   console.log("TSDC | init done");
@@ -93,6 +91,7 @@ Hooks.once("ready", () => {
   );
   registerChatListeners();
   registerAtbUI();
+  registerAtbTrackerButton();    
   game.transcendence = game.transcendence || {};
   game.transcendence.atb = ATB_API;
 });

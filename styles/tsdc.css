@@ -178,3 +178,25 @@ body.system-tsdc .tsdc.sheet.actor .sheet-body {
 body.system-tsdc .tsdc.sheet.actor .window-content { 
   min-height:0; 
 }
+
+/* ===== ATB Tracker ===== */
+.tsdc-atb-tracker { padding: 8px; }
+.tsdc-atb-tracker .tt-head { display: grid; grid-template-columns: 180px 1fr; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tsdc-atb-tracker .tt-title { font-weight: 700; }
+.tsdc-atb-tracker .tt-ticks { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 2px; }
+.tsdc-atb-tracker .tt-tick { background: #dedede; border-radius: 6px; text-align: center; font-size: 12px; padding: 2px 0; }
+
+.tsdc-atb-tracker .tt-row { display: grid; grid-template-columns: 180px 1fr; align-items: center; gap: 8px; margin: 6px 0; }
+.tsdc-atb-tracker .tt-who { font-weight: 600; }
+
+.tsdc-atb-tracker .tt-line { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 3px; height: 42px; position: relative; }
+.tsdc-atb-tracker .tt-seg { border: 1px solid #7a7a7a; border-radius: 10px; display: flex; align-items: center; padding: 0 8px; overflow: hidden; font-size: 12px; }
+.tsdc-atb-tracker .tt-label { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+
+.tsdc-atb-tracker .phase-init { background: #c9d8ff; }
+.tsdc-atb-tracker .phase-exec { background: #ffd8b3; }
+.tsdc-atb-tracker .phase-rec  { background: #ececec; }
+.tsdc-atb-tracker .phase-free { background: #dff5df; }
+
+.tsdc-atb-tracker .tt-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
+.tsdc-atb-tracker .tt-foot button { padding: 4px 10px; }

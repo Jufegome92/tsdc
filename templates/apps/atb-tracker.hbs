@@ -1,0 +1,27 @@
+<div class="tsdc-atb-tracker">
+  <header class="tt-head">
+    <div class="tt-title">ATB — Tracker</div>
+    <div class="tt-ticks" style="--cols: {{horizon}}">
+      {{#each cols as |t|}}<div class="tt-tick">{{t}}</div>{{/each}}
+    </div>
+  </header>
+
+  <section class="tt-rows">
+    {{#each rows as |row|}}
+      <div class="tt-row">
+        <div class="tt-who">{{row.name}}</div>
+        <div class="tt-line" style="--cols: {{../horizon}}">
+          {{#each row.segments}}
+            <div class="tt-seg phase-{{phase}}" style="grid-column: {{gridColumn}};">
+              <span class="tt-label">{{label}}</span>
+            </div>
+          {{/each}}
+        </div>
+      </div>
+    {{/each}}
+  </section>
+
+  <footer class="tt-foot">
+    <button type="button" data-act="close"><i class="fa-solid fa-xmark"></i> Cerrar</button>
+  </footer>
+</div>
