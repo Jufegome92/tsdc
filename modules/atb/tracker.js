@@ -1,7 +1,8 @@
 // systems/tsdc/modules/atb/tracker.js
 import { listSimpleActions, makeSpecializationAction } from "./actions.js";
+import { openPlanDialogForSelection } from "./ui.js"; 
 
-const { ApplicationV2 } = foundry.applications.api;
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 const FLAG_SCOPE = "tsdc";
 const FLAG_KEY   = "atb";
@@ -111,10 +112,10 @@ function buildRow(c, state, combatantId, horizon) {
 }
 
 /* ===========================
- * Application V2: Tracker
+ * Application V2 + Handlebars
  * =========================== */
 
-export class ATBTrackerApp extends ApplicationV2 {
+export class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: "tsdc-atb-tracker",
     classes: ["tsdc", "atb", "app"],
@@ -143,31 +144,26 @@ export class ATBTrackerApp extends ApplicationV2 {
   }
 
   async _prepareContext(_options) {
-    return this.#getContext();
-  }
-
-  #getContext() {
     const c = game.combat;
     const horizon = 12;
-    const ticks = Array.from({ length: horizon }, (_v, i) => i);
+    const cols = Array.from({ length: horizon }, (_v, i) => i);  // <- lo que usa tu HBS
     const rows = [];
 
     if (c) {
       const state = getState() ?? { actors: {} };
       const list  = c.turns?.length ? c.turns : (c.combatants?.contents ?? []);
       const ids   = list.map(t => t.id).filter(Boolean);
-
       for (const id of ids) rows.push(buildRow(c, state, id, horizon));
     }
 
-    return { horizon, ticks, rows };
+    return { horizon, cols, rows };
   }
 
   activateListeners(html) {
     super.activateListeners(html);
     const root = html[0];
     root.querySelector('[data-act="plan"]')
-      ?.addEventListener("click", () => game.transcendence?.openPlanDialog?.());
+      ?.addEventListener("click", () => openPlanDialogForSelection());
     root.querySelector('[data-act="close"]')
       ?.addEventListener("click", () => this.close());
   }
@@ -181,7 +177,7 @@ export class ATBTrackerApp extends ApplicationV2 {
 }
 
 /* ===========================
- * Registro de botones / auto-open
+ * Botón y auto-open
  * =========================== */
 
 export function registerAtbTrackerButton() {
