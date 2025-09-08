@@ -22,6 +22,7 @@ export function registerAtbUI() {
 }
 
 export function openPlanDialogForSelection() {
+  console.log('ATB UI: openPlanDialogForSelection invoked');
   const selected = canvas.tokens?.controlled ?? [];
   if (!selected.length) {
     ui.notifications?.warn("Selecciona al menos un token para planear acciones.");
@@ -76,8 +77,9 @@ export function openPlanDialogForSelection() {
         label: "Encolar acción simple",
         action: "enqueue-simple",
         callback: async (_ev, _btn, dialog) => {
-          const root = (dialog.element instanceof HTMLElement) ? dialog.element : (dialog.element?.[0] || null);
-          const form = root?.querySelector("form");
+          const root = (dialog?.element instanceof HTMLElement) ? dialog.element : (dialog?.element?.[0] || dialog?.element?.el || null);
+          if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
+          const form = root.querySelector("form");
           const key   = String(form.elements.simpleKey?.value || "");
           if (!key) return ui.notifications?.warn("Elige una acción simple.");
           const times = Math.max(1, Number(form.elements.simpleTimes?.value || 1));
@@ -89,8 +91,9 @@ export function openPlanDialogForSelection() {
         label: "Encolar especialización",
         action: "enqueue-spec",
         callback: async (_ev, _btn, dialog) => {
-          const root = (dialog.element instanceof HTMLElement) ? dialog.element : (dialog.element?.[0] || null);
-          const form = root?.querySelector("form");
+          const root = (dialog?.element instanceof HTMLElement) ? dialog.element : (dialog?.element?.[0] || dialog?.element?.el || null);
+          if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
+          const form = root.querySelector("form");
           const specKey  = String(form.elements.specKey?.value || "").trim();
           if (!specKey) return ui.notifications?.warn("Ingresa la clave de la especialización.");
           const category = String(form.elements.specCat?.value || "physical");
