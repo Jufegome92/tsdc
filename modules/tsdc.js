@@ -13,6 +13,8 @@ import { openCharacterWizard } from "./wizard/character-wizard.js";
 import { applyBackgroundStartingCompetences } from "./features/affinities/index.js";
 import "./combat/loop.js";
 import { beginNewInitiativeDay } from "./combat/initiative.js";
+import { registerAtbUI } from "./atb/ui.js";
+import { ATB_API } from "./atb/engine.js";
 
 const _guardWizardOpen = new Set();
 
@@ -90,6 +92,9 @@ Hooks.once("ready", () => {
     `Transcendence | ready (system=${game.system.id} v${game.system.version ?? game.system.data?.version})`
   );
   registerChatListeners();
+  registerAtbUI();
+  game.transcendence = game.transcendence || {};
+  game.transcendence.atb = ATB_API;
 });
 
 /** Al crear un actor character → abrir wizard inmediatamente */
