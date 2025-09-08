@@ -1,5 +1,6 @@
 // tsdc/modules/rolls/engine.js
 import { applySpeciesToRoll } from "../features/species/effects.js";
+import { applyAtbModsToRoll } from "../atb/mods.js";
 
 /* =========================
    Normalización de tags
@@ -152,6 +153,8 @@ export function makeRollTotal(actor, baseTotal, ctx = {}) {
     console.warn("[tsdc] applySpeciesToRoll error:", err);
   }
 
+  try { applyAtbModsToRoll(actor, roll, ctx); } catch (_) {}
+  
   const speciesDelta = Math.round(Number(speciesProbe.total || base) - base);
   const speciesDiceAdv = Number(speciesProbe.diceAdvances || 0);
   // Tags finales después de especie (por si la especie añade/quita condiciones contextuales)
