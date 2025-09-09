@@ -111,18 +111,19 @@ async function stepOnceInternal() {
     const S  = ensureActorState(state, ct.id);
     const ci = S.current;
     if (!ci) continue;
-    if (ci.phase === "exec") execNow.push(ci);
-    if (ci.phase === "init" && ci.ticks_left === 0) toPromote.push(ci);
-  }
-  for (const ci of toPromote) {
-    ci.phase = "exec";
-    ci.started_this_tick = true;
-    ci.ticks_left = Math.max(0, ci.E);
+    if (ci.phase === "init" && ci.ticks_left === 0) {
+      ci.phase = "exec";
+      ci.started_this_tick = true;
+      ci.ticks_left = Math.max(0, ci.E);
+      toPromote.push(ci);
+    }
+    if (ci.phase === "exec" && ci.started_this_tick) execNow.push(ci);
   }
   const execOrdered = sortExec(execNow.concat(toPromote));
 
   // 3) Perform EXEC
   for (const ci of execOrdered) {
+    if (!ci.started_this_tick) continue; 
     const ct = combat.combatants.get(ci.actor);
     const def = resolveQueued(ensureActorState(state, ci.actor).current
       ? { kind:"simple", key: ensureActorState(state, ci.actor).current.actionKey } // key real no importa para perform
@@ -143,14 +144,18 @@ async function stepOnceInternal() {
     // Pero el perform que queremos es el del objeto encolado original → lo re-resolvemos:
     const queued = resolveQueued(ensureActorState(state, ci.actor).lastQueuedDescriptor ?? null); // puede ser null
     const perform = queued?.perform ?? defReal?.perform;
-
-    await perform?.({
-      actor,
-      combat,
-      combatant: ct,
-      tick: state.tick,
-      startedThisTick: !!ci.started_this_tick
-    });
+    
+    try {
+      await perform?.({
+        actor,
+        combat,
+        combatant: ct,
+        tick: state.tick,
+        startedThisTick: !!ci.started_this_tick
+      });
+    } catch (e) {
+      console.error("ATB perform error", e);
+    }
   }
 
   // 4) Reducir contadores y transicionar

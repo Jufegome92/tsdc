@@ -8,6 +8,7 @@ import { emitModInspector } from "./inspector.js";
 
 // 🔗 Context tags
 import { buildContextTags, normalizeTags } from "./context-tags.js";
+const _atkGuard = new Set();
 
 /** Util: crea una tarjetita para el GM con los datos necesarios para evaluar */
 async function gmEvalCard({ actor, kind, payload }) {
@@ -90,12 +91,26 @@ export async function rollAttack(actor, {
   const { formula } = buildAttackFormula(actor, { isManeuver, key, attrKey, bonus, penalty });
   const path  = isManeuver ? `system.progression.maneuvers.${key}.rank` : `system.progression.weapons.${key}.rank`;
   const rank  = Number(foundry.utils.getProperty(actor, path) || 0);
+  
+  let evo;
+  try {
+    evo = await resolveEvolution({
+      type: "attack", mode, formula, rank,
+      flavor: flavor ?? (isManeuver ? (key ? `Maniobra • ${key}` : `Maniobra`) : (key ? `Ataque • ${key}` : `Ataque`)),
+      actor, meta: { key, isManeuver }
+    });
+  } catch (err) {
+    // Si el diálogo se cerró/canceló, simplemente no hacemos nada
+    console.debug("rollAttack cancelado o cerrado:", err);
+    return null;
+  }
 
-  const { resultRoll, otherRoll, usedPolicy } = await resolveEvolution({
-    type: "attack", mode, formula, rank,
-    flavor: flavor ?? (isManeuver ? (key ? `Maniobra • ${key}` : `Maniobra`) : (key ? `Ataque • ${key}` : `Ataque`)),
-    actor, meta: { key, isManeuver }
-  });
+  const { resultRoll, otherRoll, usedPolicy } = evo || {};
+  if (!resultRoll || typeof resultRoll.total !== "number") {
+    // Cancelado o sin resultado → no continuar
+    console.debug("rollAttack: sin resultado (cancelado).");
+    return null;
+  }
 
   // ===== TAGS de contexto =====
   const attackKind = context.attackKind ?? inferAttackKind(actor, { isManeuver, weaponKey: key });

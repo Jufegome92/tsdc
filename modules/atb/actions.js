@@ -48,7 +48,7 @@ export const InteractAction = makeDef({
 export const AttackAction = makeDef({
   key: "attack", label: "Ataque", I: 1, E: 1, R: 1,
   perform: async ({ actor }) => {
-    await rollAttack(actor, { flavor: "ATB • Ataque" });
+    await rollAttack(actor, { flavor: "ATB • Ataque", mode: "ask" });
   }
 });
 
