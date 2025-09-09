@@ -6,13 +6,22 @@
     <div class="row"><i class="ico ico-area"></i><span>Área</span><b>{{area}}</b></div>
 
     {{#if rolls}}
-      {{#each rolls}}
-        <div class="row">
-          <i class="ico {{#if (eq kind "TA")}}ico-ta{{/if}}{{#if (eq kind "TI")}}ico-ti{{/if}}{{#if (eq kind "TE")}}ico-te{{/if}}"></i>
-          <span>{{#if (eq kind "TA")}}Tirada de Ataque{{/if}}{{#if (eq kind "TI")}}Tirada de Impacto{{/if}}{{#if (eq kind "TE")}}Tirada de Especialización{{/if}}</span>
-        </div>
-      {{/each}}
+        {{#each rolls}}
+            <div class="row">
+                <i class="ico
+                    {{#if (eq kind "TA")}} ico-ta{{/if}}
+                    {{#if (eq kind "TI")}} ico-ti{{/if}}
+                    {{#if (eq kind "TE")}} ico-te{{/if}}
+                "></i>
+                 <span>
+                    {{#if (eq kind "TA")}}Tirada de Ataque{{/if}}
+                    {{#if (eq kind "TI")}}Tirada de Impacto{{/if}}
+                    {{#if (eq kind "TE")}}Tirada de Especialización{{/if}}
+                </span>
+            </div>
+        {{/each}}
     {{/if}}
+
 
     <div class="row"><i class="ico ico-init"></i><span>Inicio</span><b>{{ct.I}}</b></div>
     <div class="row"><i class="ico ico-exec"></i><span>Ejecución</span><b>{{ct.E}}</b></div>

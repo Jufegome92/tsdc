@@ -115,24 +115,35 @@ function buildRow(c, state, combatantId, horizon) {
  * Application V2 + Handlebars
  * =========================== */
 
-export class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
+class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: "tsdc-atb-tracker",
-    classes: ["tsdc", "atb", "app"],
-    window: { title: "ATB — Tracker", resizable: true, minimizable: true },
-    position: { width: 860, height: "auto" }
+    title: "ATB Tracker",
+    window: { icon: "fa-solid fa-table-columns" },
+    position: { width: 860, height: "auto" },
+    actions: {
+      plan : ATBTrackerApp.onPlan,
+      close: ATBTrackerApp.onClose
+    }
   };
 
   static PARTS = {
     body: { template: "systems/tsdc/templates/apps/atb-tracker.hbs" }
   };
 
+  // acciones (deben ser estáticas; `this` apunta a la instancia)
+  static onPlan(_ev, _target) {
+    openPlanDialogForSelection();
+  }
+  static onClose(_ev, _target) {
+    this.close();
+  }
+
   constructor(options = {}) {
     super(options);
-    // Re-render cuando cambie el combate o nuestros flags
     this._onUpdateCombat = (combat, changes) => {
       const flagsChanged = changes?.flags?.[FLAG_SCOPE]?.[FLAG_KEY] !== undefined;
-      const turnOrRound  = ("turn" in (changes || {})) || ("round" in (changes || {}));
+      const turnOrRound  = ("turn" in (changes||{})) || ("round" in (changes||{}));
       if (flagsChanged || turnOrRound) this.render(false);
     };
     Hooks.on("updateCombat", this._onUpdateCombat);
@@ -144,33 +155,36 @@ export class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _prepareContext(_options) {
-    const c = game.combat;
-    const horizon = 12;
-    const cols = Array.from({ length: horizon }, (_v, i) => i);  // <- lo que usa tu HBS
-    const rows = [];
+    // 1) Lee el combate y el estado persistido en flags
+    const c = game.combat ?? null;
+    const state = getState() ?? { actors: {} };
 
-    if (c) {
-      const state = getState() ?? { actors: {} };
-      const list  = c.turns?.length ? c.turns : (c.combatants?.contents ?? []);
-      const ids   = list.map(t => t.id).filter(Boolean);
-      for (const id of ids) rows.push(buildRow(c, state, id, horizon));
+    // 2) Horizonte de ticks a mostrar (ajústalo a gusto)
+    const horizon = 12;
+
+    // 3) Columnas para la cabecera 1..horizon
+    const cols = Array.from({ length: horizon }, (_ , i) => i + 1);
+
+    // 4) Construye las filas a partir de los combatientes actuales
+    const rows = [];
+    if (c && c.combatants) {
+      const list = c.combatants.contents ?? Array.from(c.combatants); // compatible
+      for (const comb of list) {
+        rows.push(buildRow(c, state, comb.id, horizon));
+      }
+    }
+
+    // 5) Si no hay combate o no hay filas, muestra un placeholder
+    if (!rows.length) {
+      rows.push({
+        name: "—",
+        segments: [{ label: "Libre", phase: "free", gridColumn: `1 / span ${horizon}` }]
+      });
     }
 
     return { horizon, cols, rows };
   }
 
-  activateListeners(html) {
-    super.activateListeners(html);
-    const root = this?.element ?? (html instanceof HTMLElement ? html : (html?.[0] || html?.el || null));
-    if (!root) { console.warn('ATBTrackerApp: no root element to bind listeners'); return; }
-    console.log('ATBTrackerApp: listeners binding on', root);
-    root.querySelector('[data-act="plan"]')
-        ?.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); console.log('ATBTrackerApp: Planear click'); openPlanDialogForSelection(); });
-    root.querySelector('[data-act="close"]')
-        ?.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); console.log('ATBTrackerApp: Cerrar click'); this.close(); });
-    }
-
-  // Singleton + open
   static open() {
     if (!this._instance) this._instance = new this();
     this._instance.render(true);
@@ -191,42 +205,32 @@ export function registerAtbTrackerButton() {
       onclick: () => ATBTrackerApp.open()
     });
   });
-
   game.transcendence = game.transcendence || {};
   game.transcendence.openAtbTracker = () => ATBTrackerApp.open();
 }
 
 export function registerAtbAutoOpen() {
-  // Abrir a todos cuando el GM lo abre por socket
-  game.socket?.on("module.tsdc", (data) => {
+  // 🔧 Unifico canal y payload
+  game.socket?.on("system.tsdc", (data) => {
     if (data?.action === "open-atb-tracker") ATBTrackerApp.open();
   });
 
-  // Al CREAR el combate (GM): muestra el tracker de una
-  Hooks.on("createCombat", (combat) => {
+  Hooks.on("createCombat", () => {
     if (!game.user?.isGM) return;
     ATBTrackerApp.open();
-    game.socket?.emit("module.tsdc", { action: "open-atb-tracker" });
+    game.socket?.emit("system.tsdc", { action: "open-atb-tracker" });
   });
 
-  // Cuando el combate "comienza" o cambia ronda/turno: (re)abrir si hace falta
   Hooks.on("updateCombat", (combat, changes) => {
     const justStarted = changes?.started === true ||
       (combat?.started && (changes?.round === 1 || changes?.turn === 0));
     const turnOrRound = ("turn" in (changes||{})) || ("round" in (changes||{}));
-    if (!game.user) return;
-
     if (justStarted || turnOrRound) {
       ATBTrackerApp.open();
-      // Garantiza que todos lo vean (1 sola vez basta, no pasa nada si se emite más)
-      game.socket?.emit("module.tsdc", { action: "open-atb-tracker" });
+      game.socket?.emit("system.tsdc", { action: "open-atb-tracker" });
     }
   });
 }
 
-
-/** Expose minimal API for macros / debugging */
-try {
-  window.tsdcatb = window.tsdcatb ?? {};
-  window.tsdcatb.ATBTrackerApp = ATBTrackerApp;
-} catch(e) { console.warn("TSDC ATB | Failed to expose tsdcatb API", e); }
+// (si exportabas la clase para debug, lo puedes dejar igual)
+try { window.tsdcatb = { ...(window.tsdcatb ?? {}), ATBTrackerApp }; } catch {}

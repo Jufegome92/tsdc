@@ -45,7 +45,10 @@ async function maybeOpenWizardForSheet(sheet) {
 
 Hooks.once("init", () => {
   console.log("Transcendence | init");
-
+  foundry.applications.handlebars.loadTemplates([
+    "systems/tsdc/templates/cards/action-card.hbs",
+    "systems/tsdc/templates/apps/atb-tracker.hbs"
+  ]);
   // Settings para iniciativa por “día”
   game.settings.register("tsdc", "initiative.dayId", { scope:"world", config:false, type:String, default:"" });
   game.settings.register("tsdc", "initiative.monstersDeck", { scope:"world", config:false, type:Object, default:null });

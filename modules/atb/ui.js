@@ -27,7 +27,7 @@ export function registerAtbUI() {
         onclick: () => {
           const { ATBTrackerApp } = window.tsdcatb ?? {};
           if (ATBTrackerApp?.open) ATBTrackerApp.open();
-          else game?.socket?.emit?.("system.tsdc.atb", { action: "open-tracker" });
+          else game?.socket?.emit?.("system.tsdc", { action: "open-atb-tracker" });
         }
       });
     } catch(e) {
@@ -49,14 +49,8 @@ export function registerAtbUI() {
   game.transcendence.openPlanDialog = openPlanDialogForSelection;
 }
 
-export function openPlanDialogForSelection() {
+export async function openPlanDialogForSelection() {
   console.log('ATB UI: openPlanDialogForSelection invoked');
-  const selected = canvas.tokens?.controlled ?? [];
-  if (!selected.length) {
-    ui.notifications?.warn("Selecciona al menos un token para planear acciones.");
-    // Permitimos abrir igual, por si el GM quiere ver el formulario:
-    // return; // <- descomenta si prefieres bloquear el diálogo
-  }
 
   const simple = listSimpleActions();
   const simpleOpts = simple
@@ -91,9 +85,9 @@ export function openPlanDialogForSelection() {
           <select name="specCT"><option>1</option><option selected>2</option><option>3</option></select>
         </div>
       </fieldset>
-
-      <p class="notes">Se encola a los <b>tokens seleccionados</b>. Para maniobras haremos un diálogo aparte.</p>
     </form>
+
+    <div data-card-preview style="margin-top:12px;"></div>
   `;
 
   const dlg = new DialogV2({
@@ -105,7 +99,9 @@ export function openPlanDialogForSelection() {
         label: "Encolar acción simple",
         action: "enqueue-simple",
         callback: async (_ev, _btn, dialog) => {
-          const root = (dialog?.element instanceof HTMLElement) ? dialog.element : (dialog?.element?.[0] || dialog?.element?.el || null);
+          const root = (dialog?.element instanceof HTMLElement)
+            ? dialog.element
+            : (dialog?.element?.[0] || dialog?.element?.el || null);
           if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
           const form = root.querySelector("form");
           const key   = String(form.elements.simpleKey?.value || "");
@@ -119,7 +115,9 @@ export function openPlanDialogForSelection() {
         label: "Encolar especialización",
         action: "enqueue-spec",
         callback: async (_ev, _btn, dialog) => {
-          const root = (dialog?.element instanceof HTMLElement) ? dialog.element : (dialog?.element?.[0] || dialog?.element?.el || null);
+          const root = (dialog?.element instanceof HTMLElement)
+            ? dialog.element
+            : (dialog?.element?.[0] || dialog?.element?.el || null);
           if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
           const form = root.querySelector("form");
           const specKey  = String(form.elements.specKey?.value || "").trim();
@@ -135,17 +133,50 @@ export function openPlanDialogForSelection() {
   });
 
   dlg.render(true);
+
+  Hooks.once("renderDialogV2", (app, html) => {
+    if (app !== dlg) return;
+    const root = html instanceof HTMLElement ? html : (html?.[0] || html?.el || null);
+    if (!root) return;
+
+    const sel = root.querySelector('select[name="simpleKey"]');
+    const ct  = root.querySelector('select[name="specCT"]');
+    const refresh = () => renderActionPreview(root, sel?.value, Number(ct?.value || 2));
+
+    sel?.addEventListener("change", refresh);
+    ct?.addEventListener("change", refresh);
+    refresh(); // primera vez
+  });
 }
 
+async function renderActionPreview(root, actionId, chosenCT = 2) {
+  const slot = root.querySelector("[data-card-preview]");
+  if (!slot) return;
+  const SIMPLE_TO_ACTIONS = {
+   move: "mover",
+   attack: "ataque",
+   interact: "interactuar",
+   defend: "defender",
+   specialization: "especializacion"
+ };
+  const mapped = SIMPLE_TO_ACTIONS[actionId] ?? actionId;
+  const def = ACTIONS[mapped];
+  if (!def) { slot.innerHTML = ""; return; }
 
-async function renderActionPreview(root, actionId, chosenCT=2) {
-  const def = ACTIONS[actionId];
-  if (!def) { root.querySelector("[data-card-preview]").innerHTML = ""; return; }
   const ct = def.ctOptions ? (def.ctOptions[chosenCT] || def.ctOptions[2]) : def.ct;
-  const html = await foundry.utils.renderTemplate(
+  const rt =
+    foundry.applications?.handlebars?.renderTemplate
+    ?? globalThis.renderTemplate; // fallback
+
+  if (!rt) {
+    console.error("No hay función renderTemplate disponible.");
+    slot.innerHTML = "";
+    return;
+  }
+
+  const html = await rt(
     "systems/tsdc/templates/cards/action-card.hbs",
     { ...def, ct }
   );
-  const slot = root.querySelector("[data-card-preview]");
-  if (slot) slot.innerHTML = html;
+  slot.innerHTML = html;
 }
