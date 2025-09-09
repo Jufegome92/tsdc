@@ -1,6 +1,7 @@
 // systems/tsdc/modules/atb/tracker.js
 import { listSimpleActions, makeSpecializationAction } from "./actions.js";
 import { openPlanDialogForSelection } from "./ui.js"; 
+import { ATB_API } from "./engine.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -123,7 +124,11 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
     position: { width: 860, height: "auto" },
     actions: {
       plan : ATBTrackerApp.onPlan,
-      close: ATBTrackerApp.onClose
+      close: ATBTrackerApp.onClose,
+      start: ATBTrackerApp.onStart,
+      pause: ATBTrackerApp.onPause,
+      step : ATBTrackerApp.onStep,
+      reset: ATBTrackerApp.onReset
     }
   };
 
@@ -137,6 +142,22 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
   static onClose(_ev, _target) {
     this.close();
+  }
+
+  static onStart(_ev, _target) {
+    ATB_API.atbStart();
+  }
+
+  static onPause(_ev, _target) {
+    ATB_API.atbPause();
+  }
+
+  static onStep(_ev, _target)  {
+    ATB_API.atbStep();
+  }
+  
+  static onReset(_ev, _target) {
+    ATB_API.atbReset();
   }
 
   constructor(options = {}) {
