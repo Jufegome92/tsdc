@@ -1,0 +1,105 @@
+<div class="tsdc-grimoire">
+  <header class="g-head" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+    <div class="g-title"><i class="fa-solid fa-book-skull" style="margin-right:6px;"></i>Necronomicón — <b>{{actorName}}</b></div>
+
+    <div class="g-plan" style="display:flex;align-items:center;gap:8px;margin-left:12px;">
+      <button type="button" data-action="tick-prev" title="Tick de planeación anterior">‹</button>
+      <div>Plan: <b>{{planningTick}}</b></div>
+      <button type="button" data-action="tick-next" title="Tick de planeación siguiente">›</button>
+    </div>
+
+    <div class="g-filter" style="display:flex;align-items:center;gap:6px;margin-left:16px;">
+      <input data-ref="filter" type="text" placeholder="Buscar…" value="{{query}}" style="width:260px;">
+      <button type="button" data-action="apply-filter">Filtrar</button>
+    </div>
+
+    <span style="flex:1;"></span>
+    <button type="button" data-action="close">Cerrar</button>
+  </header>
+
+  <section class="g-section">
+    <h3 style="margin:6px 0 8px;">Básicas</h3>
+    <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+      {{#each cardsBasic as |c|}}
+        <div class="g-card" data-card data-id="{{c.id}}">
+          {{{c.html}}}
+          <div class="g-ctrl" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <label>Tick</label>
+            <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
+            <button type="button" data-action="plan-basic" {{#unless ../canPlan}}disabled{{/unless}}>Planear</button>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  </section>
+
+  <section class="g-section" style="margin-top:14px;">
+    <h3 style="margin:6px 0 8px;">Catálogo</h3>
+    <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+      {{#each cardsCatalog as |c|}}
+        <div class="g-card" data-card data-id="{{c.id}}">
+          {{{c.html}}}
+          <div class="g-ctrl" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;">
+            {{#if (eq c.id "especializacion")}}
+              <label>Clave</label><input name="specKey" style="width:160px;" placeholder="p.ej. acrobacias">
+              <label>Cat.</label>
+              <select name="specCat" style="width:120px;">
+                <option value="physical">Física</option>
+                <option value="mental">Mental</option>
+                <option value="knowledge">Saberes</option>
+                <option value="social">Social</option>
+              </select>
+              <label>CT</label>
+              <select name="specCT" style="width:80px;">
+                <option>1</option><option selected>2</option><option>3</option>
+              </select>
+            {{/if}}
+
+            <label>Tick</label>
+            <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
+
+            <button type="button" data-action="plan-catalog" {{#unless ../canPlan}}disabled{{/unless}}>
+              {{#if (eq c.id "especializacion")}}Planear Especialización{{else}}Planear{{/if}}
+            </button>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  </section>
+
+  {{#if cardsManeuvers.length}}
+  <section class="g-section" style="margin-top:14px;">
+    <h3 style="margin:6px 0 8px;">Mis Maniobras</h3>
+    <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+      {{#each cardsManeuvers as |c|}}
+        <div class="g-card" data-card data-id="{{c.id}}">
+          {{{c.html}}}
+          <div class="g-ctrl" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <label>Tick</label>
+            <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
+            <button type="button" data-action="plan-maneuver" {{#unless ../canPlan}}disabled{{/unless}}>Planear</button>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  </section>
+  {{/if}}
+
+  {{#if cardsAptitudes.length}}
+  <section class="g-section" style="margin-top:14px;">
+    <h3 style="margin:6px 0 8px;">Mis Aptitudes</h3>
+    <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+      {{#each cardsAptitudes as |c|}}
+        <div class="g-card" data-card data-id="{{c.id}}">
+          {{{c.html}}}
+          <div class="g-ctrl" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+            <label>Tick</label>
+            <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
+            <button type="button" data-action="plan-aptitude" {{#unless ../canPlan}}disabled{{/unless}}>Planear</button>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  </section>
+  {{/if}}
+</div>

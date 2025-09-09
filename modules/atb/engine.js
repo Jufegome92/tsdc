@@ -40,13 +40,15 @@ function ensureActorState(state, combatantId) {
 /* ===== Planeación: leer/poner tick de planeación ===== */
 
 export async function getPlanningTick() {
-  const s = await readState();
-  return Number(s.planningTick ?? s.tick ?? 0);
+  const c = getCombat(); if (!c) return 0;
+  const s = (await c.getFlag(FLAG_SCOPE, FLAG_KEY)) ?? defaultState();
+  return Number(s.planningTick || 0);
 }
 
 export async function setPlanningTick(n) {
-  if (!isDriver()) return ui.notifications?.warn("Solo el GM puede cambiar el tick de planeación.");
-  const s = await readState();
+  if (!game.user?.isGM) return ui.notifications?.warn("Solo el GM puede cambiar el tick de planeación.");
+  const c = getCombat(); if (!c) return;
+  const s = (await readState());
   s.planningTick = Math.max(0, Number(n||0));
   await writeState(s);
 }
@@ -55,6 +57,25 @@ export async function adjustPlanningTick(delta) {
   const s = await readState();
   return setPlanningTick(Number(s.planningTick || 0) + Number(delta||0));
 }
+
+// 🔎 localizar combatiente por actor
+function findCombatantIdByActorId(actorId) {
+  const c = getCombat(); if (!c) return null;
+  const ct = c.combatants.find(x => x?.actor?.id === actorId);
+  return ct?.id ?? null;
+}
+
+export async function enqueueSimpleForActor(actorId, key, targetTick=null) {
+  const ctid = findCombatantIdByActorId(actorId);
+  if (!ctid) return ui.notifications?.warn("Ese actor no está en combate.");
+  return enqueueSimple(ctid, key, targetTick);
+}
+export async function enqueueSpecForActor(actorId, { specKey, category, CT, targetTick=null }) {
+  const ctid = findCombatantIdByActorId(actorId);
+  if (!ctid) return ui.notifications?.warn("Ese actor no está en combate.");
+  return enqueueSpecialization(ctid, { specKey, category, CT, targetTick });
+}
+
 
 /* ===== Resolver descriptor → def ===== */
 
@@ -288,5 +309,5 @@ export const ATB_API = {
   atbStart, atbPause, atbStep, atbReset,
   // encolado
   enqueueSimple, enqueueSpecialization,
-  enqueueSimpleForSelected, enqueueSpecForSelected
+  enqueueSimpleForActor, enqueueSpecForActor
 };

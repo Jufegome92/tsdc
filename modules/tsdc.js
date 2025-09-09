@@ -16,6 +16,7 @@ import { applyBackgroundStartingCompetences } from "./features/affinities/index.
 import { registerAtbTrackerButton, registerAtbAutoOpen } from "./atb/tracker.js";
 import { registerAtbUI } from "./atb/ui.js";
 import { ATB_API } from "./atb/engine.js";
+import { registerGrimoireButton } from "./atb/grimoire.js";
 
 const _guardWizardOpen = new Set();
 
@@ -47,7 +48,8 @@ Hooks.once("init", () => {
   console.log("Transcendence | init");
   foundry.applications.handlebars.loadTemplates([
     "systems/tsdc/templates/cards/action-card.hbs",
-    "systems/tsdc/templates/apps/atb-tracker.hbs"
+    "systems/tsdc/templates/apps/atb-tracker.hbs",
+    "systems/tsdc/templates/apps/grimoire.hbs"
   ]);
   // Settings para iniciativa por “día”
   game.settings.register("tsdc", "initiative.dayId", { scope:"world", config:false, type:String, default:"" });
@@ -96,6 +98,8 @@ Hooks.once("ready", () => {
   registerAtbUI();
   registerAtbTrackerButton();    
   registerAtbAutoOpen();
+  registerGrimoireTokenHUD(); 
+  registerGrimoireGlobalControl();
   game.transcendence = game.transcendence || {};
   game.transcendence.atb = ATB_API;
 });
