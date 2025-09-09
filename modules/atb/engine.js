@@ -50,21 +50,6 @@ function resolveQueued(defOrDescriptor) {
   return null;
 }
 
-/* ===== API pública de encolado ===== */
-
-export async function enqueueSimple(combatantId, key) {
-  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
-  const state = await readState();
-  ensureActorState(state, combatantId).queue.push({ kind:"simple", key });
-  await writeState(state);
-}
-export async function enqueueSpecialization(combatantId, { specKey, category, CT }) {
-  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
-  const state = await readState();
-  ensureActorState(state, combatantId).queue.push({ kind:"spec", specKey, category, CT:Number(CT||2) });
-  await writeState(state);
-}
-
 /* ===== Internals ===== */
 
 function spawnCard(state, combatantId, def) {
@@ -249,3 +234,31 @@ export const ATB_API = {
   enqueueSimple, enqueueSpecialization,
   enqueueSimpleForSelected, enqueueSpecForSelected
 };
+
+function canPlanForCombatant(ct) {
+  if (game.user?.isGM) return true;
+  const actor = ct?.actor;
+  if (!actor) return false;
+  // OWNER o control del token
+  const level = actor.ownership?.[game.user.id] ?? 0;
+  return level >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER || ct?.isOwner;
+}
+
+/* ===== API pública de encolado ===== */
+export async function enqueueSimple(combatantId, key) {
+  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
+  const ct = c.combatants.get(combatantId);
+  if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+  const state = await readState();
+  ensureActorState(state, combatantId).queue.push({ kind:"simple", key });
+  await writeState(state);
+}
+
+export async function enqueueSpecialization(combatantId, { specKey, category, CT }) {
+  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
+  const ct = c.combatants.get(combatantId);
+  if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+  const state = await readState();
+  ensureActorState(state, combatantId).queue.push({ kind:"spec", specKey, category, CT:Number(CT||2) });
+  await writeState(state);
+}

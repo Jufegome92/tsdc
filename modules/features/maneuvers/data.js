@@ -25,7 +25,8 @@ export const MANEUVERS = {
       "N2: efecto normal pero sin usar descriptor en combos.",
       "N3: uso completo, permite encadenar descriptor."
     ],
-    compLevels: 3                    // maniobras solo tienen 3 niveles de competencia
+    compLevels: 3 ,                   // maniobras solo tienen 3 niveles de competencia
+    ct: { init: 1, exec: 1, rec: 1 },
   },
 
   finta: {
@@ -48,7 +49,8 @@ export const MANEUVERS = {
       "N2: aplica desventaja defensiva leve si fallan la salvación.",
       "N3: pleno, habilita combos con descriptor 'engaño'."
     ],
-    compLevels: 3
+    compLevels: 3,
+    ct: { init: 0, exec: 1, rec: 0 },
   }
 
   // Agrega aquí tus maniobras…

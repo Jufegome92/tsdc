@@ -4,6 +4,7 @@
 
 import { rollAttack } from "../rolls/dispatcher.js";
 import { pushPenaltyForCurrentTick, scheduleBonusForNextAction } from "./mods.js";
+import { MANEUVERS } from "../features/maneuvers/data.js";
 
 /* ===== Utiles ===== */
 
@@ -135,4 +136,18 @@ export function listSimpleActions() {
     InteractAction,
     DropAction
   ];
+}
+
+export function makeManeuverAction(key) {
+  const m = MANEUVERS[key];
+  if (!m?.ct) return null;
+  return {
+    kind: "maneuver",
+    key,
+    label: m.label,
+    init: m.ct.init ?? 0,
+    exec: m.ct.exec ?? 1,
+    rec:  m.ct.rec  ?? 0,
+    tags: ["maneuver", m.type, m.category, m.descriptor].filter(Boolean)
+  };
 }

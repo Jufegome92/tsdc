@@ -200,3 +200,12 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
 
 .tsdc-atb-tracker .tt-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
 .tsdc-atb-tracker .tt-foot button { padding: 4px 10px; }
+
+/* Card básica */
+.tsdc-card { border:2px solid #111; border-radius:12px; padding:10px; background:#f8f8f8; color:#111; }
+.tsdc-card .c-head { text-align:center; font-weight:800; margin-bottom:6px; letter-spacing:0.5px; }
+.tsdc-card .row { display:grid; grid-template-columns: 20px 1fr auto; align-items:center; gap:8px; padding:2px 0; }
+.tsdc-card .title { font-weight:700; margin:6px 0 2px; display:flex; align-items:center; gap:6px; }
+.tsdc-card .pill { background:#eee; border:1px solid #bbb; border-radius:6px; padding:4px 6px; }
+.tsdc-card .box { min-height:70px; border:1px solid #bbb; border-radius:8px; background:#fff; padding:8px; }
+.tsdc-card .ico { width:20px; height:20px; display:inline-block; background:#0001; border-radius:4px; }

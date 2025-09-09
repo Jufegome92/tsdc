@@ -3,10 +3,38 @@
 
 import { listSimpleActions } from "./actions.js";
 import { ATB_API } from "./engine.js";
+import { ACTIONS } from "../features/actions/catalog.js";
 
 const { DialogV2 } = foundry.applications.api;
 
 export function registerAtbUI() {
+  // Robust header hook for V13: some environments don't fire getCombatTrackerHeaderButtons reliably.
+  Hooks.on("getApplicationHeaderButtons", (app, buttons) => {
+    try {
+      // Target the Combat Tracker specifically
+      const isCombatTracker = app instanceof ui.combat.constructor || app.constructor?.name?.includes("CombatTracker");
+      if (!isCombatTracker) return;
+      buttons.unshift({
+        class: "atb-plan",
+        label: "Planear",
+        icon: "fa-solid fa-layer-group",
+        onclick: () => openPlanDialogForSelection()
+      });
+      buttons.unshift({
+        class: "atb-tracker",
+        label: "ATB",
+        icon: "fa-solid fa-gauge-high",
+        onclick: () => {
+          const { ATBTrackerApp } = window.tsdcatb ?? {};
+          if (ATBTrackerApp?.open) ATBTrackerApp.open();
+          else game?.socket?.emit?.("system.tsdc.atb", { action: "open-tracker" });
+        }
+      });
+    } catch(e) {
+      console.error("TSDC ATB | header buttons fallback error", e);
+    }
+  });
+
   Hooks.on("getCombatTrackerHeaderButtons", (_tracker, buttons) => {
     const add = (b) => buttons.unshift(b);
     add({ class: "tsdc-atb-reset", label: "Reset",  icon: "fa-solid fa-rotate-left",   onclick: () => ATB_API.atbReset() });
@@ -107,4 +135,17 @@ export function openPlanDialogForSelection() {
   });
 
   dlg.render(true);
+}
+
+
+async function renderActionPreview(root, actionId, chosenCT=2) {
+  const def = ACTIONS[actionId];
+  if (!def) { root.querySelector("[data-card-preview]").innerHTML = ""; return; }
+  const ct = def.ctOptions ? (def.ctOptions[chosenCT] || def.ctOptions[2]) : def.ct;
+  const html = await foundry.utils.renderTemplate(
+    "systems/tsdc/templates/cards/action-card.hbs",
+    { ...def, ct }
+  );
+  const slot = root.querySelector("[data-card-preview]");
+  if (slot) slot.innerHTML = html;
 }

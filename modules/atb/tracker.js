@@ -197,26 +197,36 @@ export function registerAtbTrackerButton() {
 }
 
 export function registerAtbAutoOpen() {
-  // Abrir en todos los clientes vía socket cuando el GM lo pida
+  // Abrir a todos cuando el GM lo abre por socket
   game.socket?.on("module.tsdc", (data) => {
     if (data?.action === "open-atb-tracker") ATBTrackerApp.open();
   });
 
-  // Al crear combate, abrir automáticamente y avisar a todos
-  Hooks.on("createCombat", () => {
-    if (game.user?.isGM) {
-      ATBTrackerApp.open();
-      game.socket?.emit("module.tsdc", { action: "open-atb-tracker" });
-    }
+  // Al CREAR el combate (GM): muestra el tracker de una
+  Hooks.on("createCombat", (combat) => {
+    if (!game.user?.isGM) return;
+    ATBTrackerApp.open();
+    game.socket?.emit("module.tsdc", { action: "open-atb-tracker" });
   });
 
-  // Al avanzar ronda, re-abrir si alguien lo cerró
+  // Cuando el combate "comienza" o cambia ronda/turno: (re)abrir si hace falta
   Hooks.on("updateCombat", (combat, changes) => {
-    const started = (combat?.started === true);
-    const roundChanged = Object.prototype.hasOwnProperty.call(changes || {}, "round");
-    if (game.user?.isGM && started && roundChanged) {
+    const justStarted = changes?.started === true ||
+      (combat?.started && (changes?.round === 1 || changes?.turn === 0));
+    const turnOrRound = ("turn" in (changes||{})) || ("round" in (changes||{}));
+    if (!game.user) return;
+
+    if (justStarted || turnOrRound) {
       ATBTrackerApp.open();
+      // Garantiza que todos lo vean (1 sola vez basta, no pasa nada si se emite más)
       game.socket?.emit("module.tsdc", { action: "open-atb-tracker" });
     }
   });
 }
+
+
+/** Expose minimal API for macros / debugging */
+try {
+  window.tsdcatb = window.tsdcatb ?? {};
+  window.tsdcatb.ATBTrackerApp = ATBTrackerApp;
+} catch(e) { console.warn("TSDC ATB | Failed to expose tsdcatb API", e); }

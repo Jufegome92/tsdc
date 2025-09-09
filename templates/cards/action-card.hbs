@@ -1,0 +1,38 @@
+<div class="tsdc-card">
+  <header class="c-head">{{name}}</header>
+
+  <section class="c-specs">
+    <div class="row"><i class="ico ico-range"></i><span>Rango</span><b>{{range}}</b></div>
+    <div class="row"><i class="ico ico-area"></i><span>Área</span><b>{{area}}</b></div>
+
+    {{#if rolls}}
+      {{#each rolls}}
+        <div class="row">
+          <i class="ico {{#if (eq kind "TA")}}ico-ta{{/if}}{{#if (eq kind "TI")}}ico-ti{{/if}}{{#if (eq kind "TE")}}ico-te{{/if}}"></i>
+          <span>{{#if (eq kind "TA")}}Tirada de Ataque{{/if}}{{#if (eq kind "TI")}}Tirada de Impacto{{/if}}{{#if (eq kind "TE")}}Tirada de Especialización{{/if}}</span>
+        </div>
+      {{/each}}
+    {{/if}}
+
+    <div class="row"><i class="ico ico-init"></i><span>Inicio</span><b>{{ct.I}}</b></div>
+    <div class="row"><i class="ico ico-exec"></i><span>Ejecución</span><b>{{ct.E}}</b></div>
+    <div class="row"><i class="ico ico-rec"></i><span>Recuperación</span><b>{{ct.R}}</b></div>
+  </section>
+
+  <section class="c-req">
+    <div class="title"><i class="ico ico-req"></i>Requisitos</div>
+    <div class="pill">{{#each requirements}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}</div>
+  </section>
+
+  <section class="c-keys">
+    <div class="pill">KEYWORDS: {{keywords.type}}, {{keywords.clazz}}, {{keywords.category}}
+      {{#if keywords.descriptors.length}}, {{join keywords.descriptors ", "}}{{/if}}
+      {{#if keywords.elements.length}}, {{join keywords.elements ", "}}{{/if}}
+    </div>
+  </section>
+
+  <section class="c-desc">
+    <div class="title">Descripción</div>
+    <div class="box">{{description}}</div>
+  </section>
+</div>
