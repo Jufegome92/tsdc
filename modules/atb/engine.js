@@ -1,5 +1,5 @@
 // modules/atb/engine.js
-// Bucle ATB con CT=I+E+R. Maneja mods (penalizaciones/bonos) y acciones instantáneas.
+// Bucle ATB con CT=I+E+R. Planeación por tick y avance manual por el GM.
 
 import { listSimpleActions, makeSpecializationAction } from "./actions.js";
 import { rotateModsOnSpawn, pruneOldCurrentTickMods } from "./mods.js";
@@ -7,15 +7,21 @@ import { rotateModsOnSpawn, pruneOldCurrentTickMods } from "./mods.js";
 const FLAG_SCOPE = "tsdc";
 const FLAG_KEY   = "atb";
 
+/* ===== Estado ===== */
+
 function defaultState() {
   return {
     tick: 0,
-    running: false,
+    running: false,          // ya no se usa, se deja por compat
     tickMs: 1000,
     placementCounter: 0,
-    actors: {} // [combatantId]: { queue: Array<{k:string,p:any}>, current: Card|null, mods:{} }
+    planningTick: 0,         // 👈 tick que están usando para PLANEAR
+    qOrderCounter: 0,        // 👈 orden estable de llegada a la cola
+    actors: {}               // [combatantId]: { queue:[desc], current:Card|null, mods:{} }
   };
 }
+
+function isDriver() { return !!game.user?.isGM; }
 
 function getCombat() { return game.combat ?? null; }
 async function readState() {
@@ -31,20 +37,37 @@ function ensureActorState(state, combatantId) {
   return state.actors[combatantId];
 }
 
-/* ===== Resolución de acción ===== */
+/* ===== Planeación: leer/poner tick de planeación ===== */
 
-function resolveQueued(defOrDescriptor) {
-  // defOrDescriptor: { kind:"simple", key } | { kind:"spec", specKey, category, CT }
-  if (!defOrDescriptor) return null;
-  if (defOrDescriptor.kind === "simple") {
-    const def = listSimpleActions().find(d => d.key === defOrDescriptor.key);
-    return def ?? null;
+export async function getPlanningTick() {
+  const s = await readState();
+  return Number(s.planningTick ?? s.tick ?? 0);
+}
+
+export async function setPlanningTick(n) {
+  if (!isDriver()) return ui.notifications?.warn("Solo el GM puede cambiar el tick de planeación.");
+  const s = await readState();
+  s.planningTick = Math.max(0, Number(n||0));
+  await writeState(s);
+}
+
+export async function adjustPlanningTick(delta) {
+  const s = await readState();
+  return setPlanningTick(Number(s.planningTick || 0) + Number(delta||0));
+}
+
+/* ===== Resolver descriptor → def ===== */
+
+function resolveQueued(desc) {
+  if (!desc) return null;
+  if (desc.kind === "simple") {
+    return listSimpleActions().find(d => d.key === desc.key) ?? null;
   }
-  if (defOrDescriptor.kind === "spec") {
+  if (desc.kind === "spec") {
     return makeSpecializationAction({
-      specKey: defOrDescriptor.specKey,
-      category: defOrDescriptor.category,
-      CT: Number(defOrDescriptor.CT || 2)
+      specKey: desc.specKey,
+      category: desc.category,
+      CT: Number(desc.CT || 2)
     });
   }
   return null;
@@ -73,6 +96,8 @@ function sortExec(list) {
   );
 }
 
+/* ===== Un paso (= un tick) del bucle ===== */
+
 async function stepOnceInternal() {
   const combat = getCombat(); if (!combat) return;
   const state  = await readState();
@@ -80,37 +105,44 @@ async function stepOnceInternal() {
   // Limpia penalizaciones de ticks previos
   pruneOldCurrentTickMods(state);
 
-  // 1) Arrancar acciones (y mover nextActionBonus -> activeThisTick)
+  // 1) Arrancar acciones cuya "targetTick" ya alcanzó este tick
   for (const ct of combat.combatants) {
     const S = ensureActorState(state, ct.id);
     if (S.current) continue;
-    if (!S.queue.length) continue;
 
-    // Mover bonos programados para que apliquen "en este tick de nueva acción"
-    rotateModsOnSpawn(state, ct.id);
+    // Orden estable por (targetTick, qorder)
+    S.queue.sort((a,b) => (Number(a.targetTick||0) - Number(b.targetTick||0)) || (Number(a.qorder||0) - Number(b.qorder||0)));
 
-    const desc = S.queue.shift();
-    const def  = resolveQueued(desc);
-    if (!def) continue;
+    let idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
+    while (!S.current && idx >= 0) {
+      const desc = S.queue.splice(idx, 1)[0];
+      const def  = resolveQueued(desc);
+      if (!def) { idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick); continue; }
 
-    // Acciones instantáneas (CT=0) → perform y NO crean carta
-    const CTsum = (def.init_ticks + def.exec_ticks + def.rec_ticks);
-    if (CTsum === 0) {
-      const actor = ct.actor;
-      await def.perform?.({ actor, combat, combatant: ct, tick: state.tick, startedThisTick: true });
-      continue;
+      // Instántaneas: ejecuta y sigue viendo si hay otra en este tick
+      const CTsum = (def.init_ticks + def.exec_ticks + def.rec_ticks);
+      if (CTsum === 0) {
+        try {
+          await def.perform?.({ actor: ct.actor, combat, combatant: ct, tick: state.tick, startedThisTick: true });
+        } catch (e) { console.error("ATB perform (instantáneo) error", e); }
+        idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
+        continue;
+      }
+
+      // Mueve bonos programados al arranque de acción
+      rotateModsOnSpawn(state, ct.id);
+      S.current = spawnCard(state, ct.id, def);
     }
-
-    S.current = spawnCard(state, ct.id, def);
   }
 
-  // 2) Ejecutan este tick (EXEC + los INIT que acaban de terminar)
+  // 2) Ejecutan este tick (solo cuando COMIENZA EXEC)
   const execNow = [];
   const toPromote = [];
   for (const ct of combat.combatants) {
     const S  = ensureActorState(state, ct.id);
     const ci = S.current;
     if (!ci) continue;
+
     if (ci.phase === "init" && ci.ticks_left === 0) {
       ci.phase = "exec";
       ci.started_this_tick = true;
@@ -121,41 +153,29 @@ async function stepOnceInternal() {
   }
   const execOrdered = sortExec(execNow.concat(toPromote));
 
-  // 3) Perform EXEC
+  // 3) Perform EXEC (una sola vez al comenzar EXEC)
   for (const ci of execOrdered) {
-    if (!ci.started_this_tick) continue; 
+    if (!ci.started_this_tick) continue;
     const ct = combat.combatants.get(ci.actor);
-    const def = resolveQueued(ensureActorState(state, ci.actor).current
-      ? { kind:"simple", key: ensureActorState(state, ci.actor).current.actionKey } // key real no importa para perform
-      : null);
     const actor = ct?.actor;
     if (!actor) continue;
 
-    // Hallar def real por key (puede ser simple o especialización)
-    let defReal = null;
-    // Primero busca entre simples
-    defReal = listSimpleActions().find(d => d.key === ensureActorState(state, ci.actor).current?.actionKey) ?? null;
-    // Si no está, puede ser "spec:..."
+    // Buscar def por actionKey (simple o spec)
+    let defReal = listSimpleActions().find(d => d.key === ensureActorState(state, ci.actor).current?.actionKey) ?? null;
     if (!defReal && ensureActorState(state, ci.actor).current?.actionKey?.startsWith?.("spec:")) {
       const parts = ensureActorState(state, ci.actor).current.actionKey.split(":"); // spec:key:CT
-      defReal = makeSpecializationAction({ specKey: parts[1], category: "physical", CT: Number(parts[2]||2) }); // category solo para formar ticks; perform real se definió al encolar
+      defReal = makeSpecializationAction({ specKey: parts[1], category: "physical", CT: Number(parts[2]||2) });
     }
 
-    // Pero el perform que queremos es el del objeto encolado original → lo re-resolvemos:
-    const queued = resolveQueued(ensureActorState(state, ci.actor).lastQueuedDescriptor ?? null); // puede ser null
-    const perform = queued?.perform ?? defReal?.perform;
-    
     try {
-      await perform?.({
+      await defReal?.perform?.({
         actor,
         combat,
         combatant: ct,
         tick: state.tick,
-        startedThisTick: !!ci.started_this_tick
+        startedThisTick: true
       });
-    } catch (e) {
-      console.error("ATB perform error", e);
-    }
+    } catch (e) { console.error("ATB perform error", e); }
   }
 
   // 4) Reducir contadores y transicionar
@@ -179,10 +199,7 @@ async function stepOnceInternal() {
       }
     } else if (ci.phase === "rec") {
       ci.ticks_left = Math.max(0, ci.ticks_left - 1);
-      if (ci.ticks_left === 0) {
-        // Si la acción fue una Especialización CT3 con bono programado, ya quedó agendado
-        S.current = null;
-      }
+      if (ci.ticks_left === 0) S.current = null;
     }
   }
 
@@ -192,78 +209,84 @@ async function stepOnceInternal() {
   Hooks.callAll("tsdcAtbTick", { combat, tick: state.tick, state });
 }
 
-/* ===== Control ===== */
+/* ===== Control (solo GM) ===== */
 
 let _interval = null;
 
+// Estos dos quedan "deshabilitados" (para que nadie ponga el bucle automático)
 export async function atbStart() {
-  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate activo.");
-  const state = await readState();
-  if (state.running) return;
-  state.running = true;
-  await writeState(state);
-  _interval = setInterval(() => stepOnceInternal(), Math.max(250, Number(state.tickMs || 1000)));
+  return ui.notifications?.warn("El ATB funciona en modo manual. Usa “Avanzar 1 tick”. (Solo GM)");
 }
-export async function atbPause() {
-  const state = await readState();
-  state.running = false;
-  await writeState(state);
-  if (_interval) { clearInterval(_interval); _interval = null; }
+export async function atbPause() { /* no-op */ }
+
+export async function atbStep() {
+  if (!isDriver()) return ui.notifications?.warn("Solo el GM puede avanzar el ATB.");
+  await stepOnceInternal();
 }
-export async function atbStep() { await stepOnceInternal(); }
 export async function atbReset() {
-  await atbPause();
+  if (!isDriver()) return ui.notifications?.warn("Solo el GM puede resetear el ATB.");
   const c = getCombat(); if (!c) return;
   await c.unsetFlag(FLAG_SCOPE, FLAG_KEY);
   await writeState(defaultState());
 }
 
-/** Encolar helpers para selección actual */
-export async function enqueueSimpleForSelected(key) {
-  const c = getCombat(); if (!c) return;
-  for (const tk of canvas.tokens?.controlled ?? []) {
-    const ct = c.combatants.find(x => x.tokenId === tk.id);
-    if (ct) await enqueueSimple(ct.id, key);
-  }
-}
-export async function enqueueSpecForSelected({ specKey, category, CT }) {
-  const c = getCombat(); if (!c) return;
-  for (const tk of canvas.tokens?.controlled ?? []) {
-    const ct = c.combatants.find(x => x.tokenId === tk.id);
-    if (ct) await enqueueSpecialization(ct.id, { specKey, category, CT });
-  }
-}
-
-export const ATB_API = {
-  atbStart, atbPause, atbStep, atbReset,
-  enqueueSimple, enqueueSpecialization,
-  enqueueSimpleForSelected, enqueueSpecForSelected
-};
+/* ===== API de encolado ===== */
 
 function canPlanForCombatant(ct) {
   if (game.user?.isGM) return true;
   const actor = ct?.actor;
   if (!actor) return false;
-  // OWNER o control del token
   const level = actor.ownership?.[game.user.id] ?? 0;
   return level >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER || ct?.isOwner;
 }
 
-/* ===== API pública de encolado ===== */
-export async function enqueueSimple(combatantId, key) {
+export async function enqueueSimple(combatantId, key, targetTick=null) {
   const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
   const ct = c.combatants.get(combatantId);
   if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+
   const state = await readState();
-  ensureActorState(state, combatantId).queue.push({ kind:"simple", key });
+  const t = (targetTick == null) ? Number(state.planningTick || state.tick || 0) : Number(targetTick);
+  ensureActorState(state, combatantId).queue.push({
+    kind: "simple", key, targetTick: t, qorder: ++state.qOrderCounter
+  });
   await writeState(state);
 }
 
-export async function enqueueSpecialization(combatantId, { specKey, category, CT }) {
+export async function enqueueSpecialization(combatantId, { specKey, category, CT, targetTick=null }) {
   const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
   const ct = c.combatants.get(combatantId);
   if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+
   const state = await readState();
-  ensureActorState(state, combatantId).queue.push({ kind:"spec", specKey, category, CT:Number(CT||2) });
+  const t = (targetTick == null) ? Number(state.planningTick || state.tick || 0) : Number(targetTick);
+  ensureActorState(state, combatantId).queue.push({
+    kind:"spec", specKey, category, CT:Number(CT||2), targetTick: t, qorder: ++state.qOrderCounter
+  });
   await writeState(state);
 }
+
+export async function enqueueSimpleForSelected(key, targetTick=null) {
+  const c = getCombat(); if (!c) return;
+  for (const tk of canvas.tokens?.controlled ?? []) {
+    const ct = c.combatants.find(x => x.tokenId === tk.id);
+    if (ct) await enqueueSimple(ct.id, key, targetTick);
+  }
+}
+export async function enqueueSpecForSelected({ specKey, category, CT, targetTick=null }) {
+  const c = getCombat(); if (!c) return;
+  for (const tk of canvas.tokens?.controlled ?? []) {
+    const ct = c.combatants.find(x => x.tokenId === tk.id);
+    if (ct) await enqueueSpecialization(ct.id, { specKey, category, CT, targetTick });
+  }
+}
+
+export const ATB_API = {
+  // planeación
+  getPlanningTick, setPlanningTick, adjustPlanningTick,
+  // control
+  atbStart, atbPause, atbStep, atbReset,
+  // encolado
+  enqueueSimple, enqueueSpecialization,
+  enqueueSimpleForSelected, enqueueSpecForSelected
+};

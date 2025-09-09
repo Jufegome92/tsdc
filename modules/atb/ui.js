@@ -57,8 +57,15 @@ export async function openPlanDialogForSelection() {
     .map(a => `<option value="${a.key}">${a.label} (CT ${a.init_ticks + a.exec_ticks + a.rec_ticks})</option>`)
     .join("");
 
+  const planning = await ATB_API.getPlanningTick?.() ?? 0;
+
   const content = `
-    <form class="t-col" style="gap:10px;min-width:460px;">
+    <form class="t-col" style="gap:10px;min-width:520px;">
+      <div class="t-row" style="gap:10px; align-items:center;">
+        <label style="min-width:110px;">Tick destino</label>
+        <input type="number" name="targetTick" value="${planning}" min="0" style="width:100px;">
+      </div>
+
       <fieldset class="t-col" style="gap:6px;">
         <legend>Acción simple</legend>
         <div class="t-row" style="gap:8px;align-items:center;">
@@ -92,7 +99,7 @@ export async function openPlanDialogForSelection() {
 
   const dlg = new DialogV2({
     window: { title: "Planear acciones (selección actual)" },
-    position: { width: 560 },
+    position: { width: 600 },
     content,
     buttons: [
       {
@@ -103,12 +110,13 @@ export async function openPlanDialogForSelection() {
             ? dialog.element
             : (dialog?.element?.[0] || dialog?.element?.el || null);
           if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
-          const form = root.querySelector("form");
+          const form  = root.querySelector("form");
           const key   = String(form.elements.simpleKey?.value || "");
-          if (!key) return ui.notifications?.warn("Elige una acción simple.");
           const times = Math.max(1, Number(form.elements.simpleTimes?.value || 1));
-          for (let i = 0; i < times; i++) await ATB_API.enqueueSimpleForSelected(key);
-          ui.notifications?.info(`Encolado ${key} × ${times}`);
+          const tTick = Number(form.elements.targetTick?.value ?? planning);
+          if (!key) return ui.notifications?.warn("Elige una acción simple.");
+          for (let i = 0; i < times; i++) await ATB_API.enqueueSimpleForSelected(key, tTick);
+          ui.notifications?.info(`Encolado ${key} × ${times} para tick ${tTick}`);
         }
       },
       {
@@ -119,13 +127,14 @@ export async function openPlanDialogForSelection() {
             ? dialog.element
             : (dialog?.element?.[0] || dialog?.element?.el || null);
           if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
-          const form = root.querySelector("form");
+          const form  = root.querySelector("form");
           const specKey  = String(form.elements.specKey?.value || "").trim();
-          if (!specKey) return ui.notifications?.warn("Ingresa la clave de la especialización.");
           const category = String(form.elements.specCat?.value || "physical");
           const CT       = Number(form.elements.specCT?.value || 2);
-          await ATB_API.enqueueSpecForSelected({ specKey, category, CT });
-          ui.notifications?.info(`Encolada Especialización ${specKey} (cat=${category}, CT=${CT}).`);
+          const tTick    = Number(form.elements.targetTick?.value ?? planning);
+          if (!specKey) return ui.notifications?.warn("Ingresa la clave de la especialización.");
+          await ATB_API.enqueueSpecForSelected({ specKey, category, CT, targetTick: tTick });
+          ui.notifications?.info(`Encolada Especialización ${specKey} (CT=${CT}) para tick ${tTick}.`);
         }
       },
       { label: "Cerrar", action: "close" }
@@ -142,10 +151,9 @@ export async function openPlanDialogForSelection() {
     const sel = root.querySelector('select[name="simpleKey"]');
     const ct  = root.querySelector('select[name="specCT"]');
     const refresh = () => renderActionPreview(root, sel?.value, Number(ct?.value || 2));
-
     sel?.addEventListener("change", refresh);
     ct?.addEventListener("change", refresh);
-    refresh(); // primera vez
+    refresh();
   });
 }
 
@@ -153,20 +161,21 @@ async function renderActionPreview(root, actionId, chosenCT = 2) {
   const slot = root.querySelector("[data-card-preview]");
   if (!slot) return;
   const SIMPLE_TO_ACTIONS = {
-   move: "mover",
-   attack: "ataque",
-   interact: "interactuar",
-   defend: "defender",
-   specialization: "especializacion"
- };
+    move: "mover",
+    attack: "ataque",
+    interact: "interactuar",
+    defend: "defender",
+    specialization: "especializacion"
+  };
   const mapped = SIMPLE_TO_ACTIONS[actionId] ?? actionId;
   const def = ACTIONS[mapped];
   if (!def) { slot.innerHTML = ""; return; }
 
   const ct = def.ctOptions ? (def.ctOptions[chosenCT] || def.ctOptions[2]) : def.ct;
+
   const rt =
     foundry.applications?.handlebars?.renderTemplate
-    ?? globalThis.renderTemplate; // fallback
+    ?? globalThis.renderTemplate;
 
   if (!rt) {
     console.error("No hay función renderTemplate disponible.");
@@ -174,9 +183,6 @@ async function renderActionPreview(root, actionId, chosenCT = 2) {
     return;
   }
 
-  const html = await rt(
-    "systems/tsdc/templates/cards/action-card.hbs",
-    { ...def, ct }
-  );
+  const html = await rt("systems/tsdc/templates/cards/action-card.hbs", { ...def, ct });
   slot.innerHTML = html;
 }

@@ -1,6 +1,6 @@
 // systems/tsdc/modules/atb/tracker.js
 import { listSimpleActions, makeSpecializationAction } from "./actions.js";
-import { openPlanDialogForSelection } from "./ui.js"; 
+import { openPlanDialogForSelection } from "./ui.js";
 import { ATB_API } from "./engine.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -121,12 +121,12 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
     id: "tsdc-atb-tracker",
     title: "ATB Tracker",
     window: { icon: "fa-solid fa-table-columns" },
-    position: { width: 860, height: "auto" },
+    position: { width: 900, height: "auto" },
     actions: {
       plan : ATBTrackerApp.onPlan,
       close: ATBTrackerApp.onClose,
-      start: ATBTrackerApp.onStart,
-      pause: ATBTrackerApp.onPause,
+      "tick-prev": ATBTrackerApp.onTickPrev,
+      "tick-next": ATBTrackerApp.onTickNext,
       step : ATBTrackerApp.onStep,
       reset: ATBTrackerApp.onReset
     }
@@ -136,29 +136,13 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
     body: { template: "systems/tsdc/templates/apps/atb-tracker.hbs" }
   };
 
-  // acciones (deben ser estáticas; `this` apunta a la instancia)
-  static onPlan(_ev, _target) {
-    openPlanDialogForSelection();
-  }
-  static onClose(_ev, _target) {
-    this.close();
-  }
+  static onPlan() { openPlanDialogForSelection(); }
+  static onClose() { this.close(); }
 
-  static onStart(_ev, _target) {
-    ATB_API.atbStart();
-  }
-
-  static onPause(_ev, _target) {
-    ATB_API.atbPause();
-  }
-
-  static onStep(_ev, _target)  {
-    ATB_API.atbStep();
-  }
-  
-  static onReset(_ev, _target) {
-    ATB_API.atbReset();
-  }
+  static async onTickPrev() { await ATB_API.adjustPlanningTick(-1); }
+  static async onTickNext() { await ATB_API.adjustPlanningTick(+1); }
+  static async onStep()     { await ATB_API.atbStep(); }
+  static async onReset()    { await ATB_API.atbReset(); }
 
   constructor(options = {}) {
     super(options);
@@ -176,34 +160,27 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   async _prepareContext(_options) {
-    // 1) Lee el combate y el estado persistido en flags
     const c = game.combat ?? null;
-    const state = getState() ?? { actors: {} };
+    const state = c ? (await c.getFlag(FLAG_SCOPE, FLAG_KEY)) ?? { actors:{} } : { actors:{} };
+    const planningTick = Number(state.planningTick ?? 0);
 
-    // 2) Horizonte de ticks a mostrar (ajústalo a gusto)
     const horizon = 12;
+    const cols = Array.from({ length: horizon }, (_, i) => i + 1);
 
-    // 3) Columnas para la cabecera 1..horizon
-    const cols = Array.from({ length: horizon }, (_ , i) => i + 1);
-
-    // 4) Construye las filas a partir de los combatientes actuales
     const rows = [];
     if (c && c.combatants) {
-      const list = c.combatants.contents ?? Array.from(c.combatants); // compatible
-      for (const comb of list) {
-        rows.push(buildRow(c, state, comb.id, horizon));
-      }
+      const list = c.combatants.contents ?? Array.from(c.combatants);
+      for (const comb of list) rows.push(buildRow(c, state, comb.id, horizon));
     }
-
-    // 5) Si no hay combate o no hay filas, muestra un placeholder
     if (!rows.length) {
-      rows.push({
-        name: "—",
-        segments: [{ label: "Libre", phase: "free", gridColumn: `1 / span ${horizon}` }]
-      });
+      rows.push({ name: "—", segments: [{ label: "Libre", phase: "free", gridColumn: `1 / span ${horizon}` }] });
     }
 
-    return { horizon, cols, rows };
+    return {
+      horizon, cols, rows,
+      planningTick,
+      isGM: !!game.user?.isGM
+    };
   }
 
   static open() {
@@ -212,10 +189,6 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
     return this._instance;
   }
 }
-
-/* ===========================
- * Botón y auto-open
- * =========================== */
 
 export function registerAtbTrackerButton() {
   Hooks.on("getCombatTrackerHeaderButtons", (_tracker, buttons) => {
@@ -231,7 +204,6 @@ export function registerAtbTrackerButton() {
 }
 
 export function registerAtbAutoOpen() {
-  // 🔧 Unifico canal y payload
   game.socket?.on("system.tsdc", (data) => {
     if (data?.action === "open-atb-tracker") ATBTrackerApp.open();
   });
@@ -253,5 +225,4 @@ export function registerAtbAutoOpen() {
   });
 }
 
-// (si exportabas la clase para debug, lo puedes dejar igual)
 try { window.tsdcatb = { ...(window.tsdcatb ?? {}), ATBTrackerApp }; } catch {}

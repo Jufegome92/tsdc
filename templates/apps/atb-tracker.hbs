@@ -1,6 +1,23 @@
 <div class="tsdc-atb-tracker">
   <header class="tt-head">
     <div class="tt-title">ATB — Tracker</div>
+
+    <div class="tt-controls" style="display:flex; align-items:center; gap:10px;">
+      <button type="button" data-action="tick-prev" title="Tick de planeación anterior">‹</button>
+      <div>Plan: <b>{{planningTick}}</b></div>
+      <button type="button" data-action="tick-next" title="Tick de planeación siguiente">›</button>
+
+      {{#if isGM}}
+        <span style="margin-left:16px;"></span>
+        <button type="button" data-action="step" class="t-prim">Avanzar 1 tick</button>
+        <button type="button" data-action="reset" class="t-muted">Reset</button>
+      {{/if}}
+
+      <span style="flex:1;"></span>
+      <button type="button" data-action="plan">Planear</button>
+      <button type="button" data-action="close">Cerrar</button>
+    </div>
+
     <div class="tt-ticks" style="--cols: {{horizon}}">
       {{#each cols as |t|}}<div class="tt-tick">{{t}}</div>{{/each}}
     </div>
@@ -20,16 +37,4 @@
       </div>
     {{/each}}
   </section>
-
-  <footer class="tt-foot">
-    <div class="tt-foot">
-      <button type="button" data-action="start">▶ Iniciar</button>
-      <button type="button" data-action="pause">⏸ Pausa</button>
-      <button type="button" data-action="step">⏭️ Avanzar 1</button>
-      <button type="button" data-action="reset">↺ Reset</button>
-      <span style="flex:1"></span>
-      <button type="button" data-action="plan">Planear</button>
-      <button type="button" data-action="close">Cerrar</button>
-    </div>
-  </footer>
 </div>
