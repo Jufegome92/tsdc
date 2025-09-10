@@ -209,3 +209,26 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
 .tsdc-card .pill { background:#eee; border:1px solid #bbb; border-radius:6px; padding:4px 6px; }
 .tsdc-card .box { min-height:70px; border:1px solid #bbb; border-radius:8px; background:#fff; padding:8px; }
 .tsdc-card .ico { width:20px; height:20px; display:inline-block; background:#0001; border-radius:4px; }
+
+.window-header .header-actions a.header-control[data-action="tsdc-grimoire-header"] i {
+  font-size: 14px;
+}
+
+/* Botón inline del Grimorio dentro de la hoja */
+.tsdc-grimoire-inline {
+  margin-left: auto;           /* empuja a la derecha si el contenedor es flex */
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .25rem .5rem;
+  border: 1px solid var(--color-border-light-highlight, rgba(255,255,255,.2));
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+  opacity: .9;
+}
+
+.tsdc-grimoire-inline:hover {
+  opacity: 1;
+  filter: brightness(1.1);
+}

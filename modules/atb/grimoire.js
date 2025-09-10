@@ -75,7 +75,7 @@ function collectLearnedAptitudes(actor) {
 class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: "tsdc-grimoire",
-    window: { icon: "fa-solid fa-book-skull" },
+    window: { icon: "fas fa-book" },
     position: { width: 920, height: "auto" },
     actions: {
       close: GrimoireApp.onClose,
@@ -248,19 +248,31 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   static openForActor(actorId) {
-    if (!actorId) return ui.notifications?.warn("Selecciona un token o abre una hoja de actor.");
+    const actor = game.actors?.get?.(actorId);
+    if (!actor) return ui.notifications?.warn("Actor no encontrado.");
+
+    // 👇 Regla de permisos:
+    const canOpen = game.user.isGM ||
+                    actor.isOwner ||
+                    actor.testUserPermission?.(game.user, "OWNER") ||
+                    actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
+
+    if (!canOpen) {
+      return ui.notifications?.warn("No puedes abrir el grimorio de otro personaje.");
+    }
+
     if (!this._instances) this._instances = new Map();
     let app = this._instances.get(actorId);
     if (!app) {
       app = new this(actorId);
       this._instances.set(actorId, app);
-      app.render(true);
-    } else app.render(true);
+    }
+    app.render(true);
     return app;
   }
 
   static openForCurrentUser() {
-    // 1) token controlado
+    // 1) token controlado por el usuario
     const tk = canvas.tokens?.controlled?.[0] ?? null;
     if (tk?.actor) return this.openForActor(tk.actor.id);
     // 2) user.character
@@ -281,7 +293,7 @@ export function registerGrimoireGlobalControl() {
     tokenCtl.tools.unshift({
       name: "tsdc-grimoire",
       title: "Abrir Necronomicón",
-      icon: "fa-solid fa-book-skull",
+      icon: "fas fa-book", 
       visible: true,
       onClick: () => GrimoireApp.openForCurrentUser(),
       button: true
@@ -293,65 +305,133 @@ export function registerGrimoireGlobalControl() {
 export function registerGrimoireTokenHUD() {
   Hooks.on("renderTokenHUD", (hud, html, data) => {
     try {
-      // 1) Actor id robusto
-      const actorId =
-        hud?.object?.actor?.id ??
-        data?.actorId ??
-        data?.actor?._id ??
-        null;
-      if (!actorId) return;
+      const actor = hud?.object?.actor ?? game.actors?.get?.(data?.actorId);
+      if (!actor) return;
 
-      // 2) Raíz compatible (jQuery o DOM)
-      const root =
-        (window.jQuery && html instanceof window.jQuery) ? html[0] :
-        (html?.[0] || html?.element || html?.el || html);
+      const canSee = game.user.isGM || actor.isOwner ||
+                     actor.testUserPermission?.(game.user, "OWNER") ||
+                     actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
+      if (!canSee) return;
 
+      const root = (window.jQuery && html instanceof window.jQuery) ? html[0] :
+                   (html?.[0] || html?.element || html?.el || html);
       if (!(root instanceof HTMLElement)) return;
 
-      // 3) Columna derecha del HUD (v10/v11/v12/v13)
-      const rightCol =
-        root.querySelector(".col.right") ||        // clásico
-        root.querySelector(".right")      ||        // fallback
-        root;                                      // último recurso: root
+      const colRight = root.querySelector?.(".col.right") || root.querySelector?.(".right-col") || root;
+      if (!colRight) return;
 
-      // 4) Evitar botón duplicado si el hook se dispara varias veces
-      if (rightCol.querySelector('[data-tsdc-grimoire="btn"]')) return;
+      // Evitar duplicados
+      if (colRight.querySelector?.('[data-action="tsdc-grimoire"]')) return;
 
-      // 5) Crear botón compatible sin jQuery
       const btn = document.createElement("div");
-      btn.className = "control-icon";
-      btn.setAttribute("data-tsdc-grimoire", "btn");
-      btn.title = "Necronomicón";
-      btn.innerHTML = `<i class="fa-solid fa-book-skull"></i>`;
-
-      btn.addEventListener("click", () => GrimoireApp.openForActor(actorId));
-
-      rightCol.appendChild(btn);
-    } catch (e) {
-      console.error("TSDC | Grimoire token HUD error", e);
-    }
+      btn.classList.add("control-icon");
+      btn.dataset.action = "tsdc-grimoire";
+      btn.title = "Abrir Grimorio";
+      btn.innerHTML = `<i class="fas fa-book"></i>`;
+      btn.onclick = () => GrimoireApp.openForActor(actor.id);
+      colRight.appendChild(btn);
+    } catch (e) { console.error("TSDC | Grimoire token HUD error", e); }
   });
 }
 
 
 export function registerGrimoireButton() {
-  Hooks.on("getApplicationHeaderButtons", (app, buttons) => {
+  Hooks.on("getSceneControlButtons", (controls) => {
+    const tokenCtl = controls.find(c => c.name === "token");
+    if (!tokenCtl) return;
+
+    // Evitar duplicados
+    if (tokenCtl.tools?.some?.(t => t.name === "tsdc-grimoire")) return;
+
+    tokenCtl.tools.push({
+      name: "tsdc-grimoire",
+      title: "Abrir Necronomicón",
+      icon: "fas fa-book",
+      visible: true,
+      onClick: () => GrimoireApp.openForCurrentUser(),
+      button: true
+    });
+  });
+}
+
+export function registerGrimoireOnActorSheetHeader() {
+  Hooks.on("getActorSheetHeaderButtons", (sheet, buttons) => {
     try {
-      const isCombatTracker = app instanceof ui.combat.constructor || app.constructor?.name?.includes("CombatTracker");
-      if (!isCombatTracker) return;
+      const actor = sheet?.actor; if (!actor) return;
+      const canSee = game.user.isGM || actor.isOwner ||
+                     actor.testUserPermission?.(game.user, "OWNER") ||
+                     actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
+      if (!canSee) return;
+
+      if (buttons.some(b => b.class === "tsdc-grimoire")) return;
       buttons.unshift({
         class: "tsdc-grimoire",
         label: "Libro",
-        icon: "fa-solid fa-book-skull",
-        onclick: () => GrimoireApp.openForCurrentUser()
+        icon: "fas fa-book",
+        onclick: () => GrimoireApp.openForActor(actor.id)
       });
+    } catch (e) { console.error("TSDC | Grimoire sheet header button error", e); }
+  });
+}
+
+export function registerGrimoireLinkInActorSheet() {
+  Hooks.on("renderActorSheet", (app, html) => {
+    try {
+      const actor = app?.actor;
+      if (!actor) return;
+
+      const canSee = game.user.isGM ||
+                     actor.isOwner ||
+                     actor.testUserPermission?.(game.user, "OWNER") ||
+                     actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
+      if (!canSee) return;
+
+      // Evita duplicados en cualquier sitio
+      const rootEl = (html?.[0] || html);
+      const winEl  = (app.element?.closest?.(".window-app")) || rootEl?.closest?.(".window-app");
+      if (winEl?.querySelector?.('[data-action="tsdc-grimoire-header"]') ||
+          rootEl?.querySelector?.('[data-action="tsdc-grimoire-inline"]')) return;
+
+      const openMine = (ev) => {
+        ev?.preventDefault?.();
+        GrimoireApp.openForActor(actor.id);
+      };
+
+      // 1) Intenta header (window header siempre existe)
+      const header = winEl?.querySelector?.(".window-header");
+      if (header) {
+        // si hay grupo de acciones, úsalo; si no, crea uno
+        let actions = header.querySelector(".header-actions");
+        if (!actions) {
+          actions = document.createElement("div");
+          actions.className = "header-actions";
+          header.appendChild(actions);
+        }
+        const btn = document.createElement("a");
+        btn.className = "header-control";
+        btn.dataset.action = "tsdc-grimoire-header";
+        btn.title = "Abrir Necronomicón";
+        btn.innerHTML = `<i class="fas fa-book"></i><span style="margin-left:.35rem;">Libro</span>`;
+        btn.addEventListener("click", openMine);
+        actions.prepend(btn); // visible
+        return;
+      }
+
+      // 2) Fallback: enlace dentro del sheet
+      const container = (rootEl instanceof HTMLElement) ? rootEl : null;
+      if (!container) return;
+      const link = document.createElement("a");
+      link.setAttribute("data-action", "tsdc-grimoire-inline");
+      link.setAttribute("role", "button");
+      link.title = "Abrir tu Grimorio";
+      link.className = "tsdc-grimoire-inline";
+      link.innerHTML = `<i class="fas fa-book"></i> Necronomicón`;
+      link.addEventListener("click", openMine);
+      container.prepend(link);
     } catch (e) {
-      console.error("TSDC | Grimoire header button error", e);
+      console.error("TSDC | Error insertando botón de Grimorio", e);
     }
   });
-  // Macro helper
-  game.transcendence = game.transcendence || {};
-  game.transcendence.openGrimoire = () => GrimoireApp.openForCurrentUser();
 }
 
 try { window.tsdcatb = { ...(window.tsdcatb ?? {}), GrimoireApp }; } catch {}

@@ -169,8 +169,11 @@ async function stepOnceInternal() {
       ci.started_this_tick = true;
       ci.ticks_left = Math.max(0, ci.E);
       toPromote.push(ci);
+      continue;   
     }
-    if (ci.phase === "exec" && ci.started_this_tick) execNow.push(ci);
+    if (ci.phase === "exec" && ci.started_this_tick) {
+      execNow.push(ci);
+    }
   }
   const execOrdered = sortExec(execNow.concat(toPromote));
 
@@ -287,16 +290,31 @@ export async function enqueueSpecialization(combatantId, { specKey, category, CT
   await writeState(state);
 }
 
-export async function enqueueSimpleForSelected(key, targetTick=null) {
+export async function enqueueSimpleForSelected(key, targetTick = null) {
   const c = getCombat(); if (!c) return;
-  for (const tk of canvas.tokens?.controlled ?? []) {
+  const sel = canvas.tokens?.controlled ?? [];
+  if (!sel.length) {
+    // fallback a user.character
+    const a = game.user?.character ?? null;
+    if (a) return enqueueSimpleForActor(a.id, key, targetTick);
+    return ui.notifications?.warn("No hay token seleccionado ni personaje asignado.");
+  }
+  for (const tk of sel) {
     const ct = c.combatants.find(x => x.tokenId === tk.id);
     if (ct) await enqueueSimple(ct.id, key, targetTick);
   }
 }
-export async function enqueueSpecForSelected({ specKey, category, CT, targetTick=null }) {
+
+
+export async function enqueueSpecForSelected({ specKey, category, CT, targetTick = null }) {
   const c = getCombat(); if (!c) return;
-  for (const tk of canvas.tokens?.controlled ?? []) {
+  const sel = canvas.tokens?.controlled ?? [];
+  if (!sel.length) {
+    const a = game.user?.character ?? null;
+    if (a) return enqueueSpecForActor(a.id, { specKey, category, CT, targetTick });
+    return ui.notifications?.warn("No hay token seleccionado ni personaje asignado.");
+  }
+  for (const tk of sel) {
     const ct = c.combatants.find(x => x.tokenId === tk.id);
     if (ct) await enqueueSpecialization(ct.id, { specKey, category, CT, targetTick });
   }
@@ -309,5 +327,6 @@ export const ATB_API = {
   atbStart, atbPause, atbStep, atbReset,
   // encolado
   enqueueSimple, enqueueSpecialization,
+  enqueueSimpleForSelected, enqueueSpecForSelected,
   enqueueSimpleForActor, enqueueSpecForActor
 };
