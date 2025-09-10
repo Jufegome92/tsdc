@@ -232,3 +232,5 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
   opacity: 1;
   filter: brightness(1.1);
 }
+
+.tsdc-grimoire .window-content { overflow-y: auto; }

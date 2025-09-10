@@ -73,10 +73,11 @@ function collectLearnedAptitudes(actor) {
 }
 
 class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
-  static DEFAULT_OPTIONS = {
+  static DEFAULT_OPTIONS = foundry.utils.mergeObject(super.DEFAULT_OPTIONS, {
     id: "tsdc-grimoire",
-    window: { icon: "fas fa-book" },
-    position: { width: 920, height: "auto" },
+    classes: ["tsdc", "grimoire"],
+    window: { icon: "fas fa-book" , title: "Grimorio", resizable: true},
+    position: { width: 920, height: 640 },
     actions: {
       close: GrimoireApp.onClose,
       "tick-prev": GrimoireApp.onTickPrev,
@@ -87,7 +88,7 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
       "plan-maneuver": GrimoireApp.onPlanManeuver,
       "plan-aptitude": GrimoireApp.onPlanAptitude
     }
-  };
+  });
 
   static PARTS = {
     body: { template: "systems/tsdc/templates/apps/grimoire.hbs" }
@@ -290,47 +291,39 @@ export function registerGrimoireGlobalControl() {
   Hooks.on("getSceneControlButtons", (controls) => {
     const tokenCtl = controls.find(c => c.name === "token");
     if (!tokenCtl) return;
+    if (tokenCtl.tools.some(t => t.name === "tsdc-grimoire")) return;
     tokenCtl.tools.unshift({
       name: "tsdc-grimoire",
-      title: "Abrir Necronomicón",
+      title: "Abrir Grimorio",
       icon: "fas fa-book", 
       visible: true,
-      onClick: () => GrimoireApp.openForCurrentUser(),
-      button: true
+      onClick: () => GrimoireApp.openForCurrentUser()
     });
   });
 }
 
 // Botón en el HUD del token
 export function registerGrimoireTokenHUD() {
-  Hooks.on("renderTokenHUD", (hud, html, data) => {
-    try {
-      const actor = hud?.object?.actor ?? game.actors?.get?.(data?.actorId);
-      if (!actor) return;
+  // HUD clásico
+  Hooks.on("renderTokenHUD", (hud, html) => {
+    if (html.find('[data-action="tsdc-grimoire"]').length) return;
+    const btn = $(`<div class="control-icon" data-action="tsdc-grimoire" title="Grimorio">
+      <i class="fas fa-book"></i>
+    </div>`);
+    btn.on("click", () => GrimoireApp.openForToken(hud.object));
+    html.find(".col.right").append(btn);
+  });
 
-      const canSee = game.user.isGM || actor.isOwner ||
-                     actor.testUserPermission?.(game.user, "OWNER") ||
-                     actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
-      if (!canSee) return;
-
-      const root = (window.jQuery && html instanceof window.jQuery) ? html[0] :
-                   (html?.[0] || html?.element || html?.el || html);
-      if (!(root instanceof HTMLElement)) return;
-
-      const colRight = root.querySelector?.(".col.right") || root.querySelector?.(".right-col") || root;
-      if (!colRight) return;
-
-      // Evitar duplicados
-      if (colRight.querySelector?.('[data-action="tsdc-grimoire"]')) return;
-
-      const btn = document.createElement("div");
-      btn.classList.add("control-icon");
-      btn.dataset.action = "tsdc-grimoire";
-      btn.title = "Abrir Grimorio";
-      btn.innerHTML = `<i class="fas fa-book"></i>`;
-      btn.onclick = () => GrimoireApp.openForActor(actor.id);
-      colRight.appendChild(btn);
-    } catch (e) { console.error("TSDC | Grimoire token HUD error", e); }
+  // HUD V2 (algunas builds de V12+)
+  Hooks.on("renderTokenHUDV2", (hud, element) => {
+    if (element.querySelector('[data-action="tsdc-grimoire"]')) return;
+    const btn = document.createElement("div");
+    btn.className = "control-icon";
+    btn.dataset.action = "tsdc-grimoire";
+    btn.title = "Grimorio";
+    btn.innerHTML = `<i class="fas fa-book"></i>`;
+    btn.addEventListener("click", () => GrimoireApp.openForToken(hud.object));
+    element.querySelector(".col.right")?.appendChild(btn);
   });
 }
 
@@ -345,7 +338,7 @@ export function registerGrimoireButton() {
 
     tokenCtl.tools.push({
       name: "tsdc-grimoire",
-      title: "Abrir Necronomicón",
+      title: "Abrir Grimorio",
       icon: "fas fa-book",
       visible: true,
       onClick: () => GrimoireApp.openForCurrentUser(),
@@ -355,22 +348,24 @@ export function registerGrimoireButton() {
 }
 
 export function registerGrimoireOnActorSheetHeader() {
-  Hooks.on("getActorSheetHeaderButtons", (sheet, buttons) => {
-    try {
-      const actor = sheet?.actor; if (!actor) return;
-      const canSee = game.user.isGM || actor.isOwner ||
-                     actor.testUserPermission?.(game.user, "OWNER") ||
-                     actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
-      if (!canSee) return;
+  // ApplicationV2 (tu hoja es V2)
+  Hooks.on("renderActorSheetV2", (app) => {
+    // evita duplicar
+    if (app.element?.querySelector?.(".header-button.tsdc-grimoire")) return;
+    app.addHeaderButton({
+      class: "tsdc-grimoire",
+      label: "Grimorio",
+      icon: "fas fa-book",
+      onclick: () => GrimoireApp.openForActor(app.actor)
+    });
+  });
 
-      if (buttons.some(b => b.class === "tsdc-grimoire")) return;
-      buttons.unshift({
-        class: "tsdc-grimoire",
-        label: "Libro",
-        icon: "fas fa-book",
-        onclick: () => GrimoireApp.openForActor(actor.id)
-      });
-    } catch (e) { console.error("TSDC | Grimoire sheet header button error", e); }
+  // Fallback V1 por si abres otra hoja no V2
+  Hooks.on("renderActorSheet", (app, html) => {
+    if (html.closest(".app").find(".header-button.tsdc-grimoire").length) return;
+    const a = $(`<a class="header-button tsdc-grimoire"><i class="fas fa-book"></i> Libro</a>`);
+    a.on("click", () => GrimoireApp.openForActor(app.actor));
+    html.closest(".app").find(".window-header .window-title").after(a);
   });
 }
 
