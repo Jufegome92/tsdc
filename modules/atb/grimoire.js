@@ -291,27 +291,68 @@ export function registerGrimoireGlobalControl() {
 
 // Botón en el HUD del token
 export function registerGrimoireTokenHUD() {
-  Hooks.on("renderTokenHUD", (_hud, html, data) => {
+  Hooks.on("renderTokenHUD", (hud, html, data) => {
     try {
-      const actorId = data?.actorId ?? data?.actor?._id ?? null;
+      // 1) Actor id robusto
+      const actorId =
+        hud?.object?.actor?.id ??
+        data?.actorId ??
+        data?.actor?._id ??
+        null;
       if (!actorId) return;
-      const btn = $(`<div class="control-icon" title="Necronomicón"><i class="fa-solid fa-book-skull"></i></div>`);
-      btn.on("click", () => GrimoireApp.openForActor(actorId));
-      html.find(".col.right").append(btn);
+
+      // 2) Raíz compatible (jQuery o DOM)
+      const root =
+        (window.jQuery && html instanceof window.jQuery) ? html[0] :
+        (html?.[0] || html?.element || html?.el || html);
+
+      if (!(root instanceof HTMLElement)) return;
+
+      // 3) Columna derecha del HUD (v10/v11/v12/v13)
+      const rightCol =
+        root.querySelector(".col.right") ||        // clásico
+        root.querySelector(".right")      ||        // fallback
+        root;                                      // último recurso: root
+
+      // 4) Evitar botón duplicado si el hook se dispara varias veces
+      if (rightCol.querySelector('[data-tsdc-grimoire="btn"]')) return;
+
+      // 5) Crear botón compatible sin jQuery
+      const btn = document.createElement("div");
+      btn.className = "control-icon";
+      btn.setAttribute("data-tsdc-grimoire", "btn");
+      btn.title = "Necronomicón";
+      btn.innerHTML = `<i class="fa-solid fa-book-skull"></i>`;
+
+      btn.addEventListener("click", () => GrimoireApp.openForActor(actorId));
+
+      rightCol.appendChild(btn);
     } catch (e) {
       console.error("TSDC | Grimoire token HUD error", e);
     }
   });
 }
 
-// Macro helper
-try {
+
+export function registerGrimoireButton() {
+  Hooks.on("getApplicationHeaderButtons", (app, buttons) => {
+    try {
+      const isCombatTracker = app instanceof ui.combat.constructor || app.constructor?.name?.includes("CombatTracker");
+      if (!isCombatTracker) return;
+      buttons.unshift({
+        class: "tsdc-grimoire",
+        label: "Libro",
+        icon: "fa-solid fa-book-skull",
+        onclick: () => GrimoireApp.openForCurrentUser()
+      });
+    } catch (e) {
+      console.error("TSDC | Grimoire header button error", e);
+    }
+  });
+  // Macro helper
   game.transcendence = game.transcendence || {};
-  game.transcendence.openGrimoire = (actorId=null) => {
-    if (actorId) return GrimoireApp.openForActor(actorId);
-    return GrimoireApp.openForCurrentUser();
-  };
-} catch { }
+  game.transcendence.openGrimoire = () => GrimoireApp.openForCurrentUser();
+}
 
 try { window.tsdcatb = { ...(window.tsdcatb ?? {}), GrimoireApp }; } catch {}
 

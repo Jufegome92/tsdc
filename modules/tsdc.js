@@ -16,7 +16,7 @@ import { applyBackgroundStartingCompetences } from "./features/affinities/index.
 import { registerAtbTrackerButton, registerAtbAutoOpen } from "./atb/tracker.js";
 import { registerAtbUI } from "./atb/ui.js";
 import { ATB_API } from "./atb/engine.js";
-import { registerGrimoireButton } from "./atb/grimoire.js";
+import { registerGrimoireButton, registerGrimoireTokenHUD, registerGrimoireGlobalControl } from "./atb/grimoire.js";
 
 const _guardWizardOpen = new Set();
 
@@ -98,7 +98,8 @@ Hooks.once("ready", () => {
   registerAtbUI();
   registerAtbTrackerButton();    
   registerAtbAutoOpen();
-  registerGrimoireTokenHUD(); 
+  registerGrimoireButton();
+  registerGrimoireTokenHUD();
   registerGrimoireGlobalControl();
   game.transcendence = game.transcendence || {};
   game.transcendence.atb = ATB_API;
