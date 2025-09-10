@@ -201,7 +201,7 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
 .tsdc-atb-tracker .tt-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
 .tsdc-atb-tracker .tt-foot button { padding: 4px 10px; }
 
-/* Card básica */
+/* ===== Cartas base ===== */
 .tsdc-card { border:2px solid #111; border-radius:12px; padding:10px; background:#f8f8f8; color:#111; }
 .tsdc-card .c-head { text-align:center; font-weight:800; margin-bottom:6px; letter-spacing:0.5px; }
 .tsdc-card .row { display:grid; grid-template-columns: 20px 1fr auto; align-items:center; gap:8px; padding:2px 0; }
@@ -210,13 +210,15 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
 .tsdc-card .box { min-height:70px; border:1px solid #bbb; border-radius:8px; background:#fff; padding:8px; }
 .tsdc-card .ico { width:20px; height:20px; display:inline-block; background:#0001; border-radius:4px; }
 
-.window-header .header-actions a.header-control[data-action="tsdc-grimoire-header"] i {
-  font-size: 14px;
+/* ===== Botón header (icono libro) ===== */
+.window-header .header-actions a.header-control[data-action="tsdc-grimoire-header"] {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .1rem .4rem; border: 1px solid rgba(255,255,255,.15); border-radius: 6px;
 }
 
-/* Botón inline del Grimorio dentro de la hoja */
+/* ===== Botón inline del Grimorio dentro de la hoja ===== */
 .tsdc-grimoire-inline {
-  margin-left: auto;           /* empuja a la derecha si el contenedor es flex */
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: .4rem;
@@ -227,10 +229,43 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
   cursor: pointer;
   opacity: .9;
 }
+.tsdc-grimoire-inline:hover { opacity: 1; filter: brightness(1.1); }
 
-.tsdc-grimoire-inline:hover {
-  opacity: 1;
-  filter: brightness(1.1);
+/* ===== HUD: icono grimorio ===== */
+.control-icon.tsdc-grimoire i { line-height: 28px; }
+
+/* ===== Grimorio: scroll consistente ===== */
+/* 1) La ventana contenedora NO scrollea (lo hace el cuerpo interno) */
+.app:has(.tsdc-grimoire) .window-content {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
 }
 
-.tsdc-grimoire .window-content { overflow-y: auto; }
+.tsdc-grimoire .g-head {
+  flex: 0 0 auto;
+}
+
+/* 2) El cuerpo del grimorio SÍ scrollea (añadiste <div class="g-body"> en el HBS) */
+.tsdc-grimoire .g-body {
+  flex: 1 1 auto;
+  min-height: 0;  
+  overflow: auto;
+}
+
+/* 3) Asegura layout válido si algún tema usa display:contents */
+.tsdc-grimoire { display: block; }
+
+.control-icon.tsdc-grimoire {
+  width: 28px;
+  height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.control-icon.tsdc-grimoire i { line-height: 28px; font-size: 14px; }
+
+.transcendence-grimoire {
+  overflow-y: auto;
+  max-height: 80vh; /* para que no salga de la pantalla */
+}

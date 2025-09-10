@@ -1,7 +1,48 @@
 // modules/atb/grimoire.js
+console.log("TSDC | grimoire.js cargado");
+
+(function ensureStyle() {
+  const ID = "tsdc-grimoire-style";
+  if (document.getElementById(ID)) return;
+  const s = document.createElement("style");
+  s.id = ID;
+  s.textContent = `
+    /* Fuerza scroll en el grimorio, independientemente del tema */
+    .tsdc.grimoire,
+    .tsdc.grimoire .window-content,
+    #tsdc-grimoire,
+    #tsdc-grimoire .window-content {
+      overflow-y: auto !important;
+      max-height: 80vh !important;
+      height: auto !important;
+    }
+    /* Por si el tema usa contenedores internos */
+    .tsdc.grimoire .sheet-body,
+    .tsdc.grimoire .content,
+    .tsdc.grimoire [data-scroll],
+    #tsdc-grimoire .sheet-body,
+    #tsdc-grimoire .content,
+    #tsdc-grimoire [data-scroll] {
+      overflow-y: auto !important;
+      max-height: 80vh !important;
+    }
+  `;
+  document.head.appendChild(s);
+})();
+
 import { ATB_API } from "./engine.js";
 import { ACTIONS } from "../features/actions/catalog.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
+
+/* =========================
+ * Utilidades
+ * ========================= */
+function _normalizeControlsArg(arg) {
+  if (Array.isArray(arg)) return arg;                       // v10–v12
+  if (Array.isArray(arg?.controls)) return arg.controls;    // v13+
+  if (Array.isArray(ui?.controls?.controls)) return ui.controls.controls;
+  return [];
+}
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -16,7 +57,9 @@ function renderTpl(path, data) {
   return rt(path, data);
 }
 
-/** Heurística para maniobras aprendidas (rank>0) → defs estilo action-card */
+/* =========================
+ * Data helpers
+ * ========================= */
 function collectLearnedManeuvers(actor) {
   const out = [];
   const tree = actor?.system?.progression?.maneuvers || {};
@@ -25,7 +68,7 @@ function collectLearnedManeuvers(actor) {
     if (rank <= 0) continue;
     const m = MANEUVERS[key];
     if (!m?.ct) continue;
-    const def = {
+    out.push({
       id: key,
       name: m.label ?? key,
       description: m.description ?? "",
@@ -40,26 +83,18 @@ function collectLearnedManeuvers(actor) {
         elements: [].concat(m.element||[])
       },
       rolls: m.rolls ?? []
-    };
-    out.push(def);
+    });
   }
   return out;
 }
-
-/** Placeholder de “aptitudes” (si tuvieras estructura propia, conéctala aquí) */
 function collectLearnedAptitudes(actor) {
-  const apt = actor?.system?.progression?.aptitudes || {}; // ajusta a tu esquema real
+  const apt = actor?.system?.progression?.aptitudes || {};
   const out = [];
   for (const [id, node] of Object.entries(apt)) {
     const known = !!node?.known || Number(node?.rank||0) > 0;
     if (!known) continue;
-    // Si tus aptitudes también viven en ACTIONS, intenta mapear
     const def = ACTIONS[id];
-    if (def) {
-      out.push(def);
-      continue;
-    }
-    // Sintético mínimo
+    if (def) { out.push(def); continue; }
     out.push({
       id, name: node?.label ?? id, description: node?.description ?? "",
       ct: node?.ct ?? { I:0, E:1, R:0 },
@@ -72,12 +107,15 @@ function collectLearnedAptitudes(actor) {
   return out;
 }
 
-class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
-  static DEFAULT_OPTIONS = foundry.utils.mergeObject(super.DEFAULT_OPTIONS, {
+/* =========================
+ * App Grimorio
+ * ========================= */
+export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
+  static DEFAULT_OPTIONS =  {
     id: "tsdc-grimoire",
     classes: ["tsdc", "grimoire"],
-    window: { icon: "fas fa-book" , title: "Grimorio", resizable: true},
-    position: { width: 920, height: 640 },
+    window: { icon: "fa-solid fa-book fas fa-book", title: "Grimorio", resizable: true },
+    position: { width: 760, height: 640 },
     actions: {
       close: GrimoireApp.onClose,
       "tick-prev": GrimoireApp.onTickPrev,
@@ -88,11 +126,9 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
       "plan-maneuver": GrimoireApp.onPlanManeuver,
       "plan-aptitude": GrimoireApp.onPlanAptitude
     }
-  });
-
-  static PARTS = {
-    body: { template: "systems/tsdc/templates/apps/grimoire.hbs" }
   };
+  static DEFAULT_SUBCLASS_OPTIONS = this.DEFAULT_OPTIONS;
+  static PARTS = { body: { template: "systems/tsdc/templates/apps/grimoire.hbs" } };
 
   constructor(actorId, options={}) {
     super(options);
@@ -108,40 +144,46 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
     return super.close(opts);
   }
 
+  /** Fuerza scroll aunque el tema lo bloquee */
+  activateListeners(html) {
+    super.activateListeners?.(html);
+    try {
+      const el = this.element;
+      const body = el?.querySelector?.(".window-content") || el;
+      if (el) { el.style.overflowY = "auto"; el.style.maxHeight = "80vh"; el.style.minHeight = "360px"; }
+      if (body) { body.style.overflowY = "auto"; body.style.maxHeight = "80vh"; }
+    } catch (e) {
+      console.warn("TSDC | No se pudo aplicar overflow al Grimorio:", e);
+    }
+  }
+
   // ==== Actions
   static onClose() { this.close(); }
   static async onTickPrev(){ await ATB_API.adjustPlanningTick(-1); }
   static async onTickNext(){ await ATB_API.adjustPlanningTick(+1); }
-  static onApplyFilter(_ev, _btn){
-    const root = this.element;
-    const input = root?.querySelector?.('[data-ref="filter"]');
+  static onApplyFilter(){
+    const input = this.element?.querySelector?.('[data-ref="filter"]');
     this._query = (input?.value || "").trim().toLowerCase();
     this.render(false);
   }
-
-  static async onPlanBasic(ev, btn) {
+  static async onPlanBasic(_ev, btn) {
     const app = this;
     const card = btn.closest?.("[data-card]"); if (!card) return;
     const id   = card.dataset.id;
     const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
     const targetTick = tickStr === "" ? null : Number(tickStr);
     const simpleKey = SIMPLE_ID_TO_KEY[id];
-    if (id === "especializacion") {
-      // desde “básicas” no hay campos; abre aviso:
-      return ui.notifications?.warn("Usa la sección de Catálogo → Especialización para ingresar clave/categoría/CT.");
-    }
+    if (id === "especializacion") return ui.notifications?.warn("Usa Catálogo → Especialización.");
     if (!simpleKey) return ui.notifications?.warn("Acción no planeable aún.");
     await ATB_API.enqueueSimpleForActor(app.actorId, simpleKey, targetTick);
     ui.notifications?.info(`Plan (${id}) ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
   }
-
-  static async onPlanCatalog(ev, btn) {
+  static async onPlanCatalog(_ev, btn) {
     const app = this;
     const card = btn.closest?.("[data-card]"); if (!card) return;
     const id   = card.dataset.id;
     const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
     const targetTick = tickStr === "" ? null : Number(tickStr);
-
     if (id === "especializacion") {
       const specKey = card.querySelector('input[name="specKey"]')?.value?.trim() || "";
       const speccat = card.querySelector('select[name="specCat"]')?.value || "physical";
@@ -150,34 +192,27 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
       await ATB_API.enqueueSpecForActor(app.actorId, { specKey, category: speccat, CT: ct, targetTick });
       return ui.notifications?.info(`Plan: Especialización ${specKey} (CT ${ct}) ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
     }
-
     if (id in SIMPLE_ID_TO_KEY) {
       await ATB_API.enqueueSimpleForActor(app.actorId, SIMPLE_ID_TO_KEY[id], targetTick);
       return ui.notifications?.info(`Plan (${id}) ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
     }
-
     ui.notifications?.warn("Esta acción del catálogo aún no es planeable desde el libro.");
   }
-
-  static async onPlanManeuver(ev, btn) {
+  static async onPlanManeuver(_ev, btn) {
     const app = this;
     const card = btn.closest?.("[data-card]"); if (!card) return;
     const id   = card.dataset.id;
     const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
     const targetTick = tickStr === "" ? null : Number(tickStr);
-    // Por ahora encolamos como “attack” genérico (o crea un bridge si quieres maniobra real)
-    // Si tus maniobras son ataques especiales, podrías encolar una acción propia.
     await ATB_API.enqueueSimpleForActor(app.actorId, "attack", targetTick);
     ui.notifications?.info(`Plan: Maniobra ${id} ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
   }
-
-  static async onPlanAptitude(ev, btn) {
+  static async onPlanAptitude(_ev, btn) {
     const app = this;
     const card = btn.closest?.("[data-card]"); if (!card) return;
     const id   = card.dataset.id;
     const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
     const targetTick = tickStr === "" ? null : Number(tickStr);
-    // Si las aptitudes mapean a acciones específicas, aquí deberías traducir id → acción ATB concreta
     ui.notifications?.warn("Falta mapear esta Aptitud a una acción ATB concreta.");
   }
 
@@ -185,10 +220,9 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const actor = game.actors?.get?.(this.actorId) || null;
     const planningTick = await ATB_API.getPlanningTick();
     const q = (this._query || "").trim().toLowerCase();
-
     const canPlan = !!(game.combat && actor && game.combat.combatants.find(c => c.actor?.id === actor.id));
 
-    // ==== Sección Básicas (si están en ACTIONS, mejor render)
+    // Básicas
     const cardsBasic = [];
     for (const id of BASIC_ORDER) {
       const def = ACTIONS[id];
@@ -204,7 +238,7 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
       }
     }
 
-    // ==== Catálogo filtrado (opcional; por defecto muestra especialización para inputs)
+    // Catálogo (mostrar al menos Especialización)
     const cardsCatalog = [];
     if (!q || "especializacion".includes(q)) {
       const def = ACTIONS["especializacion"];
@@ -216,7 +250,7 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
       cardsCatalog.push({ id:"especializacion", html, isSpec:true });
     }
 
-    // ==== Mis maniobras (por actor)
+    // Mis maniobras
     const maneuvers = collectLearnedManeuvers(actor);
     const cardsManeuvers = [];
     for (const def of maneuvers) {
@@ -228,7 +262,7 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
       cardsManeuvers.push({ id:def.id, html });
     }
 
-    // ==== Mis aptitudes (si las tienes modeladas)
+    // Mis aptitudes
     const aptitudes = collectLearnedAptitudes(actor);
     const cardsAptitudes = [];
     for (const def of aptitudes) {
@@ -240,43 +274,28 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
       cardsAptitudes.push({ id:def.id, html });
     }
 
-    return {
-      actorName: actor?.name ?? "—",
-      planningTick, canPlan, query:q,
-      cardsBasic, cardsCatalog,
-      cardsManeuvers, cardsAptitudes
-    };
+    return { actorName: actor?.name ?? "—", planningTick, canPlan, query:q,
+      cardsBasic, cardsCatalog, cardsManeuvers, cardsAptitudes };
   }
 
+  // API de apertura con permisos
   static openForActor(actorId) {
     const actor = game.actors?.get?.(actorId);
     if (!actor) return ui.notifications?.warn("Actor no encontrado.");
-
-    // 👇 Regla de permisos:
     const canOpen = game.user.isGM ||
                     actor.isOwner ||
                     actor.testUserPermission?.(game.user, "OWNER") ||
                     actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
-
-    if (!canOpen) {
-      return ui.notifications?.warn("No puedes abrir el grimorio de otro personaje.");
-    }
-
+    if (!canOpen) return ui.notifications?.warn("No puedes abrir el grimorio de otro personaje.");
     if (!this._instances) this._instances = new Map();
     let app = this._instances.get(actorId);
-    if (!app) {
-      app = new this(actorId);
-      this._instances.set(actorId, app);
-    }
+    if (!app) { app = new this(actorId); this._instances.set(actorId, app); }
     app.render(true);
     return app;
   }
-
   static openForCurrentUser() {
-    // 1) token controlado por el usuario
     const tk = canvas.tokens?.controlled?.[0] ?? null;
     if (tk?.actor) return this.openForActor(tk.actor.id);
-    // 2) user.character
     const a = game.user?.character ?? null;
     if (a) return this.openForActor(a.id);
     ui.notifications?.warn("No hay token seleccionado ni personaje asignado al usuario.");
@@ -284,151 +303,102 @@ class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 }
 
-/* ==== Accesos globales ==== */
+/* =========================
+ * Inyección de botones (robusta)
+ * ========================= */
 
-// Botón en controles de Escena (pestaña "token")
-export function registerGrimoireGlobalControl() {
-  Hooks.on("getSceneControlButtons", (controls) => {
-    const tokenCtl = controls.find(c => c.name === "token");
-    if (!tokenCtl) return;
-    if (tokenCtl.tools.some(t => t.name === "tsdc-grimoire")) return;
-    tokenCtl.tools.unshift({
-      name: "tsdc-grimoire",
-      title: "Abrir Grimorio",
-      icon: "fas fa-book", 
-      visible: true,
-      onClick: () => GrimoireApp.openForCurrentUser()
-    });
+// HUD del token — pref. columna derecha
+function __addHudButton(hud, html) {
+  const $ = window.jQuery ?? window.$;
+  if (!$) return;
+
+  const $root = html && html.length ? html : $(hud.element);
+  if (!$root.length) return;
+  if ($root.find(".control-icon.tsdc-grimoire").length) return;
+
+  let $host = $root.find(".col.right");        // muchos temas muestran la derecha
+  if (!$host.length) $host = $root.find(".col.left");
+  if (!$host.length) {
+    $host = $(`<div class="col right" />`).css({ display: "flex", flexDirection: "column", gap: "6px" });
+    $root.append($host);
+  }
+
+  const $btn = $(`
+    <div class="control-icon tsdc-grimoire" data-tooltip="Abrir Grimorio">
+      <i class="fas fa-book fa-solid fa-book"></i>
+    </div>
+  `);
+  $btn.on("click", () => {
+    const actor = (hud.object ?? hud.token)?.actor;
+    if (!actor) return ui.notifications?.warn("No hay actor en este token.");
+    if (!game.user.isGM && !actor.isOwner) return ui.notifications?.warn("No tienes permiso.");
+    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
   });
+
+  $host.append($btn);
 }
 
-// Botón en el HUD del token
-export function registerGrimoireTokenHUD() {
-  // HUD clásico
-  Hooks.on("renderTokenHUD", (hud, html) => {
-    if (html.find('[data-action="tsdc-grimoire"]').length) return;
-    const btn = $(`<div class="control-icon" data-action="tsdc-grimoire" title="Grimorio">
-      <i class="fas fa-book"></i>
-    </div>`);
-    btn.on("click", () => GrimoireApp.openForToken(hud.object));
-    html.find(".col.right").append(btn);
-  });
+// Hoja de actor (v1 y v2)
+function __addActorHeaderButton(app, html) {
+  const $ = window.jQuery ?? window.$;
+  if (!$) return;
+  const actor = app?.actor ?? app?.document;
+  if (!actor || actor.documentName !== "Actor") return;
 
-  // HUD V2 (algunas builds de V12+)
-  Hooks.on("renderTokenHUDV2", (hud, element) => {
-    if (element.querySelector('[data-action="tsdc-grimoire"]')) return;
-    const btn = document.createElement("div");
-    btn.className = "control-icon";
-    btn.dataset.action = "tsdc-grimoire";
-    btn.title = "Grimorio";
-    btn.innerHTML = `<i class="fas fa-book"></i>`;
-    btn.addEventListener("click", () => GrimoireApp.openForToken(hud.object));
-    element.querySelector(".col.right")?.appendChild(btn);
-  });
+  const $win = html.closest(".window-app");
+  if (!$win.length) return;
+  if ($win.find('[data-action="tsdc-grimoire-header"]').length) return;
+
+  const $header = $win.find(".window-header");
+  if (!$header.length) return;
+
+  let $actions = $header.find(".header-actions");
+  if (!$actions.length) $actions = $(`<div class="header-actions" />`).appendTo($header);
+
+  const $btn = $(`
+    <a class="header-control" data-action="tsdc-grimoire-header" title="Abrir Grimorio">
+      <i class="fas fa-book fa-solid fa-book"></i><span style="margin-left:.35rem;">Grimorio</span>
+    </a>
+  `);
+  $btn.on("click", () => window.tsdcatb?.GrimoireApp?.openForActor(actor.id));
+  $actions.prepend($btn);
 }
 
-
-export function registerGrimoireButton() {
-  Hooks.on("getSceneControlButtons", (controls) => {
+// Scene Controls (pestaña Token)
+function __registerSceneControl() {
+  Hooks.on("getSceneControlButtons", (arg) => {
+    const controls = _normalizeControlsArg(arg);
     const tokenCtl = controls.find(c => c.name === "token");
     if (!tokenCtl) return;
-
-    // Evitar duplicados
     if (tokenCtl.tools?.some?.(t => t.name === "tsdc-grimoire")) return;
 
     tokenCtl.tools.push({
       name: "tsdc-grimoire",
       title: "Abrir Grimorio",
       icon: "fas fa-book",
+      button: true,
       visible: true,
-      onClick: () => GrimoireApp.openForCurrentUser(),
-      button: true
-    });
-  });
-}
-
-export function registerGrimoireOnActorSheetHeader() {
-  // ApplicationV2 (tu hoja es V2)
-  Hooks.on("renderActorSheetV2", (app) => {
-    // evita duplicar
-    if (app.element?.querySelector?.(".header-button.tsdc-grimoire")) return;
-    app.addHeaderButton({
-      class: "tsdc-grimoire",
-      label: "Grimorio",
-      icon: "fas fa-book",
-      onclick: () => GrimoireApp.openForActor(app.actor)
-    });
-  });
-
-  // Fallback V1 por si abres otra hoja no V2
-  Hooks.on("renderActorSheet", (app, html) => {
-    if (html.closest(".app").find(".header-button.tsdc-grimoire").length) return;
-    const a = $(`<a class="header-button tsdc-grimoire"><i class="fas fa-book"></i> Libro</a>`);
-    a.on("click", () => GrimoireApp.openForActor(app.actor));
-    html.closest(".app").find(".window-header .window-title").after(a);
-  });
-}
-
-export function registerGrimoireLinkInActorSheet() {
-  Hooks.on("renderActorSheet", (app, html) => {
-    try {
-      const actor = app?.actor;
-      if (!actor) return;
-
-      const canSee = game.user.isGM ||
-                     actor.isOwner ||
-                     actor.testUserPermission?.(game.user, "OWNER") ||
-                     actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
-      if (!canSee) return;
-
-      // Evita duplicados en cualquier sitio
-      const rootEl = (html?.[0] || html);
-      const winEl  = (app.element?.closest?.(".window-app")) || rootEl?.closest?.(".window-app");
-      if (winEl?.querySelector?.('[data-action="tsdc-grimoire-header"]') ||
-          rootEl?.querySelector?.('[data-action="tsdc-grimoire-inline"]')) return;
-
-      const openMine = (ev) => {
-        ev?.preventDefault?.();
-        GrimoireApp.openForActor(actor.id);
-      };
-
-      // 1) Intenta header (window header siempre existe)
-      const header = winEl?.querySelector?.(".window-header");
-      if (header) {
-        // si hay grupo de acciones, úsalo; si no, crea uno
-        let actions = header.querySelector(".header-actions");
-        if (!actions) {
-          actions = document.createElement("div");
-          actions.className = "header-actions";
-          header.appendChild(actions);
-        }
-        const btn = document.createElement("a");
-        btn.className = "header-control";
-        btn.dataset.action = "tsdc-grimoire-header";
-        btn.title = "Abrir Necronomicón";
-        btn.innerHTML = `<i class="fas fa-book"></i><span style="margin-left:.35rem;">Libro</span>`;
-        btn.addEventListener("click", openMine);
-        actions.prepend(btn); // visible
-        return;
+      onClick: () => {
+        const tk = canvas.tokens?.controlled?.[0];
+        const actor = tk?.actor ?? game.user?.character;
+        if (!actor) return ui.notifications.warn("Selecciona tu token o asigna tu actor.");
+        window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
       }
-
-      // 2) Fallback: enlace dentro del sheet
-      const container = (rootEl instanceof HTMLElement) ? rootEl : null;
-      if (!container) return;
-      const link = document.createElement("a");
-      link.setAttribute("data-action", "tsdc-grimoire-inline");
-      link.setAttribute("role", "button");
-      link.title = "Abrir tu Grimorio";
-      link.className = "tsdc-grimoire-inline";
-      link.innerHTML = `<i class="fas fa-book"></i> Necronomicón`;
-      link.addEventListener("click", openMine);
-      container.prepend(link);
-    } catch (e) {
-      console.error("TSDC | Error insertando botón de Grimorio", e);
-    }
+    });
   });
 }
 
-try { window.tsdcatb = { ...(window.tsdcatb ?? {}), GrimoireApp }; } catch {}
+/* =========================
+ * Registro automático
+ * ========================= */
+Hooks.once("ready", () => {
+  console.log("TSDC | registrando botones del Grimorio…");
+  __registerSceneControl();
+  Hooks.on("renderTokenHUD", __addHudButton);
+  Hooks.on("renderActorSheet", __addActorHeaderButton);
+  Hooks.on("renderActorSheetV2", __addActorHeaderButton);
+  console.log("TSDC | Grimorio: botones registrados");
+});
 
-export { GrimoireApp };
+/* Exponer para macros */
+try { window.tsdcatb = { ...(window.tsdcatb ?? {}), GrimoireApp }; } catch {}

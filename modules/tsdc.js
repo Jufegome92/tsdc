@@ -16,7 +16,7 @@ import { applyBackgroundStartingCompetences } from "./features/affinities/index.
 import { registerAtbTrackerButton, registerAtbAutoOpen } from "./atb/tracker.js";
 import { registerAtbUI } from "./atb/ui.js";
 import { ATB_API } from "./atb/engine.js";
-import { registerGrimoireButton, registerGrimoireTokenHUD, registerGrimoireGlobalControl,registerGrimoireOnActorSheetHeader ,GrimoireApp  , registerGrimoireLinkInActorSheet,  } from "./atb/grimoire.js";
+import "./atb/grimoire.js";
 
 const _guardWizardOpen = new Set();
 
@@ -51,7 +51,7 @@ Hooks.once("init", () => {
     "systems/tsdc/templates/apps/atb-tracker.hbs",
     "systems/tsdc/templates/apps/grimoire.hbs"
   ]);
-  // Settings para iniciativa por “día”
+   // Settings para iniciativa por “día”
   game.settings.register("tsdc", "initiative.dayId", { scope:"world", config:false, type:String, default:"" });
   game.settings.register("tsdc", "initiative.monstersDeck", { scope:"world", config:false, type:Object, default:null });
 
@@ -94,18 +94,26 @@ Hooks.once("ready", () => {
   console.log(
     `Transcendence | ready (system=${game.system.id} v${game.system.version ?? game.system.data?.version})`
   );
-  registerChatListeners();
-  registerAtbUI();
-  registerAtbTrackerButton();    
-  registerAtbAutoOpen();
-  registerGrimoireButton();
-  registerGrimoireTokenHUD();
-  registerGrimoireGlobalControl();
-  registerGrimoireOnActorSheetHeader();
-  registerGrimoireLinkInActorSheet();     
+  const regs = [
+    registerChatListeners,
+    registerAtbUI,
+    registerAtbTrackerButton,
+    registerAtbAutoOpen,
+    registerAtbAutoOpen
+  ]; 
+  for (const fn of regs) {
+    try { fn?.(); }
+    catch (e) { console.error(`TSDC | ready: ${fn?.name || "fn"} failed`, e); }
+  }
+  try {
+    ui.controls?.render?.({
+      controls: ui.controls?.controls ?? [],
+      tool: ui.controls?.activeTool
+    });
+  } catch {}
   game.transcendence = game.transcendence || {};
   game.transcendence.atb = ATB_API;
-  game.transcendence.openGrimoire = () => GrimoireApp.openForCurrentUser();
+  game.transcendence.openGrimoire = () => window.tsdcatb?.GrimoireApp?.openForCurrentUser();
 });
 
 /** Al crear un actor character → abrir wizard inmediatamente */
