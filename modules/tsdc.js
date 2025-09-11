@@ -98,7 +98,6 @@ Hooks.once("ready", () => {
     registerChatListeners,
     registerAtbUI,
     registerAtbTrackerButton,
-    registerAtbAutoOpen,
     registerAtbAutoOpen
   ]; 
   for (const fn of regs) {
@@ -108,7 +107,7 @@ Hooks.once("ready", () => {
   try {
     ui.controls?.render?.({
       controls: ui.controls?.controls ?? [],
-      tool: ui.controls?.activeTool
+      tool: ui.controls?.tool?.name ?? ui.controls?.activeTool
     });
   } catch {}
   game.transcendence = game.transcendence || {};

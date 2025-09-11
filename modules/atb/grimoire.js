@@ -306,46 +306,18 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
 /* =========================
  * Inyección de botones (robusta)
  * ========================= */
-
-// HUD del token — pref. columna derecha
-function __addHudButton(hud, html) {
-  const $ = window.jQuery ?? window.$;
-  if (!$) return;
-
-  const $root = html && html.length ? html : $(hud.element);
-  if (!$root.length) return;
-  if ($root.find(".control-icon.tsdc-grimoire").length) return;
-
-  let $host = $root.find(".col.right");        // muchos temas muestran la derecha
-  if (!$host.length) $host = $root.find(".col.left");
-  if (!$host.length) {
-    $host = $(`<div class="col right" />`).css({ display: "flex", flexDirection: "column", gap: "6px" });
-    $root.append($host);
-  }
-
-  const $btn = $(`
-    <div class="control-icon tsdc-grimoire" data-tooltip="Abrir Grimorio">
-      <i class="fas fa-book fa-solid fa-book"></i>
-    </div>
-  `);
-  $btn.on("click", () => {
-    const actor = (hud.object ?? hud.token)?.actor;
-    if (!actor) return ui.notifications?.warn("No hay actor en este token.");
-    if (!game.user.isGM && !actor.isOwner) return ui.notifications?.warn("No tienes permiso.");
-    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
-  });
-
-  $host.append($btn);
-}
-
-// Hoja de actor (v1 y v2)
 function __addActorHeaderButton(app, html) {
   const $ = window.jQuery ?? window.$;
-  if (!$) return;
   const actor = app?.actor ?? app?.document;
+  console.log("TSDC | renderActorSheet hook fired", { has$: !!$, actorId: actor?.id, v2: !!app?.elementV2 });
+  if (!$) return;
   if (!actor || actor.documentName !== "Actor") return;
 
-  const $win = html.closest(".window-app");
+  // html puede ser jQuery, ArrayLike o HTMLElement; si viene vacío, usa el root del app
+  const $container = $(html?.[0] ?? html ?? app?.element ?? app?.elementV2);
+  if (!$container.length) return;
+
+  const $win = $container.closest(".window-app");
   if (!$win.length) return;
   if ($win.find('[data-action="tsdc-grimoire-header"]').length) return;
 
@@ -357,21 +329,123 @@ function __addActorHeaderButton(app, html) {
 
   const $btn = $(`
     <a class="header-control" data-action="tsdc-grimoire-header" title="Abrir Grimorio">
-      <i class="fas fa-book fa-solid fa-book"></i><span style="margin-left:.35rem;">Grimorio</span>
+      <i class="fa-solid fa-book"></i><span style="margin-left:.35rem;">Grimorio</span>
     </a>
   `);
   $btn.on("click", () => window.tsdcatb?.GrimoireApp?.openForActor(actor.id));
   $actions.prepend($btn);
+
+  console.log("TSDC | Sheet: botón del grimorio insertado");
 }
 
-// Scene Controls (pestaña Token)
-function __registerSceneControl() {
-  Hooks.on("getSceneControlButtons", (arg) => {
-    const controls = _normalizeControlsArg(arg);
-    const tokenCtl = controls.find(c => c.name === "token");
-    if (!tokenCtl) return;
-    if (tokenCtl.tools?.some?.(t => t.name === "tsdc-grimoire")) return;
+/* =========================
+ * HUD del token (robusto, DOM + Observer)
+ * ========================= */
+function __injectHudBtn($root, hud) {
+  const $ = window.jQuery ?? window.$;
+  if (!$) return;
+  if (!$root || !$root.length) return;
 
+  // Ubica la columna derecha del HUD de forma robusta
+  // (temas distintos pueden variar, así que probamos varias opciones)
+  let $right =
+    $root.find('.col.right').first()            // core v11/v12
+      .add($root.find('[data-group="right"]').first()) // algunos temas
+      .add($root.find('.right').first())        // fallback genérico
+      .filter((i, el) => $(el).find('.control-icon').length).first();
+
+  // Si no hay columna derecha, crea una mínima (evita romper layouts)
+  if (!$right.length) {
+    $right = $('<div class="col right"/>').css({
+      display: 'flex', flexDirection: 'column', gap: '6px'
+    });
+    $root.append($right);
+  }
+
+  // Evita duplicados
+  if ($right.find('.control-icon.tsdc-grimoire').length) return;
+
+  // 👉 En FVTT v11/v12 el HUD usa <button class="control-icon">
+  const $btn = $(`
+    <button type="button"
+            class="control-icon tsdc-grimoire"
+            data-action="tsdc-grimoire"
+            data-tooltip="Abrir Grimorio"
+            title="Abrir Grimorio">
+      <i class="fa-solid fa-book"></i>
+    </button>
+  `);
+
+  $btn.on('click', () => {
+    const actor = (hud?.object ?? hud?.token)?.actor;
+    if (!actor) return ui.notifications?.warn("Selecciona tu token (o asigna tu actor).");
+    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
+  });
+
+  $right.append($btn);
+}
+
+function __addHudButton_Robusto(hud, html) {
+  const $ = window.jQuery ?? window.$;
+  if (!$) return;
+  const $root = $(html?.[0] ?? html ?? hud?.element);
+  if (!$root.length) return;
+
+  // inserta ahora
+  __injectHudBtn($root, hud);
+
+  // …y manténlo si el tema vuelve a renderizar internamente
+  const node = $root[0];
+  const mo = new MutationObserver(() => __injectHudBtn($(node), hud));
+  mo.observe(node, { childList: true, subtree: true });
+}
+
+
+/* =========================
+ * Scene Controls (fallback DOM)
+ * ========================= */
+function __addSceneControlButton_DOM(_app, html /*, data */) {
+  // Pestaña "token"
+  const $ = window.jQuery ?? window.$; if (!$) return;
+  const $html = $(html?.[0] ?? html);
+  if (!$html.length) return;
+
+  // Contenedor de herramientas de la pestaña activa
+  const $tools = $html.find('.scene-control[data-control="token"] ~ ol.control-tools');
+  // Si no lo encontramos (tema distinto), buscamos cualquier grupo de tools con data-control="token"
+  const $tokenCtl = $html.find('.scene-control[data-control="token"]');
+  const $list = $tools.length ? $tools : $tokenCtl.parent().find('ol.control-tools').first();
+  if (!$list.length) return;
+
+  if ($list.find('li[data-tool="tsdc-grimoire"]').length) return;
+
+  const $li = $(`
+    <li class="control-tool" data-tool="tsdc-grimoire" title="Abrir Grimorio">
+      <i class="fas fa-book fa-solid fa-book"></i>
+    </li>
+  `);
+  $li.on('click', () => {
+    const tk = canvas.tokens?.controlled?.[0];
+    const actor = tk?.actor ?? game.user?.character;
+    if (!actor) return ui.notifications.warn("Selecciona tu token o asigna tu actor.");
+    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
+  });
+
+  $list.append($li);
+}
+
+/* =========================
+ * Registro
+ * ========================= */
+Hooks.once("init", () => {
+  // mantenemos tu getSceneControlButtons (si alguna vez trae datos, perfecto)
+  Hooks.on("getSceneControlButtons", (arg) => {
+    const controls = Array.isArray(arg) ? arg : arg?.controls ?? [];
+    console.log("TSDC | getSceneControlButtons hook fired", { count: controls?.length ?? 0 });
+    const tokenCtl = controls?.find?.(c => c.name === "token");
+    if (!tokenCtl) return;
+    tokenCtl.tools ??= [];
+    if (tokenCtl.tools.some(t => t.name === "tsdc-grimoire")) return;
     tokenCtl.tools.push({
       name: "tsdc-grimoire",
       title: "Abrir Grimorio",
@@ -386,19 +460,29 @@ function __registerSceneControl() {
       }
     });
   });
-}
+});
 
-/* =========================
- * Registro automático
- * ========================= */
 Hooks.once("ready", () => {
   console.log("TSDC | registrando botones del Grimorio…");
-  __registerSceneControl();
-  Hooks.on("renderTokenHUD", __addHudButton);
+  // HUD del token (DOM + observer)
+  Hooks.on("renderTokenHUD", __addHudButton_Robusto);
+
+  // Fallback DOM en la barra de controles
+  Hooks.on("renderSceneControls", __addSceneControlButton_DOM);
+  Hooks.on("canvasReady", () => {
+    // una pasada extra cuando todo está listo
+    ui.controls?.render?.({
+      controls: ui.controls?.controls ?? [],
+      tool: ui.controls?.tool?.name ?? ui.controls?.activeTool
+    });
+  });
+
+  // botones en cabecera (se mantienen igual)
   Hooks.on("renderActorSheet", __addActorHeaderButton);
   Hooks.on("renderActorSheetV2", __addActorHeaderButton);
   console.log("TSDC | Grimorio: botones registrados");
 });
+
 
 /* Exponer para macros */
 try { window.tsdcatb = { ...(window.tsdcatb ?? {}), GrimoireApp }; } catch {}

@@ -269,3 +269,16 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
   overflow-y: auto;
   max-height: 80vh; /* para que no salga de la pantalla */
 }
+
+.control-icon.tsdc-grimoire {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--token-hud-icon-size, 36px);
+  height: var(--token-hud-icon-size, 36px);
+  border: none;
+  background: var(--color-control-bg, rgba(0,0,0,0.4));
+  border-radius: 4px;
+  cursor: pointer;
+}
+.control-icon.tsdc-grimoire i { pointer-events: none; }
