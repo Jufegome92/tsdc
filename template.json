@@ -42,13 +42,8 @@
       "progression": {
         "affinityMajor": "physical",        
         "skills": {
-          "arqueologia": { "level": 0, "rank": 0, "progress": 0, "category": "knowledge" },
-          "sigilo":     { "level": 0, "rank": 0, "progress": 0, "category": "physical" },
-          "alquimia":     { "level": 0, "rank": 0, "progress": 0, "category": "arts" }
         },
         "weapons": {
-          "sword": { "level": 0, "rank": 0, "progress": 0 },    
-          "bow":   { "level": 0, "rank": 0, "progress": 0 }
         },
         "maneuvers": {
           "trip":  { "level": 0, "rank": 0, "progress": 0 },     

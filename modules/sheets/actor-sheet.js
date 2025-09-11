@@ -49,6 +49,26 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     context.actor  = this.actor;
     context.system = this.actor.system ?? {};
 
+    const sp = context.system?.species ?? {};
+
+    function toHint(rangeArr, mapFn=(x)=>x) {
+      if (!Array.isArray(rangeArr) || rangeArr.length !== 2) return "";
+      const [a,b] = rangeArr;
+      if (a==null || b==null) return "";
+      return `(${mapFn(a)} – ${mapFn(b)})`;
+    }
+
+    // species ranges vienen en metros/kg/años:
+    const ageHint    = toHint(sp.lifespan, (x)=> Math.round(x));
+    const heightHint = toHint(sp.heightRangeM, (x)=> Math.round(Number(x)*100)); // m → cm
+    const weightHint = toHint(sp.weightRangeKg, (x)=> Math.round(x));
+
+    context.identityHints = {
+      age: ageHint,
+      heightCm: heightHint,
+      weightKg: weightHint
+    };
+    
     // Labels
     context.labels = {
       strength:  game.i18n.localize("TSDC.Attr.strength"),
