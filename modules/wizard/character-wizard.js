@@ -5,6 +5,97 @@ import { listSpecs, getCategoryForSpec } from "../features/specializations/index
 import { recomputeSynapseBudget, ATTRS_BY_CATEGORY, applySynapseAllocations } from "../features/synapse/index.js";
 import { BACKGROUND_STARTING } from "../features/affinities/starting.js";
 
+// === Parche global para hints dinámicos de especie (funciona aunque DialogV2 no llame "render") ===
+if (!globalThis.__tsdcSpeciesHintsInstalled) {
+  globalThis.__tsdcSpeciesHintsInstalled = true;
+
+  // Utilidades
+  const norm = (s) => String(s ?? "")
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .trim().toLowerCase();
+
+  const resolveSpecies = (val) => {
+    if (!val) return null;
+    // intenta key exacta y en minúscula
+    let def = getSpeciesByKey(String(val)) || getSpeciesByKey(norm(val));
+    // intenta por label o key normalizados
+    if (!def) {
+      const all = listSpecies();
+      def = all.find(s => norm(s.label) === norm(val))
+        || all.find(s => norm(s.key) === norm(val))
+        || null;
+    }
+    return def || null;
+  };
+
+  const setHint = (I, N, R) => {
+    if (!I || !N) return;
+    const has = R && R.min != null && R.max != null;
+    N.textContent = has ? `(${R.min} – ${R.max})` : "";
+    if (has) {
+      I.min = String(R.min); I.max = String(R.max);
+      const v = Number(I.value || 0);
+      if (v < R.min) I.value = String(R.min);
+      if (v > R.max) I.value = String(R.max);
+    } else {
+      I.removeAttribute("min"); I.removeAttribute("max");
+    }
+  };
+
+  // Aplica los rangos dentro del contenedor (el diálogo) donde ocurrió el cambio
+  const applyIntoRoot = (root, rawVal) => {
+    if (!root?.querySelector) return;
+    const def = resolveSpecies(rawVal);
+    const r   = rangesFromSpecies(def);
+
+    const ageN    = root.querySelector('[data-hint="age"]');
+    const heightN = root.querySelector('[data-hint="height"]');
+    const weightN = root.querySelector('[data-hint="weight"]');
+    const spLbl   = root.querySelector('[data-species-label]');
+    const ageI    = root.querySelector('input[name="age"]');
+    const hI      = root.querySelector('input[name="heightCm"]');
+    const wI      = root.querySelector('input[name="weightKg"]');
+
+    setHint(ageI, ageN, r?.age);
+    setHint(hI,   heightN, r?.heightCm);
+    setHint(wI,   weightN, r?.weightKg);
+    if (spLbl) spLbl.textContent = def?.label ?? "";
+  };
+
+  // Obtiene el valor actual del select (resistente a skins)
+  const getSelValue = (sel) =>
+    sel?.value
+    ?? sel?.selectedOptions?.[0]?.value
+    ?? sel?.selectedOptions?.[0]?.textContent
+    ?? "";
+
+  // 1) Refresco inicial cuando se renderiza cualquier ApplicationV2 (incluido el diálogo)
+  Hooks.on("renderApplicationV2", (_app, element) => {
+    const root = element?.[0] ?? element;
+    const sel = root?.querySelector?.('select[name="speciesKey"]');
+    if (sel) {
+      // pequeño defer por si el tema reemplaza el <select> al final del render
+      requestAnimationFrame(() => applyIntoRoot(root, getSelValue(sel)));
+    }
+  });
+
+  // 2) Delegación global en captura: cualquier cambio/input en speciesKey refresca su diálogo
+  const onAnyChange = (ev) => {
+    const target = ev.target;
+    const sel = (target?.name === "speciesKey")
+      ? target
+      : target?.closest?.('select[name="speciesKey"]');
+    if (!sel) return;
+    const root = sel.closest?.('.application') || sel.closest?.('.dialog') || document;
+    // microtick para que el skin sincronice .value
+    queueMicrotask(() => applyIntoRoot(root, getSelValue(sel)));
+  };
+  document.addEventListener("change", onAnyChange, true);
+  document.addEventListener("input",  onAnyChange, true);
+
+  console.log("TSDC | species-hints listeners instalados");
+}
+
 export async function openCharacterWizard(actor) {
   if (!actor) return;
   const locked = !!actor.system?.identity?.locked;
@@ -60,24 +151,22 @@ export async function openCharacterWizard(actor) {
           <select name="speciesKey">
             ${species.map(s => `<option value="${s.key}" ${s.key===state.speciesKey ? "selected" : ""}>${s.label}</option>`).join("")}
           </select>
-          <small class="muted" data-species-label>
-            ${(getSpeciesByKey(state.speciesKey)?.label) ?? ""}
-          </small>
+            <small class="muted" data-species-label></small>
         </label>
       </div>
 
       <div class="grid grid-3" style="gap:12px;">
         <label class="t-col">
           <span class="muted">Edad <small data-hint="age">${hAge}</small></span>
-          <input name="age" type="number" min="0" value="${state.age}">
+          <input name="age" type="number" value="">
         </label>
         <label class="t-col">
           <span class="muted">Estatura (cm) <small data-hint="height">${hHcm}</small></span>
-          <input name="heightCm" type="number" min="0" value="${state.heightCm}">
+          <input name="heightCm" type="number" value="">
         </label>
         <label class="t-col">
           <span class="muted">Peso (kg) <small data-hint="weight">${hWkg}</small></span>
-          <input name="weightKg" type="number" min="0" value="${state.weightKg}">
+          <input name="weightKg" type="number" value="">
         </label>
       </div>
 
@@ -122,18 +211,35 @@ export async function openCharacterWizard(actor) {
       const root = element?.[0] ?? element;
       if (!root || !root.querySelector) return;
 
-      const sel     = root.querySelector('select[name="speciesKey"]');
+      const form    = root.querySelector("form");
       const ageN    = root.querySelector('[data-hint="age"]');
       const heightN = root.querySelector('[data-hint="height"]');
       const weightN = root.querySelector('[data-hint="weight"]');
       const spLbl   = root.querySelector('[data-species-label]');
+      const ageI    = root.querySelector('input[name="age"]');
+      const hI      = root.querySelector('input[name="heightCm"]');
+      const wI      = root.querySelector('input[name="weightKg"]');
 
-      const ageI = root.querySelector('input[name="age"]');
-      const hI   = root.querySelector('input[name="heightCm"]');
-      const wI   = root.querySelector('input[name="weightKg"]');
+      // -------- resolver especie sin asumir el casing de la key --------
+      const norm = (s) =>
+        String(s ?? "")
+          .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+          .trim().toLowerCase();
 
-      const getDef = (k) =>
-        species.find(s => s.key === k) || getSpeciesByKey(k) || null;
+      const resolveSpecies = (val) => {
+        if (!val) return null;
+        // 1) intenta la key EXACTA tal cual venga del <select>
+        let def = getSpeciesByKey(String(val));
+        // 2) intenta lower-case (por si el catálogo almacena en minúsculas)
+        if (!def) def = getSpeciesByKey(norm(val));
+        // 3) intenta por label visible
+        if (!def) {
+          def = listSpecies().find(s => norm(s.label) === norm(val))
+            || listSpecies().find(s => norm(s.key)   === norm(val))
+            || null;
+        }
+        return def || null;
+      };
 
       const setHint = (I, N, R) => {
         if (!I || !N) return;
@@ -149,23 +255,55 @@ export async function openCharacterWizard(actor) {
         }
       };
 
-      const applyRanges = (spKey) => {
-        const def = getDef(spKey);
+      const applyRanges = (raw) => {
+        const def = resolveSpecies(raw);
         const r   = rangesFromSpecies(def);
+        console.log("[Wizard] species resolve:", raw, "->", def?.key, def?.label, r);
         setHint(ageI, ageN, r?.age);
         setHint(hI,   heightN, r?.heightCm);
         setHint(wI,   weightN, r?.weightKg);
-        if (spLbl) spLbl.textContent = def?.label ?? (sel?.options[sel.selectedIndex]?.textContent ?? "");
+        if (spLbl) spLbl.textContent = def?.label ?? "";
       };
 
-      if (sel) {
-        const update = () => applyRanges(sel.value);
-        sel.addEventListener("change", update);
-        sel.addEventListener("input",  update);
-        sel.addEventListener("blur",   update); // por si el skin sólo dispara al perder foco
-        // Inicial
-        update();
-      }
+      // Toma el valor actual de forma confiable (FormData primero)
+      const getCurrentVal = () => {
+        const sel  = root.querySelector('select[name="speciesKey"]');
+        const fd   = form ? new FormData(form) : null;
+        const fromFD = fd?.get("speciesKey");
+        return fromFD ?? sel?.value ?? sel?.selectedOptions?.[0]?.value
+              ?? sel?.selectedOptions?.[0]?.textContent ?? "";
+      };
+
+      // A) Eventos (captura) — cubre skins que re-hospedan el <select>
+      const handler = (ev) => {
+        const t = ev.target;
+        if ((t?.name === "speciesKey" || t?.closest?.('select[name="speciesKey"]')) && root.contains(t)) {
+          queueMicrotask(() => applyRanges(getCurrentVal()));
+        }
+      };
+      document.addEventListener("change", handler, true);
+      document.addEventListener("input",  handler, true);
+
+      // B) Inicial (tras pintar)
+      requestAnimationFrame(() => applyRanges(getCurrentVal()));
+
+      // C) Watcher de respaldo: re-aplica cada 250ms por si el skin no emite eventos
+      const intervalId = setInterval(() => applyRanges(getCurrentVal()), 250);
+
+      // Limpieza al cerrar el diálogo
+      const mo = new MutationObserver((muts) => {
+        for (const m of muts) {
+          m.removedNodes?.forEach((n) => {
+            if (n === root) {
+              document.removeEventListener("change", handler, true);
+              document.removeEventListener("input",  handler, true);
+              clearInterval(intervalId);
+              mo.disconnect();
+            }
+          });
+        }
+      });
+      mo.observe(root.parentNode ?? document.body, { childList: true });
     }
   });
 
