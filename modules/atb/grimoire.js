@@ -346,35 +346,21 @@ function __injectHudBtn($root, hud) {
   if (!$) return;
   if (!$root || !$root.length) return;
 
-  // Ubica la columna derecha del HUD de forma robusta
-  // (temas distintos pueden variar, así que probamos varias opciones)
-  let $right =
-    $root.find('.col.right').first()            // core v11/v12
-      .add($root.find('[data-group="right"]').first()) // algunos temas
-      .add($root.find('.right').first())        // fallback genérico
-      .filter((i, el) => $(el).find('.control-icon').length).first();
+  // 1) Encuentra la columna derecha (sin filtros)
+  const $right = $root.find('.col.right, [data-group="right"]').first();
+  if (!$right.length) return; // si aún no existe, el caller volverá a intentar
 
-  // Si no hay columna derecha, crea una mínima (evita romper layouts)
-  if (!$right.length) {
-    $right = $('<div class="col right"/>').css({
-      display: 'flex', flexDirection: 'column', gap: '6px'
-    });
-    $root.append($right);
-  }
-
-  // Evita duplicados
+  // 2) Evita duplicados
   if ($right.find('.control-icon.tsdc-grimoire').length) return;
 
-  // 👉 En FVTT v11/v12 el HUD usa <button class="control-icon">
-  const $btn = $(`
-    <button type="button"
-            class="control-icon tsdc-grimoire"
-            data-action="tsdc-grimoire"
-            data-tooltip="Abrir Grimorio"
-            title="Abrir Grimorio">
-      <i class="fa-solid fa-book"></i>
-    </button>
-  `);
+  // 3) Copia el tag que ya usa el HUD (button o div)
+  const tag = ($right.find('.control-icon').first().prop('tagName') || 'BUTTON').toLowerCase();
+  const $btn = $(
+    `<${tag} class="control-icon tsdc-grimoire" data-action="tsdc-grimoire"
+       title="Abrir Grimorio" data-tooltip="Abrir Grimorio">
+       <i class="fa-solid fa-book"></i>
+     </${tag}>`
+  );
 
   $btn.on('click', () => {
     const actor = (hud?.object ?? hud?.token)?.actor;
@@ -383,21 +369,114 @@ function __injectHudBtn($root, hud) {
   });
 
   $right.append($btn);
+  console.log("TSDC | TokenHUD: botón Grimorio insertado");
+}
+
+
+function __asEl(maybeHtml, maybeHud) {
+  if (!maybeHtml) return (maybeHud?.element ?? null) || null;
+  if (maybeHtml instanceof Element) return maybeHtml;
+  // jQuery-like
+  if (typeof maybeHtml === "object" && "0" in maybeHtml) return maybeHtml[0] ?? null;
+  return null;
+}
+
+function __logEl(prefix, el) {
+  try {
+    const tag = el?.tagName || "null";
+    const cls = el?.className || "";
+    console.log(`TSDC | ${prefix}:`, {tag, cls});
+  } catch {}
+}
+
+function __findRightColumn(rootEl) {
+  if (!rootEl) return null;
+  // Intenta selectores típicos de core y temas
+  const selectors = [
+    ".col.right",
+    "[data-group='right']",
+    ".right",
+    ".right-col",
+    ".rightcol",
+    ".tokenhud .right",      // por si el tema anida más
+    ".tokenhud [data-group='right']"
+  ];
+  for (const sel of selectors) {
+    const node = rootEl.querySelector(sel);
+    if (node) return node;
+  }
+  return null;
+}
+
+function __firstControlIcon(rootEl) {
+  if (!rootEl) return null;
+  return rootEl.querySelector(".control-icon");
+}
+
+function __injectHudBtn_Native(rootEl, hud) {
+  if (!rootEl) return;
+
+  // 1) Encuentra columna derecha
+  const right = __findRightColumn(rootEl);
+  __logEl("HUD right-col", right);
+  if (!right) return; // no está lista aún, el caller reintenta
+
+  // 2) Evita duplicados
+  if (right.querySelector(".control-icon.tsdc-grimoire")) {
+    console.log("TSDC | HUD: botón ya existe, no se duplica");
+    return;
+  }
+
+  // 3) Copia el tag del primer icono existente (<button> o <div>)
+  const proto = __firstControlIcon(rootEl);
+  __logEl("HUD first control-icon", proto);
+  const tag = (proto?.tagName || "BUTTON").toLowerCase();
+
+  const btn = document.createElement(tag);
+  btn.className = "control-icon tsdc-grimoire";
+  btn.setAttribute("data-action", "tsdc-grimoire");
+  btn.setAttribute("title", "Abrir Grimorio");
+  btn.setAttribute("data-tooltip", "Abrir Grimorio");
+
+  const i = document.createElement("i");
+  i.className = "fa-solid fa-book";
+  btn.appendChild(i);
+
+  btn.addEventListener("click", () => {
+    const actor = (hud?.object ?? hud?.token)?.actor;
+    if (!actor) return ui.notifications?.warn("Selecciona tu token (o asigna tu actor).");
+    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
+  });
+
+  right.appendChild(btn);
+  console.log("TSDC | HUD: botón Grimorio insertado OK");
 }
 
 function __addHudButton_Robusto(hud, html) {
-  const $ = window.jQuery ?? window.$;
-  if (!$) return;
-  const $root = $(html?.[0] ?? html ?? hud?.element);
-  if (!$root.length) return;
+  const rootEl = __asEl(html, hud);
+  __logEl("renderTokenHUD root", rootEl);
 
-  // inserta ahora
-  __injectHudBtn($root, hud);
+  // Si por cualquier razón no hay root, sal con log
+  if (!rootEl) {
+    console.warn("TSDC | renderTokenHUD: no rootEl");
+    return;
+  }
 
-  // …y manténlo si el tema vuelve a renderizar internamente
-  const node = $root[0];
-  const mo = new MutationObserver(() => __injectHudBtn($(node), hud));
-  mo.observe(node, { childList: true, subtree: true });
+  // Espera 1 frame para que el HUD termine de montar sus columnas
+  requestAnimationFrame(() => {
+    try {
+      __injectHudBtn_Native(rootEl, hud);
+    } catch (e) {
+      console.error("TSDC | HUD inject error:", e);
+    }
+
+    // Reinyecta si el tema re-renderiza internamente
+    const mo = new MutationObserver((_muts) => {
+      try { __injectHudBtn_Native(rootEl, hud); } catch {}
+    });
+    mo.observe(rootEl, { childList: true, subtree: true });
+    console.log("TSDC | HUD: observer activo");
+  });
 }
 
 
@@ -465,6 +544,7 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => {
   console.log("TSDC | registrando botones del Grimorio…");
   // HUD del token (DOM + observer)
+  console.log("TSDC | hook renderTokenHUD registrado");
   Hooks.on("renderTokenHUD", __addHudButton_Robusto);
 
   // Fallback DOM en la barra de controles
