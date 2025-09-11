@@ -60,7 +60,9 @@ export async function openCharacterWizard(actor) {
           <select name="speciesKey">
             ${species.map(s => `<option value="${s.key}" ${s.key===state.speciesKey ? "selected" : ""}>${s.label}</option>`).join("")}
           </select>
-          <small class="muted">${(getSpeciesByKey(state.speciesKey)?.label) ?? ""}</small>
+          <small class="muted" data-species-label>
+            ${(getSpeciesByKey(state.speciesKey)?.label) ?? ""}
+          </small>
         </label>
       </div>
 
@@ -118,41 +120,52 @@ export async function openCharacterWizard(actor) {
     },
     render: ({ element }) => {
       const root = element?.[0] ?? element;
-      const sel     = root?.querySelector('select[name="speciesKey"]');
-      const ageN    = root?.querySelector('[data-hint="age"]');
-      const heightN = root?.querySelector('[data-hint="height"]');
-      const weightN = root?.querySelector('[data-hint="weight"]');
-      // busca el <small> como descendiente del mismo <label>, no con "adjacent sibling"
-      const spLbl   = sel?.closest('label')?.querySelector('small.muted');
+      if (!root || !root.querySelector) return;
 
-      const ageI = root?.querySelector('input[name="age"]');
-      const hI   = root?.querySelector('input[name="heightCm"]');
-      const wI   = root?.querySelector('input[name="weightKg"]');
+      const sel     = root.querySelector('select[name="speciesKey"]');
+      const ageN    = root.querySelector('[data-hint="age"]');
+      const heightN = root.querySelector('[data-hint="height"]');
+      const weightN = root.querySelector('[data-hint="weight"]');
+      const spLbl   = root.querySelector('[data-species-label]');
 
-      const applyRanges = (spKey) => {
-        const sp = getSpeciesByKey(spKey);
-        const r  = rangesFromSpecies(sp);
-        const set = (I, N, R) => {
-          if (!I || !N) return;
-          const has = R && R.min!=null && R.max!=null;
-          N.textContent = has ? `(${R.min} – ${R.max})` : "";
-          if (has) {
-            I.min = String(R.min); I.max = String(R.max);
-            const v = Number(I.value||0);
-            if (v < R.min) I.value = String(R.min);
-            if (v > R.max) I.value = String(R.max);
-          } else {
-            I.removeAttribute("min"); I.removeAttribute("max");
-          }
-        };
-        set(ageI, ageN, r?.age);
-        set(hI,   heightN, r?.heightCm);
-        set(wI,   weightN, r?.weightKg);
-        if (spLbl) spLbl.textContent = getSpeciesByKey(spKey)?.label ?? "";
+      const ageI = root.querySelector('input[name="age"]');
+      const hI   = root.querySelector('input[name="heightCm"]');
+      const wI   = root.querySelector('input[name="weightKg"]');
+
+      const getDef = (k) =>
+        species.find(s => s.key === k) || getSpeciesByKey(k) || null;
+
+      const setHint = (I, N, R) => {
+        if (!I || !N) return;
+        const has = R && R.min != null && R.max != null;
+        N.textContent = has ? `(${R.min} – ${R.max})` : "";
+        if (has) {
+          I.min = String(R.min); I.max = String(R.max);
+          const v = Number(I.value || 0);
+          if (v < R.min) I.value = String(R.min);
+          if (v > R.max) I.value = String(R.max);
+        } else {
+          I.removeAttribute("min"); I.removeAttribute("max");
+        }
       };
 
-      applyRanges(sel?.value);
-      sel?.addEventListener("change", () => applyRanges(sel.value));
+      const applyRanges = (spKey) => {
+        const def = getDef(spKey);
+        const r   = rangesFromSpecies(def);
+        setHint(ageI, ageN, r?.age);
+        setHint(hI,   heightN, r?.heightCm);
+        setHint(wI,   weightN, r?.weightKg);
+        if (spLbl) spLbl.textContent = def?.label ?? (sel?.options[sel.selectedIndex]?.textContent ?? "");
+      };
+
+      if (sel) {
+        const update = () => applyRanges(sel.value);
+        sel.addEventListener("change", update);
+        sel.addEventListener("input",  update);
+        sel.addEventListener("blur",   update); // por si el skin sólo dispara al perder foco
+        // Inicial
+        update();
+      }
     }
   });
 

@@ -103,7 +103,7 @@ export const SPECIES = {
     weightKg: [70, 85],
     languages: ["Common", "Extra"],
     speed: 10,
-    attrBonuses: { agility: 1, cunning: 1, charm: 1 },
+    attrBonuses: { agility: 1, cunning: 1, aura: 1 },
     vigorStart: { level: 1, rank: 1 },
   },
 
@@ -129,7 +129,7 @@ export const SPECIES = {
     weightKg: [15, 30],
     languages: ["Paní", "Common"],
     speed: 12,
-    attrBonuses: { agility: 1, cunning: 1, charm: 1 },
+    attrBonuses: { agility: 1, cunning: 1, aura: 1 },
     vigorStart: { level: 1, rank: 1 },
   },
 
@@ -269,5 +269,10 @@ export function listSpecies() {
 }
 
 export function getSpecies(key) {
-  return SPECIES[String(key || "").toLowerCase()] ?? null;
+  const k = String(key ?? "").toLowerCase();
+  if (k in SPECIES) return SPECIES[k];
+  for (const s of Object.values(SPECIES)) {
+    if (String(s.key ?? "").toLowerCase() === k) return s;
+  }
+  return null;
 }

@@ -282,3 +282,24 @@ body.system-tsdc .tsdc.sheet.actor .window-content {
   cursor: pointer;
 }
 .control-icon.tsdc-grimoire i { pointer-events: none; }
+
+/* === Fix: diálogos (wizard) con contenido largo === */
+body.system-tsdc .dialog .window-content {
+  /* que se comporte como contenedor flexible: botones abajo */
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: 85vh !important;   /* tope prudente */
+  min-height: 0 !important;
+}
+
+body.system-tsdc .dialog .dialog-content {
+  /* solo el contenido scrollea, los botones quedan visibles */
+  overflow-y: auto !important;
+  max-height: calc(85vh - 60px) !important; /* margen para la barra de botones */
+  min-height: 0 !important;
+  padding-right: 6px; /* evita que la barra tape texto */
+}
+
+body.system-tsdc .dialog .dialog-buttons {
+  flex: 0 0 auto !important; /* que no “crezca” */
+}
