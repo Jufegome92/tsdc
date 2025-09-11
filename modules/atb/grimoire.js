@@ -1,5 +1,6 @@
 // modules/atb/grimoire.js
 console.log("TSDC | grimoire.js cargado");
+const HUD_OBSERVERS = new WeakMap();
 
 (function ensureStyle() {
   const ID = "tsdc-grimoire-style";
@@ -421,6 +422,17 @@ function __injectHudBtn_Native(rootEl, hud) {
   __logEl("HUD right-col", right);
   if (!right) return; // no está lista aún, el caller reintenta
 
+  // si el token no tiene actor o no lo puedes abrir, no pintes el botón
+  const actor = (hud?.object ?? hud?.token)?.actor;
+  const OWNER = (CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
+  const canOpen = !!actor && (
+    game.user.isGM ||
+    actor.isOwner ||
+    actor.testUserPermission?.(game.user, "OWNER") ||
+    actor.testUserPermission?.(game.user, OWNER)
+  );
+  if (!canOpen) return;
+
   // 2) Evita duplicados
   if (right.querySelector(".control-icon.tsdc-grimoire")) {
     console.log("TSDC | HUD: botón ya existe, no se duplica");
@@ -464,18 +476,19 @@ function __addHudButton_Robusto(hud, html) {
 
   // Espera 1 frame para que el HUD termine de montar sus columnas
   requestAnimationFrame(() => {
-    try {
-      __injectHudBtn_Native(rootEl, hud);
-    } catch (e) {
-      console.error("TSDC | HUD inject error:", e);
-    }
+    try { __injectHudBtn_Native(rootEl, hud); } catch (e) { console.error(e); }
 
-    // Reinyecta si el tema re-renderiza internamente
-    const mo = new MutationObserver((_muts) => {
-      try { __injectHudBtn_Native(rootEl, hud); } catch {}
-    });
-    mo.observe(rootEl, { childList: true, subtree: true });
-    console.log("TSDC | HUD: observer activo");
+    // (opcional) un solo observer por rootEl
+    if (!HUD_OBSERVERS.has(rootEl)) {
+      const mo = new MutationObserver(() => {
+        try { __injectHudBtn_Native(rootEl, hud); } catch {}
+      });
+      mo.observe(rootEl, { childList: true, subtree: true });
+      HUD_OBSERVERS.set(rootEl, mo);
+      console.log("TSDC | HUD: observer activo");
+    } else {
+      console.log("TSDC | HUD: observer ya activo");
+    }
   });
 }
 
