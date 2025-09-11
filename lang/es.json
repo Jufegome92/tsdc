@@ -33,5 +33,11 @@
   "TSDC.Chat.learned": "Aprendido",
   "TSDC.Chat.noLearn": "Sin Aprendizaje",
   "TYPES.Actor.character": "Personaje",
-  "TYPES.Actor.creature": "Criatura"  
+  "TYPES.Actor.creature": "Criatura",  
+
+  "TSDC.Size.tiny": "Diminuto",
+  "TSDC.Size.small": "Pequeño",
+  "TSDC.Size.medium": "Mediano",
+  "TSDC.Size.large": "Grande",
+  "TSDC.Size.huge": "Enorme"
 }

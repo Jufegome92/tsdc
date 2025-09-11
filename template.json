@@ -38,9 +38,10 @@
         "presence": 0
       },
       "derived": { "preparation": 0, "resilience": 0 },
-
+      "states": { "fatigue": 0, "wear": 0 },
+      "journal": { "history": "", "items": "", "npcs": "" },
       "progression": {
-        "affinityMajor": "physical",        
+        "affinityMajor": "",        
         "skills": {
         },
         "weapons": {

@@ -51,6 +51,14 @@ Hooks.once("init", () => {
     "systems/tsdc/templates/apps/atb-tracker.hbs",
     "systems/tsdc/templates/apps/grimoire.hbs"
   ]);
+
+  Handlebars.registerHelper("loc", (k) => game.i18n.localize(String(k ?? "")));
+  // Pequeño concat útil: {{loc (concat "TSDC.Attr." key)}}
+  Handlebars.registerHelper("concat", function () {
+    const args = Array.from(arguments).slice(0, -1);
+    return args.join("");
+  });
+
    // Settings para iniciativa por “día”
   game.settings.register("tsdc", "initiative.dayId", { scope:"world", config:false, type:String, default:"" });
   game.settings.register("tsdc", "initiative.monstersDeck", { scope:"world", config:false, type:Object, default:null });

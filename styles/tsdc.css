@@ -303,3 +303,6 @@ body.system-tsdc .dialog .dialog-content {
 body.system-tsdc .dialog .dialog-buttons {
   flex: 0 0 auto !important; /* que no “crezca” */
 }
+
+.sheet-body .tab { display: none !important; }
+.sheet-body .tab.active { display: block !important; }

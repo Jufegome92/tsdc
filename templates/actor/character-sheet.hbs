@@ -10,6 +10,7 @@
     <a class="item" data-tab="specs">Especializaciones</a>
     <a class="item" data-tab="competences">Competencias</a>
     <a class="item" data-tab="equipment">Equipo</a>
+    <a class="item" data-tab="journal">Journal</a>
   </nav>
 
   <section class="sheet-body">
@@ -20,89 +21,94 @@
     <div class="tab t-col" data-group="primary" data-tab="main" style="gap:12px;">
 
       <div class="t-grid t-grid-3">
-        {{!-- Atributos --}}
+        {{!-- Especie & Trasfondo --}}
         <div class="t-card t-col">
-          <h3 style="margin:0 0 6px 0;">Atributos</h3>
+          <h3 style="margin:0 0 6px 0;">Especie & Trasfondo</h3>
+          <div class="t-field"><label>Especie</label><input type="text" value="{{system.species.label}}" disabled /></div>
+          <div class="t-field"><label>Tamaño</label><input type="text" value="{{system.species.size}}" disabled /></div>
+          <div class="t-field"><label>Velocidad</label><input type="text" value="{{system.species.speed}} m/turno" disabled /></div>
+          <div class="t-field"><label>Idiomas base</label><input type="text" value="{{#each system.species.languages}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}" disabled /></div>
+          <div class="t-field"><label>Idiomas aprendidos</label><input type="text" name="system.species.learned" value="{{system.species.learned}}" placeholder="separados por coma"/></div>
+          <div class="t-field"><label>Trasfondo</label><input type="text" value="{{system.background.label}}" disabled /></div>
+          {{!-- Afinidad Mayor se oculta para evitar conflictos; será asignada por el flujo de creación --}}
+        </div>
 
-          <div class="t-field">
-            <label>{{labels.strength}}</label>
-            <input type="number" name="system.attributes.strength" value="{{system.attributes.strength}}" />
+        {{!-- Estados: Aguante, Fatiga y Desgaste --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Estados</h3>
+          <div class="t-row" style="gap:12px;">
+            <div class="t-field">
+              <label>Aguante</label>
+              <input type="number" value="{{states.stamina}}" disabled />
+              <span class="muted">= Nivel en Vigor + Tenacidad</span>
+            </div>
+            <div class="t-field">
+              <label>Fatiga</label>
+              <input type="number" name="system.states.fatigue" value="{{states.fatigue}}" min="0" max="5" />
+              <span class="muted">0–5 (mitigada por Aguante)</span>
+            </div>
+            <div class="t-field">
+              <label>Desgaste</label>
+              <input type="number" name="system.states.wear" value="{{states.wear}}" min="0" max="{{states.wearMax}}" />
+              <span class="muted">Límite actual: {{states.wearMax}} (= Aguante – Fatiga)</span>
+            </div>
           </div>
-          <div class="t-field">
-            <label>{{labels.agility}}</label>
-            <input type="number" name="system.attributes.agility" value="{{system.attributes.agility}}" />
+        </div>
+      </div>
+
+      {{!-- Bloque de características + derivados + extra en grilla 3 columnas --}}
+      <div class="t-grid t-grid-3">
+
+        {{!-- Características --}}
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Características</h3>
+
+          <h4 class="muted" style="margin:4px 0;">Físicas</h4>
+          <div class="t-grid t-grid-3" style="gap:8px;">
+            <div class="t-field"><label>Fuerza</label><input type="number" name="system.attributes.strength" value="{{system.attributes.strength}}" /></div>
+            <div class="t-field"><label>Agilidad</label><input type="number" name="system.attributes.agility" value="{{system.attributes.agility}}" /></div>
+            <div class="t-field"><label>Tenacidad</label><input type="number" name="system.attributes.tenacity" value="{{system.attributes.tenacity}}" /></div>
           </div>
-          <div class="t-field">
-            <label>{{labels.tenacity}}</label>
-            <input type="number" name="system.attributes.tenacity" value="{{system.attributes.tenacity}}" />
+
+          <h4 class="muted" style="margin:8px 0 4px;">Mentales</h4>
+          <div class="t-grid t-grid-3" style="gap:8px;">
+            <div class="t-field"><label>Astucia</label><input type="number" name="system.attributes.cunning" value="{{system.attributes.cunning}}" /></div>
+            <div class="t-field"><label>Sabiduría</label><input type="number" name="system.attributes.wisdom" value="{{system.attributes.wisdom}}" /></div>
+            <div class="t-field"><label>Intelecto</label><input type="number" name="system.attributes.intellect" value="{{system.attributes.intellect}}" /></div>
           </div>
-          <div class="t-field">
-            <label>{{labels.cunning}}</label>
-            <input type="number" name="system.attributes.cunning" value="{{system.attributes.cunning}}" />
-          </div>
-          <div class="t-field">
-            <label>{{labels.wisdom}}</label>
-            <input type="number" name="system.attributes.wisdom" value="{{system.attributes.wisdom}}" />
-          </div>
-          <div class="t-field">
-            <label>{{labels.intellect}}</label>
-            <input type="number" name="system.attributes.intellect" value="{{system.attributes.intellect}}" />
-          </div>
-          <div class="t-field">
-            <label>{{labels.aura}}</label>
-            <input type="number" name="system.attributes.aura" value="{{system.attributes.aura}}" />
-          </div>
-          <div class="t-field">
-            <label>{{labels.composure}}</label>
-            <input type="number" name="system.attributes.composure" value="{{system.attributes.composure}}" />
-          </div>
-          <div class="t-field">
-            <label>{{labels.presence}}</label>
-            <input type="number" name="system.attributes.presence" value="{{system.attributes.presence}}" />
+
+          <h4 class="muted" style="margin:8px 0 4px;">Sociales</h4>
+          <div class="t-grid t-grid-3" style="gap:8px;">
+            <div class="t-field"><label>Presencia</label><input type="number" name="system.attributes.presence" value="{{system.attributes.presence}}" /></div>
+            <div class="t-field"><label>Compostura</label><input type="number" name="system.attributes.composure" value="{{system.attributes.composure}}" /></div>
+            <div class="t-field"><label>Aura</label><input type="number" name="system.attributes.aura" value="{{system.attributes.aura}}" /></div>
           </div>
         </div>
 
         {{!-- Derivados --}}
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Derivados</h3>
-          <div class="t-row">
-            <div class="t-field" style="flex:1;">
-              <label>{{labels.prep}}</label>
-              <input type="number" value="{{system.derived.preparation}}" disabled />
-            </div>
-            <div class="t-field" style="flex:1;">
-              <label>{{labels.resi}}</label>
-              <input type="number" value="{{system.derived.resilience}}" disabled />
-            </div>
+          <div class="t-field">
+            <label>Preparación</label>
+            <input type="number" name="system.derived.preparation" value="{{system.derived.preparation}}" />
+          </div>
+          <div class="t-field">
+            <label>Resiliencia</label>
+            <input type="number" name="system.derived.resilience" value="{{system.derived.resilience}}" />
           </div>
           <span class="muted">Se recalculan automáticamente con tus atributos.</span>
         </div>
 
-        {{!-- Notas --}}
+        {{!-- Placeholder de layout libre --}}
         <div class="t-card t-col">
-          <h3 style="margin:0 0 6px 0;">Notas</h3>
-          <textarea name="system.notes" rows="8">{{system.notes}}</textarea>
+          <h3 style="margin:0 0 6px 0;">Extra</h3>
+          <div class="muted">Espacio para widgets futuros.</div>
         </div>
-      </div>
 
-      {{!-- Trasfondo / Afinidad (solo lectura) --}}
-      <div class="t-card t-col">
-        <h3 style="margin:0 0 6px 0;">Trasfondo / Afinidad</h3>
-        <div class="t-grid t-grid-3" style="gap:12px;">
-          <div class="t-field">
-            <label>Trasfondo</label>
-            <input type="text" value="{{system.background.label}}" disabled />
-          </div>
-          <div class="t-field">
-            <label>Afinidad Mayor</label>
-            <input type="text" value="{{system.progression.affinityMajor}}" disabled />
-          </div>
-          <div class="t-col muted" style="justify-content:center;">
-            <span>• Categoría afín progresa con umbral <strong>5</strong></span>
-            <span>• Otras categorías con umbral <strong>10</strong></span>
-          </div>
-        </div>
-      </div>
+      </div> {{!-- /t-grid 3 --}}
+
+      {{!-- (Se elimina el bloque “Trasfondo / Afinidad (recordatorio)” para evitar duplicar Afinidad) --}}
+    </div> {{!-- /tab main --}}
 
     {{!-- ================================
           TAB: TIRADAS
@@ -145,7 +151,7 @@
               <option value="agility"  {{#if (eq rollDefaults.attack.attr "agility")}}selected{{/if}}>Agilidad</option>
               <option value="tenacity" {{#if (eq rollDefaults.attack.attr "tenacity")}}selected{{/if}}>Tenacidad</option>
               <option value="cunning" {{#if (eq rollDefaults.attack.attr "cunning")}}selected{{/if}}>Astucia</option>
-              <option value="wisdom" {{#if (eq rollDefaults.attack.attr "wisdom")}}selected{{/if}}>Sabiduria</option>
+              <option value="wisdom" {{#if (eq rollDefaults.attack.attr "wisdom")}}selected{{/if}}>Sabiduría</option>
               <option value="intellect" {{#if (eq rollDefaults.attack.attr "intellect")}}selected{{/if}}>Intelecto</option>
               <option value="aura" {{#if (eq rollDefaults.attack.attr "aura")}}selected{{/if}}>Aura</option>
               <option value="composure" {{#if (eq rollDefaults.attack.attr "composure")}}selected{{/if}}>Compostura</option>
@@ -234,12 +240,12 @@
               <option value="infection"  {{#if (eq rollDefaults.resistance.type "infection")}}selected{{/if}}>Infección</option>
               <option value="affliction" {{#if (eq rollDefaults.resistance.type "affliction")}}selected{{/if}}>Aflicción</option>
               <option value="curse"      {{#if (eq rollDefaults.resistance.type "curse")}}selected{{/if}}>Maldición</option>
-              <option value="alteration"  {{#if (eq rollDefaults.resistance.type "alteration")}}selected{{/if}}>Alteración</option>
-              <option value="water"      {{#if (eq rollDefaults.resistance.type "water")}}selected{{/if}}>Agua</option>         
+              <option value="alteration" {{#if (eq rollDefaults.resistance.type "alteration")}}selected{{/if}}>Alteración</option>
+              <option value="water"      {{#if (eq rollDefaults.resistance.type "water")}}selected{{/if}}>Agua</option>
               <option value="fire"       {{#if (eq rollDefaults.resistance.type "fire")}}selected{{/if}}>Fuego</option>
               <option value="earth"      {{#if (eq rollDefaults.resistance.type "earth")}}selected{{/if}}>Tierra</option>
               <option value="air"        {{#if (eq rollDefaults.resistance.type "air")}}selected{{/if}}>Viento</option>
-              <option value="light"      {{#if (eq rollDefaults.resistance.type "light")}}selected{{/if}}>Luz</option>      
+              <option value="light"      {{#if (eq rollDefaults.resistance.type "light")}}selected{{/if}}>Luz</option>
               <option value="dark"       {{#if (eq rollDefaults.resistance.type "dark")}}selected{{/if}}>Oscuridad</option>
             </select>
           </div>
@@ -256,7 +262,7 @@
         <span class="muted">Un solo dado (sin elección). Fallo → progreso en esa resistencia.</span>
       </div>
 
-    </div>
+    </div> {{!-- /tab rolls --}}
 
     {{!-- ================================
           TAB: ESPECIALIZACIONES
@@ -289,7 +295,7 @@
           {{#each specs.favorites}}
             <div class="t-row" data-spec="{{this.key}}" style="gap:8px; align-items:center;">
               <strong style="min-width:160px;">{{this.label}}</strong>
-              <span class="muted" title="Atributo base">{{this.attrLabel}}</span>
+              <span class="muted" title="Atributo base">{{loc (concat "TSDC.Attr." this.attrKey)}}</span>
               <span class="muted">Rango {{this.rank}} • Progreso {{this.progress}}/{{this.threshold}}</span>
               <span class="t-right"></span>
               <button type="button" class="t-btn secondary" data-action="spec-fav" title="Quitar de favoritas">★</button>
@@ -320,7 +326,7 @@
       {{/each}}
 
       <span class="muted">Consejo: marca con ★ las que más usas para tenerlas arriba.</span>
-    </div>
+    </div> {{!-- /tab specs --}}
 
     {{!-- ================================
           TAB: COMPETENCIAS
@@ -434,7 +440,7 @@
         {{/if}}
       </div>
 
-    </div>
+    </div> {{!-- /tab competences --}}
 
     {{!-- ================================
           TAB: EQUIPO
@@ -569,6 +575,27 @@
         <span class="muted">Consejo: equipa un arma en la mano principal para que las tiradas la tomen por defecto.</span>
       </div>
 
-    </div>
+    </div> {{!-- /tab equipment --}}
+
+    {{!-- ================================
+          TAB: JOURNAL
+          ================================ --}}
+    <div class="tab t-col" data-group="primary" data-tab="journal" style="gap:12px;">
+      <div class="t-grid t-grid-3">
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Historia</h3>
+          <textarea name="system.journal.history" rows="10">{{system.journal.history}}</textarea>
+        </div>
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Objetos & Mapas</h3>
+          <textarea name="system.journal.items" rows="10">{{system.journal.items}}</textarea>
+        </div>
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">PNJs & Pistas</h3>
+          <textarea name="system.journal.npcs" rows="10">{{system.journal.npcs}}</textarea>
+        </div>
+      </div>
+    </div> {{!-- /tab journal --}}
+
   </section>
 </section>

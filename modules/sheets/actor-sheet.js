@@ -31,6 +31,10 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     }
   };
 
+  get title() {
+    return this.actor?.name || game.i18n.localize("TYPES.Actor.character");
+  }
+
   /** Contexto para el HBS (tu antiguo getData) */
   async _prepareContext(context = {}, _options = {}) {
     console.log("TSDCActorSheet::_prepareContext IN");
@@ -50,6 +54,20 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     context.system = this.actor.system ?? {};
 
     const sp = context.system?.species ?? {};
+
+    const SIZE_LBL = {
+      tiny:"TSDC.Size.tiny", small:"TSDC.Size.small", medium:"TSDC.Size.medium",
+      large:"TSDC.Size.large", huge:"TSDC.Size.huge"
+    };
+    const sizeKey = SIZE_LBL[String(sp.size) || ""] || "";
+    const sizeLabel = sizeKey ? game.i18n.localize(sizeKey) : (sp.size ?? "");
+
+    context.speciesView = {
+      label: sp.label || "",
+      sizeLabel,
+      speed: sp.speed ?? 0,
+      languages: Array.isArray(sp.languages) ? sp.languages.join(", ") : ""
+    };
 
     function toHint(rangeArr, mapFn=(x)=>x) {
       if (!Array.isArray(rangeArr) || rangeArr.length !== 2) return "";
@@ -98,7 +116,8 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     const all = listSpecs().map(({ key, label, category }) => {
       const st = getState(key);
       const attrKey   = getAttributeForSpec(key);
-      const attrLabel = context.labels[attrKey] ?? attrKey;
+      const i18nKey   = attrKey ? `TSDC.Attr.${attrKey}` : "";
+      const attrLabel = i18nKey ? game.i18n.localize(i18nKey) : (context.labels[attrKey] ?? attrKey);
       const threshold = getThresholdForSpec(this.actor, category);
       return { key, label, category, attrKey, attrLabel, rank: st.rank, progress: st.progress, threshold, fav: st.fav, usesCalc: usesCalc(key) };
     });
@@ -235,6 +254,20 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       }
     };
 
+    // --- Estados básicos: Aguante, Fatiga y Desgaste (no persisten todos)
+    const tenacity = Number(this.actor.system?.attributes?.tenacity ?? 0);
+    const vigorLvl = Number(this.actor.system?.progression?.skills?.vigor?.level ?? 0);
+    const stamina = Number(vigorLvl + tenacity); // Aguante
+
+
+    const fatigue = Number(this.actor.system?.states?.fatigue ?? 0);
+    const wear = Number(this.actor.system?.states?.wear ?? 0);
+    const wearMax = Math.max(0, stamina - fatigue);
+
+
+    context.states = { stamina, fatigue, wear, wearMax };
+
+
     console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!context.inventory });
     return context;
   }
@@ -247,17 +280,37 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     // --- Pestañas con API pública (v13) ---
     // Si ya había una instancia previa (por re-render), desasóciala
     this._tabs?.unbind?.();
+    this._tabs = null;
 
     // Usa el componente oficial de Foundry para tabs
-    this._tabs = new foundry.applications.ux.Tabs({
-      navSelector: ".sheet-tabs",
-      contentSelector: ".sheet-body",
-      initial: this.#activeTab || "main",
-      callback: (event, tabs, active) => {
-        // 'active' es el nombre de la pestaña activa
-        this.#activeTab = active || "main";
-      }
-    });
+    const TabsV2 = foundry?.applications?.api?.TabsV2;
+    if (TabsV2) {
+      this._tabs = new TabsV2({
+        navSelector: ".sheet-tabs",
+        contentSelector: ".sheet-body",
+        initial: this.#activeTab || "main",
+        callback: (_ev, _tabs, active) => this.#activeTab = active || "main"
+      });
+    this._tabs.bind?.(el);
+    } else {
+
+      const nav = el.querySelector(".sheet-tabs");
+      const content = el.querySelector(".sheet-body");
+      const items = nav ? Array.from(nav.querySelectorAll(".item")) : [];
+      const panes = content ? Array.from(content.querySelectorAll('.tab[data-group="primary"]')) : [];
+      const activate = (name) => {
+        items.forEach(a => a.classList.toggle("active", a.dataset.tab === name));
+        panes.forEach(p => p.classList.toggle("active", p.dataset.tab === name));
+        this.#activeTab = name;
+      };
+      nav?.addEventListener("click", (ev) => {
+        const a = ev.target.closest(".item");
+        if (!a) return;
+        ev.preventDefault();
+        activate(a.dataset.tab);
+      });
+      activate(this.#activeTab || "main");
+    }
 
     if (!this.isEditable) return;
 

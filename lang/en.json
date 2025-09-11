@@ -1,0 +1,43 @@
+{
+  "TSDC.System": "Transcendence",
+
+  "TSDC.Attr.strength": "Strength",
+  "TSDC.Attr.agility": "Agility",
+  "TSDC.Attr.tenacity": "Tenacity",
+  "TSDC.Attr.cunning": "Cunning",
+  "TSDC.Attr.wisdom": "Wisdom",
+  "TSDC.Attr.intellect": "Intellect",
+  "TSDC.Attr.aura": "Aura",
+  "TSDC.Attr.composure": "Composure",
+  "TSDC.Attr.presence": "Presence",
+
+  "TSDC.Derived.preparation": "Preparation",
+  "TSDC.Derived.resilience": "Resilience",
+
+  "TSDC.Roll.attack": "Attack Roll",
+  "TSDC.Roll.defense": "Defense Roll",
+  "TSDC.Roll.specialization": "Specialization Roll",
+  "TSDC.Roll.attribute": "Attribute Roll",
+  "TSDC.Roll.resistance": "Resistance Roll",
+  "TSDC.Roll.impact": "Impact Roll",
+  "TSDC.Roll.personality": "Personality Roll",
+
+  "TSDC.Evo.execution": "Execution Edge",
+  "TSDC.Evo.learning": "Learning Edge",
+  "TSDC.Evo.none": "No Edge",
+  "TSDC.Evo.choiceTitle": "Evolution Roll Choice",
+  "TSDC.Evo.choiceLabel": "Confirm",
+
+  "TSDC.Chat.success": "Success",
+  "TSDC.Chat.fail": "Fail",
+  "TSDC.Chat.learned": "Learned",
+  "TSDC.Chat.noLearn": "No Learn",
+  "TYPES.Actor.character": "Character",
+  "TYPES.Actor.creature": "Creature",  
+
+  "TSDC.Size.tiny": "Tiny",
+  "TSDC.Size.small": "Small",
+  "TSDC.Size.medium": "Medium",
+  "TSDC.Size.large": "Large",
+  "TSDC.Size.huge": "Huge"
+}
