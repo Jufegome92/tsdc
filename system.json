@@ -19,7 +19,8 @@
         "modules/tsdc.js"
     ],
     "styles": [
-        "styles/tsdc.css"
+        "styles/tsdc.css",
+        "styles/vision-panel.css"
     ],
     "languages": [
         {

@@ -306,3 +306,13 @@ body.system-tsdc .dialog .dialog-buttons {
 
 .sheet-body .tab { display: none !important; }
 .sheet-body .tab.active { display: block !important; }
+
+#tsdc-vision-panel .tabs-content:not(:has(.tab.active)) .tab:first-of-type {
+  display: flex !important;
+}
+
+#tsdc-vision-panel .window-content { display:flex; flex-direction:column; max-height:80vh; min-height:0; }
+#tsdc-vision-panel .tabs-content { flex:1 1 auto; min-height:0; overflow:auto; }
+
+#tsdc-vision-panel .tabs-content .tab { display:none !important; }
+#tsdc-vision-panel .tabs-content .tab.active { display:flex !important; }

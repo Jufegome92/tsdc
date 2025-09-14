@@ -17,6 +17,7 @@ import { registerAtbTrackerButton, registerAtbAutoOpen } from "./atb/tracker.js"
 import { registerAtbUI } from "./atb/ui.js";
 import { ATB_API } from "./atb/engine.js";
 import "./atb/grimoire.js";
+import { TSDCVisionPanel, registerVisionPanelControl } from "./ui/vision-panel.js";
 
 const _guardWizardOpen = new Set();
 
@@ -49,7 +50,8 @@ Hooks.once("init", () => {
   foundry.applications.handlebars.loadTemplates([
     "systems/tsdc/templates/cards/action-card.hbs",
     "systems/tsdc/templates/apps/atb-tracker.hbs",
-    "systems/tsdc/templates/apps/grimoire.hbs"
+    "systems/tsdc/templates/apps/grimoire.hbs",
+    "systems/tsdc/templates/apps/vision-panel.hbs"
   ]);
 
   Handlebars.registerHelper("loc", (k) => game.i18n.localize(String(k ?? "")));
@@ -59,9 +61,28 @@ Hooks.once("init", () => {
     return args.join("");
   });
 
+  registerVisionPanelControl();
+
    // Settings para iniciativa por “día”
   game.settings.register("tsdc", "initiative.dayId", { scope:"world", config:false, type:String, default:"" });
   game.settings.register("tsdc", "initiative.monstersDeck", { scope:"world", config:false, type:Object, default:null });
+
+  // settings (init):
+  game.settings.register("tsdc", "env.presets", { scope:"world", config:false, type:Object, default:{} });
+  game.settings.register("tsdc", "env.factor", { scope:"world", config:true, type:String, default:"none",
+    choices: { none:"—", rain:"Lluvia", snow:"Nieve", fog:"Niebla", smoke:"Humo", dust:"Polvo", sand:"Arena" },
+    name:"Entorno: factor"
+  });
+  game.settings.register("tsdc", "env.intensity", { scope:"world", config:true, type:String, default:"none",
+    choices: { none:"—", light:"Ligera", intense:"Intensa", storm:"Tormenta", blizzard:"Tormenta de nieve", dense:"Densa", thick:"Espesa", moderate:"Moderado" },
+    name:"Entorno: intensidad"
+  });
+  game.settings.register("tsdc", "env.darkness", { scope:"world", config:true, type:String, default:"none",
+    choices: { none:"Ninguna", absolute:"Oscuridad absoluta", elemental:"Oscuridad elemental" },
+    name:"Oscuridad"
+  });
+  game.settings.register("tsdc", "env.lightOverride", { scope:"world", config:false, type:Object, default:null });
+
 
   // Helpers de Handlebars
   const H = globalThis.Handlebars ?? window.Handlebars;
@@ -120,6 +141,7 @@ Hooks.once("ready", () => {
   } catch {}
   game.transcendence = game.transcendence || {};
   game.transcendence.atb = ATB_API;
+  game.transcendence.openVisionPanel = () => TSDCVisionPanel.open();
   game.transcendence.openGrimoire = () => window.tsdcatb?.GrimoireApp?.openForCurrentUser();
 });
 

@@ -1,0 +1,121 @@
+<section class="tsdc-vision-panel t-col">
+  <nav class="nav-tabs t-row" data-group="primary">
+    <a class="item" data-tab="env">Ambiente</a>
+    <a class="item" data-tab="light">Luz</a>
+    <a class="item" data-tab="stealth">Ocultación</a>
+    <a class="item" data-tab="debug">Depuración</a>
+  </nav>
+
+  <div class="tabs-content" data-group="primary">
+    {{!-- A) Ambiente --}}
+    <div class="tab t-col" data-tab="env" style="gap:12px;">
+      <div class="grid cols-2">
+        <label>Factor
+          <select data-change="factor">
+            {{#each factorChoices}}
+              <option value="{{@key}}" {{#if (eq ../env.factor @key)}}selected{{/if}}>{{this}}</option>
+            {{/each}}
+          </select>
+        </label>
+
+        <label>Intensidad
+          <select data-change="intensity">
+            {{#each intensityChoices}}
+              <option value="{{@key}}" {{#if (eq ../env.intensity @key)}}selected{{/if}}>{{this}}</option>
+            {{/each}}
+          </select>
+        </label>
+      </div>
+
+      <label>Oscuridad
+        <select data-change="darkness">
+          {{#each darknessChoices}}
+            <option value="{{@key}}" {{#if (eq ../env.darkness @key)}}selected{{/if}}>{{this}}</option>
+          {{/each}}
+        </select>
+      </label>
+
+      <div class="card">
+        <div><b>Vista previa R_detalle:</b> {{rDetalle}} m</div>
+        <div class="muted">{{preview}}</div>
+      </div>
+
+      <div class="t-row" style="gap:8px;">
+        <button type="button" data-action="save-preset"><i class="fas fa-save"></i> Guardar preset</button>
+        <button type="button" data-action="load-preset"><i class="fas fa-folder-open"></i> Cargar preset</button>
+      </div>
+    </div>
+
+    {{!-- B) Luz --}}
+    <div class="tab t-col" data-tab="light" style="gap:12px;">
+      <h3>Radios base (override global)</h3>
+      <div class="grid cols-3">
+        <label>Vela (m)
+          <input type="number" min="0" step="1" value="{{lightOverride.candle}}" data-change="light-base-candle" placeholder="2">
+        </label>
+        <label>Antorcha (m)
+          <input type="number" min="0" step="1" value="{{lightOverride.torch}}" data-change="light-base-torch" placeholder="4">
+        </label>
+        <label>Lámpara (m)
+          <input type="number" min="0" step="1" value="{{lightOverride.oil_lamp}}" data-change="light-base-lamp" placeholder="6">
+        </label>
+      </div>
+
+      <h3>Aplicar a tokens seleccionados</h3>
+      <div class="grid cols-2">
+        <label>Asignar luz
+          <select data-change="light-kind">
+            <option value="none">— Sin luz —</option>
+            <option value="candle">Vela</option>
+            <option value="torch">Antorcha</option>
+            <option value="oil_lamp">Lámpara</option>
+          </select>
+        </label>
+        <div class="muted">Seleccionados: {{selectedTokens.length}}</div>
+      </div>
+
+      <div class="t-row" style="gap:8px;">
+        <button type="button" data-action="clear-lights"><i class="fas fa-ban"></i> Apagar todas las luces (escena)</button>
+        <button type="button" data-action="give-torch"><i class="fas fa-fire"></i> Dar antorcha a seleccionados</button>
+      </div>
+    </div>
+
+    {{!-- C) Ocultación --}}
+    <div class="tab t-col" data-tab="stealth" style="gap:12px;">
+      <div class="grid cols-2">
+        <label>Ocultación (seleccionados)
+          <select data-change="concealment-kind">
+            <option value="none">— Sin ocultación —</option>
+            <option value="hidden">Oculto</option>
+          </select>
+        </label>
+        <div class="muted">Tip: la acción ATB “Ocultación” aplica este estado de forma reglada.</div>
+      </div>
+
+      <h3>Detección</h3>
+      <div class="t-row" style="gap:8px;">
+        <button type="button" data-action="roll-cardinal"><i class="fas fa-compass"></i> 1d8 cardinal</button>
+        <div class="muted">Úsalo cuando falle la detección pasiva para ubicar aproximado.</div>
+      </div>
+      <div class="t-row">
+        <label><input type="checkbox" disabled> AOE puede afectar ocultos si el área los cubre (placeholder)</label>
+      </div>
+    </div>
+
+    {{!-- D) Depuración --}}
+    <div class="tab t-col" data-tab="debug" style="gap:12px;">
+      <div class="t-row" style="gap:8px; align-items:center;">
+        <button type="button" data-action="draw-rdet"><i class="fas fa-circle"></i> Dibujar R_detalle (token seleccionado)</button>
+        <div class="muted">Dibuja una plantilla de círculo con el alcance de detalles efectivo.</div>
+      </div>
+      <div class="t-row" style="gap:8px; align-items:center;">
+        <button type="button" data-action="clear-rdet"><i class="fas fa-eraser"></i> Limpiar R_detalle</button>
+        <div class="muted">Elimina cualquier plantilla R_detalle previa.</div>
+      </div>
+      <div class="t-row" style="gap:8px; align-items:center;">
+        <button type="button" data-action="probe-coverage"><i class="fas fa-bullseye"></i> Probar paquete [actor→objetivo]</button>
+        <div class="muted">Controla un token y targetea otro; escribe el paquete en el chat.</div>
+      </div>
+    </div>
+  </div>
+</section>
