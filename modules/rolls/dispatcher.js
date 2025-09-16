@@ -8,17 +8,16 @@ import { emitModInspector } from "./inspector.js";
 import { triggerFumbleReactions } from "../atb/reactions.js";
 
 // 🔗 Context tags
-import { buildContextTags, normalizeTags } from "./context-tags.js";
-const _atkGuard = new Set();
+import { buildContextTags } from "./context-tags.js";
 
 /** === Helpers locales === */
-function primaryTokenOf(actor) { // <<< obtiene un token del actor de forma segura
+function primaryTokenOf(actor) {
   return actor?.getActiveTokens?.(true)?.[0]
       || canvas.tokens.placeables.find(t => t.actor?.id === actor?.id)
       || null;
 }
 
-/** Util: crea una tarjetita para el GM con los datos necesarios para evaluar */
+/** Tarjeta “Solo GM” para evaluar (restaurada) */
 async function gmEvalCard({ actor, kind, payload }) {
   const blob = encodeURIComponent(JSON.stringify(payload));
   const title =
@@ -36,58 +35,55 @@ async function gmEvalCard({ actor, kind, payload }) {
       <div class="muted">No revela DC. Abre un diálogo para ingresar TD/decisiones.</div>
     </div>
   `;
+  const whisperIds = ChatMessage.getWhisperRecipients("GM").map(u => u.id);
   await ChatMessage.create({
-    whisper: ChatMessage.getWhisperRecipients("GM"),
+    whisper: whisperIds,
     speaker: ChatMessage.getSpeaker({ actor }),
     content: html
   });
 }
 
-/** ==== Helpers de contexto (opcionales/defensivos) ==== */
-
-/** Intenta inferir el subtipo de ataque si no lo pasó la UI */
+/** Intenta inferir melee/ranged si no lo pasa la UI */
 function inferAttackKind(actor, { isManeuver=false, weaponKey=null } = {}) {
   try {
-    // Si tu item de arma guarda un flag/propiedad para “ranged”
     const k = weaponKey || getEquippedWeaponKey(actor, "main");
     const item = k ? actor?.items?.get?.(k) || actor?.items?.find?.(i => i.name === k) : null;
     const ranged = item?.system?.isRanged ?? item?.flags?.tsdc?.ranged ?? null;
     if (ranged === true) return "ranged";
     if (ranged === false) return "melee";
   } catch (_) {}
-  return null; // deja que el builder lo omita si no hay dato
+  return null;
 }
 
-/** Construye tags comunes de entorno desde un objeto “context” suelto */
+/** Construye tags comunes de entorno desde “context” */
 function makeTagsFor(opts = {}) {
-  // opts es lo que pase la UI/macro: { phase, attackKind, element, cover, vision, visionRangeMeters,
-  // movement, terrain, soundDependent, verbal, envCondition, envFallbackDC, extra }
   return buildContextTags({
-    phase: opts.phase,                        // "attack" | "defense" | "skill" | "save" | "impact"
+    phase: opts.phase,                        // "attack" | "defense" | "save" | "impact"
     attackKind: opts.attackKind ?? null,      // "melee" | "ranged" | "naturalRanged"
-    element: opts.element ?? null,            // "fire" | ...
+    element: opts.element ?? null,
     cover: opts.cover ?? null,                // "none" | "partial" | "heavy" | "total"
     vision: opts.vision ?? null,              // "normal" | "limited" | "none"
     visionRangeMeters: opts.visionRange ?? null,
-    movement: opts.movement ?? false,         // true | "run" | "crawl"
-    terrain: opts.terrain ?? null,            // "difficult"
+    movement: opts.movement ?? false,
+    terrain: opts.terrain ?? null,
     soundDependent: !!opts.soundDependent,
     verbal: !!opts.verbal,
     envCondition: opts.envCondition ?? null,  // "light" | "normal" | "moderate" | "severe" | "disastrous"
-    envFallbackDC: opts.envFallbackDC ?? null,// "fundamentos" | ... | "extremo"
-    extra: opts.extraTags ?? null             // strings o alias
+    envFallbackDC: opts.envFallbackDC ?? null,
+    extra: opts.extraTags ?? null
   });
 }
-/** Heurística de fumble (ajústala a tu engine si ya marcas flags) */
-function isFumbleAttack(evo) { // <<< dispara SOLO si detectas fumble real
+
+/** Heurística de fumble */
+function isFumbleAttack(evo) {
   const rr = evo?.resultRoll;
   const f  = rr?.flags?.tsdc;
   if (f?.isFumble === true || f?.crit === "fumble") return true;
-  // fallback muy básico: si el policy se llamó "fumble"
   if (evo?.usedPolicy && /fumble/i.test(String(evo.usedPolicy))) return true;
   return false;
 }
-/** ATAQUE */
+
+/** ─────────── ATAQUE ─────────── */
 export async function rollAttack(actor, {
   key,
   isManeuver = false,
@@ -96,7 +92,6 @@ export async function rollAttack(actor, {
   penalty = 0,
   mode = "ask",
   flavor,
-  /** NUEVO: contexto opcional para tags (UI/macros pueden rellenarlo) */
   context = {}
 } = {}) {
   if (!isManeuver && (!key || !key.trim())) {
@@ -107,7 +102,7 @@ export async function rollAttack(actor, {
   const { formula } = buildAttackFormula(actor, { isManeuver, key, attrKey, bonus, penalty });
   const path  = isManeuver ? `system.progression.maneuvers.${key}.rank` : `system.progression.weapons.${key}.rank`;
   const rank  = Number(foundry.utils.getProperty(actor, path) || 0);
-  
+
   let evo;
   try {
     evo = await resolveEvolution({
@@ -116,46 +111,32 @@ export async function rollAttack(actor, {
       actor, meta: { key, isManeuver }
     });
   } catch (err) {
-    // Si el diálogo se cerró/canceló, simplemente no hacemos nada
     console.debug("rollAttack cancelado o cerrado:", err);
     return null;
   }
 
   const { resultRoll, otherRoll, usedPolicy } = evo || {};
-  if (!resultRoll || typeof resultRoll.total !== "number") {
-    // Cancelado o sin resultado → no continuar
-    console.debug("rollAttack: sin resultado (cancelado).");
-    return null;
-  }
+  if (!resultRoll || typeof resultRoll.total !== "number") return null;
 
-  // ===== TAGS de contexto =====
   const attackKind = context.attackKind ?? inferAttackKind(actor, { isManeuver, weaponKey: key });
-  const tags = makeTagsFor({
-    ...context,
-    phase: "attack",
-    attackKind
-  });
+  const tags = makeTagsFor({ ...context, phase: "attack", attackKind });
 
   const patched = makeRollTotal(actor, resultRoll.total, {
-    phase: "attack",            // mantiene la fase esperada por el engine
+    phase: "attack",
     tag: "TA",
     weaponKey: getEquippedWeaponKey(actor),
-    tags                              // <<<<<<  Nuevo: array de context tags
+    tags
   });
 
   await emitModInspector(actor, { phase: "attack", tag: "TA" }, patched.breakdown);
 
-  const shownTotal = patched.total;
-  // Si en tu UI quieres notas/avances, ya los tienes en patched + resultRoll:
-  // const shownNotes = [...(resultRoll.notes || []), ...patched.notes];
-  // const shownDiceAdvances = (resultRoll.diceAdvances || 0) + (patched.diceAdvances || 0);
-
-  // === (NUEVO) FUMBLE → abrir ventanas de reacción solo si aplica ===
-  const attackerToken = primaryTokenOf(actor); // <<<
-  if (attackerToken && isFumbleAttack(evo)) { // <<<
+  // FUMBLE → abrir ventanas de reacción solo si aplica
+  const attackerToken = primaryTokenOf(actor);
+  if (attackerToken && isFumbleAttack(evo)) {
     await triggerFumbleReactions({ fumblerToken: attackerToken });
   }
 
+  // Tarjeta GM para evaluar
   await gmEvalCard({
     actor, kind: "attack",
     payload: {
@@ -164,15 +145,16 @@ export async function rollAttack(actor, {
       isManeuver: !!isManeuver,
       rank,
       policy: usedPolicy,
-      totalShown: shownTotal,
+      totalShown: patched.total,
       otherTotal: otherRoll?.total ?? null,
-      // Debug opcional para el evaluador (si lo quieres usar)
       tags
     }
   });
+
+  return { total: patched.total, tags, evo };
 }
 
-/** IMPACTO — sin progreso; con crítico/rotura opcional */
+/** ─────────── IMPACTO ─────────── */
 export async function rollImpact(actor, {
   key,
   die = "d6",
@@ -184,15 +166,12 @@ export async function rollImpact(actor, {
   breakBonus = 0,
   targetDurability = null,
   whisperBreakToGM = true,
-  /** Opcional: context tags si quieres “elemento” o condiciones en el mensaje */
   context = {}
 } = {}) {
   const { formula } = buildImpactFormula(actor, { key, die, grade, attrKey, bonus });
-
   const r = new Roll(formula);
   await r.evaluate();
 
-  // (Opcional) adjuntamos tags en flags para debug, aunque impacto no pasa por engine
   const tags = makeTagsFor({ ...context, phase: "impact" });
 
   await r.toMessage({
@@ -206,7 +185,7 @@ export async function rollImpact(actor, {
         rank: 0,
         meta: { key },
         totals: { low: r.total, high: r.total },
-        tags      // ← útil para inspección en el chat log / depurar efectos post-impacto
+        tags
       }
     }
   });
@@ -217,8 +196,8 @@ export async function rollImpact(actor, {
   if (!weaponItem) {
     try {
       const k = key || getEquippedWeaponKey(actor, "main");
-      weaponItem = actor?.items?.get?.(k) ||
-                  actor?.items?.find?.(i => i.id === k || i.name === k) || null;
+      weaponItem = actor?.items?.get?.(k)
+                || actor?.items?.find?.(i => i.id === k || i.name === k) || null;
     } catch (_) {}
   }
   const breakPower = computeBreakPower(weaponItem, breakBonus);
@@ -243,7 +222,7 @@ export async function rollImpact(actor, {
     const ok = (breakPower >= Number(targetDurability));
     if (whisperBreakToGM) {
       await ChatMessage.create({
-        whisper: ChatMessage.getWhisperRecipients("GM"),
+        whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id),
         content: `<p><strong>Evaluación de Rotura</strong> — Potencia ${breakPower} vs Durabilidad ${targetDurability} → ${ok ? "💥 ROMPE" : "no rompe"}</p>`,
         speaker: ChatMessage.getSpeaker({ actor })
       });
@@ -254,7 +233,7 @@ export async function rollImpact(actor, {
   return { resultRoll: r, isCrit: true, breakPower };
 }
 
-/** DEFENSA */
+/** ─────────── DEFENSA ─────────── */
 export async function rollDefense(actor, {
   armorType,
   armorBonus = 0,
@@ -262,13 +241,11 @@ export async function rollDefense(actor, {
   penalty = 0,
   mode = "ask",
   flavor,
-  /** NUEVO: contexto opcional (visión/entorno/cobertura del defensor, etc.) */
   context = {}
 } = {}) {
   const { formula } = buildDefenseFormula(actor, { armorBonus, bonus, penalty });
   const rank = Number(foundry.utils.getProperty(actor, `system.progression.defense.evasion.rank`) || 0);
 
-  // ─── Localización de impacto “tentativa” para el evaluador (puede no aplicar si defiende) ───
   const d100 = new Roll("1d100"); await d100.evaluate();
   const r = d100.total;
   let bodyPart = "chest";
@@ -280,17 +257,14 @@ export async function rollDefense(actor, {
   else if (r <= 95) bodyPart = "legs";
   else bodyPart = "chest";
 
-  const { resultRoll, otherRoll, usedPolicy } = await resolveEvolution({
+  const evo = await resolveEvolution({
     type: "defense", mode, formula, rank,
     flavor: flavor ?? `Defensa`, actor, meta: { armorType }
   });
+  const { resultRoll, otherRoll, usedPolicy } = evo || {};
+  if (!resultRoll || typeof resultRoll.total !== "number") return null;
 
-  // ===== TAGS de contexto =====
-  const tags = makeTagsFor({
-    ...context,
-    phase: "defense"
-    // (tip: aquí suele interesar vision/cobertura del DEFENSOR, terreno difícil, “movement” si se movió antes de defender, etc.)
-  });
+  const tags = makeTagsFor({ ...context, phase: "defense" });
 
   const patched = makeRollTotal(actor, resultRoll.total, {
     phase: "defense",
@@ -300,8 +274,6 @@ export async function rollDefense(actor, {
 
   await emitModInspector(actor, { phase: "defense", tag: "TD" }, patched.breakdown);
 
-  const shownTotal = patched.total;
-
   await gmEvalCard({
     actor, kind: "defense",
     payload: {
@@ -309,39 +281,38 @@ export async function rollDefense(actor, {
       armorType: armorType ?? "light",
       rank,
       policy: usedPolicy,
-      totalShown: shownTotal,
+      totalShown: patched.total,
       otherTotal: otherRoll?.total ?? null,
-      bodyPart,      // "head"|"chest"|"bracers"|"legs"
+      bodyPart,
       d100: r,
       tags
     }
   });
+
+  return { total: patched.total, bodyPart, tags, evo };
 }
 
-/** RESISTENCIA (salvaciones) */
+/** ─────────── RESISTENCIA ─────────── */
 export async function rollResistance(actor, {
   type,
   bonus = 0,
   penalty = 0,
   flavor,
-  /** NUEVO: contexto opcional (elemento, entorno, etc.) */
   context = {}
 } = {}) {
   const { formula } = buildResistanceFormula(actor, { type, bonus, penalty });
-  const { resultRoll } = await resolveEvolution({
+  const evo = await resolveEvolution({
     type: "resistance", mode: "none", formula, rank: 0,
     flavor: flavor ?? `Resistencia • ${type}`, actor, meta: { key: type }
   });
+  const { resultRoll } = evo || {};
+  if (!resultRoll || typeof resultRoll.total !== "number") return null;
 
-  // En tags usamos fase "save" (vocabulario canónico de tags) pero conservamos phase:"resistance" para el engine.
-  const tags = makeTagsFor({
-    ...context,
-    phase: "save"
-    // tip: aquí puedes pasar element si resiste un elemento ("element:fire", etc.)
-  });
+  // tags “save”, pero mantenemos phase:"resistance" en makeRollTotal
+  const tags = makeTagsFor({ ...context, phase: "save" });
 
   const patched = makeRollTotal(actor, resultRoll.total, {
-    phase: "resistance", // ← mantenemos compatibilidad con tu engine actual
+    phase: "resistance",
     tag: "TR",
     resType: type,
     tags
@@ -349,17 +320,15 @@ export async function rollResistance(actor, {
 
   await emitModInspector(actor, { phase: "resistance", tag: "TR" }, patched.breakdown);
 
-  const shownTotal = patched.total;
-  // const shownNotes = [...(resultRoll.notes || []), ...patched.notes];
-  // const shownDiceAdvances = (resultRoll.diceAdvances || 0) + (patched.diceAdvances || 0);
-
   await gmEvalCard({
     actor, kind: "resistance",
     payload: {
       actorId: actor.id ?? actor._id ?? null,
       resType: type,
-      totalShown: shownTotal,
+      totalShown: patched.total,
       tags
     }
   });
+
+  return { total: patched.total, tags, evo };
 }

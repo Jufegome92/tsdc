@@ -28,8 +28,8 @@
       <div class="tt-row">
         <div class="tt-who">{{row.name}}</div>
         <div class="tt-line" style="--cols: {{../horizon}}">
-          {{#each row.segments}}
-            <div class="tt-seg phase-{{phase}}" style="grid-column: {{gridColumn}};">
+          {{#each segments as |seg|}}
+            <div class="tt-seg phase-{{seg.phase}}" style="grid-column: {{seg.gridColumn}};">
               <span class="tt-label">{{label}}</span>
             </div>
           {{/each}}

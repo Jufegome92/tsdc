@@ -159,7 +159,7 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   // ==== Actions
-  static onClose() { this.close(); }
+  static onClose() { ATBTrackerApp._instance?.close(); }
   static async onTickPrev(){ await ATB_API.adjustPlanningTick(-1); }
   static async onTickNext(){ await ATB_API.adjustPlanningTick(+1); }
   static onApplyFilter(){
@@ -176,7 +176,15 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const simpleKey = SIMPLE_ID_TO_KEY[id];
     if (id === "especializacion") return ui.notifications?.warn("Usa Catálogo → Especialización.");
     if (!simpleKey) return ui.notifications?.warn("Acción no planeable aún.");
-    await ATB_API.enqueueSimpleForActor(app.actorId, simpleKey, targetTick);
+
+    if (simpleKey === "attack") {
+      const tgt = Array.from(game.user?.targets ?? [])[0] ?? null;
+      await ATB_API.enqueueSimpleForActor(app.actorId, simpleKey, targetTick, {
+        targetTokenId: tgt?.id ?? null
+      });
+    } else {
+      await ATB_API.enqueueSimpleForActor(app.actorId, simpleKey, targetTick);
+    }
     ui.notifications?.info(`Plan (${id}) ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
   }
   static async onPlanCatalog(_ev, btn) {
@@ -205,7 +213,11 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const id   = card.dataset.id;
     const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
     const targetTick = tickStr === "" ? null : Number(tickStr);
-    await ATB_API.enqueueSimpleForActor(app.actorId, "attack", targetTick);
+
+    const tgt = Array.from(game.user?.targets ?? [])[0] ?? null;
+    await ATB_API.enqueueSimpleForActor(app.actorId, "attack", targetTick, {
+      targetTokenId: tgt?.id ?? null
+    });
     ui.notifications?.info(`Plan: Maniobra ${id} ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
   }
   static async onPlanAptitude(_ev, btn) {

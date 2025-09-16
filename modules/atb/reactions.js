@@ -29,6 +29,21 @@ function _rxFor(actorId) {
   return st.rx[actorId];
 }
 
+function cellsEveryOther(a, b) {
+  const gs = canvas?.scene?.grid?.size || 100;
+  const ax = a.center?.x ?? a.x, ay = a.center?.y ?? a.y;
+  const bx = b.center?.x ?? b.x, by = b.center?.y ?? b.y;
+
+  // Diferencias en casillas (redondeadas al centro de celda)
+  const dx = Math.abs(Math.round((bx - ax) / gs));
+  const dy = Math.abs(Math.round((by - ay) / gs));
+
+  const diag = Math.min(dx, dy);               // pasos diagonales
+  const straight = Math.max(dx, dy) - diag;    // pasos rectos
+  // 1–2–1–2…  ≡ diag + floor(diag/2) extra por los pares
+  return straight + diag + Math.floor(diag / 2);
+}
+
 /* ===== Bando / lado ===== */
 function isPlayerSide(t) {
   if (!t?.actor) return false;
@@ -78,7 +93,7 @@ export function openReactionWindow({ ownerToken, reason, expiresTick, payload })
   rx.windows = rx.windows.filter(w => (w.expiresTick ?? nowTick) >= nowTick);
 
   rx.windows.push({
-    id: randomID(),
+    id: foundry.utils.randomID(),
     reason,                                   // "leave-melee" | "fumble" | ...
     expiresTick: expiresTick ?? nowTick,      // por defecto, expira este tick
     payload                                   // ej: { provokerTokenId, meleeRangeM }
@@ -109,7 +124,7 @@ export async function performOpportunityAttack({ reactorToken, targetToken, weap
     flavor: `Reacción • Ataque de Oportunidad contra ${targetToken.name}`,
     context: {
       phase: "attack",
-      tags: ["reaction", "opportunity"],
+      extraTags: ["reaction", "opportunity"],
       immediate: true
     }
   });
@@ -166,10 +181,5 @@ export async function triggerFumbleReactions({ fumblerToken }) {
 
 /* ===== Helpers de distancia ===== */
 function distanceM(a, b) {
-  const ray = new Ray(a.center, b.center);
-  const cells = canvas.grid.measureDistances([{ ray }], { gridSpaces: true })?.[0];
-  const gridSize = canvas?.scene?.grid?.size || 100;
-  const fallback = ray.distance / gridSize;
-  const cellMeters = 1; // tu sistema: 1 casilla = 1 m
-  return (Number.isFinite(cells) ? cells : fallback) * cellMeters;
+  return cellsEveryOther(a, b) * 1;
 }

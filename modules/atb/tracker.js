@@ -12,6 +12,25 @@ const FLAG_KEY   = "atb";
  * Helpers de estado y render
  * =========================== */
 
+(function ensureAtbTrackerStyle(){
+  const ID = "tsdc-atb-tracker-style-inline";
+  if (document.getElementById(ID)) return;
+  const s = document.createElement("style");
+  s.id = ID;
+  s.textContent = `
+    .tsdc-atb-tracker .tt-head { display:grid; grid-template-columns:180px 1fr; align-items:center; gap:8px; margin-bottom:6px; }
+    .tsdc-atb-tracker .tt-row  { display:grid; grid-template-columns:180px 1fr; align-items:center; gap:8px; margin:6px 0; }
+    .tsdc-atb-tracker .tt-line { display:grid; grid-template-columns:repeat(var(--cols), 1fr); gap:3px; height:42px; position:relative; }
+    .tsdc-atb-tracker .tt-seg  { border:1px solid #7a7a7a; border-radius:10px; display:grid; place-items:center; padding:0 8px; overflow:hidden; font-size:12px; }
+    .tsdc-atb-tracker .tt-label { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+    .tsdc-atb-tracker .phase-init { background:#c9d8ff; }
+    .tsdc-atb-tracker .phase-exec { background:#ffd8b3; }
+    .tsdc-atb-tracker .phase-rec  { background:#ececec; }
+    .tsdc-atb-tracker .phase-free { background:#dff5df; }
+  `;
+  document.head.appendChild(s);
+})();
+
 function getState() {
   const c = game.combat;
   if (!c) return null;
@@ -137,7 +156,7 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   static onPlan() { openPlanDialogForSelection(); }
-  static onClose() { this.close(); }
+  static onClose() { ATBTrackerApp._instance?.close(); }
 
   static async onTickPrev() { await ATB_API.adjustPlanningTick(-1); }
   static async onTickNext() { await ATB_API.adjustPlanningTick(+1); }

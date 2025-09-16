@@ -27,7 +27,7 @@ const _moveDebounce = new Map();
 
 /** Saca owners-jugadores del token (quienes verían sus whispers/pings) */
 function tokenOwners(token) {
-  const users = game.users.filter(u => u.role >= CONST.USER_ROLES.PLAYER && (!ONLY_ACTIVE_PLAYERS || u.active));
+  const users = game.users.filter(u => u.role >= CONST.USER_ROLES.PLAYER && u.active);
   return users.filter(u => token.actor?.testUserPermission?.(u, "OWNER") || token.document?.testUserPermission?.(u, "OWNER"));
 }
 

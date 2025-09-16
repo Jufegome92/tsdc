@@ -4,9 +4,8 @@ import { applyNaturalWeaponEffect } from "../features/effects/index.js";
 import * as Ail from "../ailments/index.js";
 import { computeBlockingAt } from "../features/armors/index.js";
 
-/* ===== Helpers locales ===== */
+/* ===== Helpers ===== */
 
-// Etiqueta bonita para la localización
 function locLabel(part) {
   switch (String(part || "")) {
     case "head":    return "Cabeza";
@@ -18,18 +17,16 @@ function locLabel(part) {
   }
 }
 
-// Severidad en función de Impacto vs Bloqueo (x1 / x2 / x3)
 function severityFromImpactBlock(impact, block) {
   const I = Number(impact || 0);
   const B = Math.max(0, Number(block || 0));
-  if (I <= B) return null;                 // sin herida
+  if (I <= B) return null;
   if (I <  2 * B) return "leve";
   if (I <  3 * B) return "grave";
   return "critico";
 }
 
-// Mapeo rápido de tipo de daño → ID del catálogo según severidad
-function mapDamageToAilmentId(dtype, _severity) {
+function mapDamageToAilmentId(dtype) {
   const t = String(dtype || "").toLowerCase();
   switch (t) {
     case "cut":    return "DESANGRADO";
@@ -45,13 +42,11 @@ function mapDamageToAilmentId(dtype, _severity) {
   }
 }
 
-// Sugerir Durabilidad desde el primer token objetivo (si existe)
 function suggestDurabilityFromTarget() {
   try {
     const tgt = Array.from(game.user?.targets ?? [])[0];
     if (!tgt?.actor) return 0;
     const sys = tgt.actor.system ?? {};
-    // Prueba varios lugares comunes
     return Number(
       sys?.defense?.durability ??
       sys?.durability ??
@@ -63,28 +58,42 @@ function suggestDurabilityFromTarget() {
   }
 }
 
+function gmWhisperIds() {
+  return ChatMessage.getWhisperRecipients("GM").map(u => u.id);
+}
+
+function getMessageIdFromElement(el) {
+  if (!el) return null;
+  const msgEl = el.closest?.(".message") || el; // v12: <li class="message" data-message-id="...">
+  return msgEl?.dataset?.messageId ?? null;
+}
+
+/* ===== Registro principal ===== */
+
 export function registerChatListeners() {
-  Hooks.on("renderChatMessageHTML", (message, html /*HTMLElement*/) => {
-    html.addEventListener("click", async (ev) => {
-      // Detecta botones de evaluación general y de rotura
-      const evalBtn  = ev.target.closest(".tsdc-eval-btn");
-      const breakBtn = ev.target.closest(".tsdc-break-eval");
+  function bind(htmlLike /* jQuery|HTMLElement */, message /* ChatMessage doc */) {
+    const el = htmlLike?.[0] ?? htmlLike;
+    if (!el || el.__tsdcBound) return;
+    el.__tsdcBound = true;
+
+    el.addEventListener("click", async (ev) => {
+      const evalBtn  = ev.target.closest?.(".tsdc-eval-btn");
+      const breakBtn = ev.target.closest?.(".tsdc-break-eval");
       if (!evalBtn && !breakBtn) return;
 
       ev.preventDefault();
 
-      // ─────────────────────────────────────────
-      // Evaluar Rotura (impacto crítico)
-      // ─────────────────────────────────────────
+      /* ───────── Evaluar Rotura (impacto crítico) ───────── */
       if (breakBtn) {
         if (!game.user.isGM) {
           return ui.notifications?.warn("Solo el GM puede evaluar roturas.");
         }
         try {
-          const power   = Number(breakBtn.dataset.power || 0);
-          const actorId = breakBtn.dataset.actor || null;
+          const power    = Number(breakBtn.dataset.power || 0);
+          const actorId  = breakBtn.dataset.actor || null;
+          const messageId= getMessageIdFromElement(el);
 
-          const result = await foundry.applications.api.DialogV2.prompt({
+          const durability = await foundry.applications.api.DialogV2.prompt({
             window: { title: "Evaluar Rotura" },
             content: `
               <form class="t-col" style="gap:10px;">
@@ -101,16 +110,13 @@ export function registerChatListeners() {
               callback: (_ev, btn) => Number(btn.form.elements.durability?.value || 0)
             }
           });
-          if (result == null) return;
+          if (durability == null) return;
 
-          const durability = Number(result || 0);
-          const broke = power >= durability;
-
-          const whisper = ChatMessage.getWhisperRecipients("GM");
+          const broke = power >= Number(durability || 0);
           const actor = actorId ? game.actors.get(actorId) : null;
 
           await ChatMessage.create({
-            whisper,
+            whisper: gmWhisperIds(),
             speaker: actor ? ChatMessage.getSpeaker({ actor }) : null,
             content:
               `<p><strong>Evaluación de Rotura</strong> — Potencia ${power} vs Durabilidad ${durability} ` +
@@ -118,17 +124,15 @@ export function registerChatListeners() {
           });
 
           Hooks.callAll("tsdcBreakEvaluated", {
-            actorId, power, durability, broke, messageId: message?.id
+            actorId, power, durability: Number(durability || 0), broke, messageId
           });
         } catch (err) {
           console.error("TSDC | break-eval failed:", err);
         }
-        return; // no continuar con eval general
+        return; // no sigas a evaluación general
       }
 
-      // ─────────────────────────────────────────
-      // Evaluaciones generales (ataque/defensa/etc.)
-      // ─────────────────────────────────────────
+      /* ───────── Evaluaciones generales (ataque / defensa / resistencia / especialización) ───────── */
       if (!game.user.isGM) {
         return ui.notifications?.warn("Solo el GM puede evaluar.");
       }
@@ -143,10 +147,12 @@ export function registerChatListeners() {
         else if (kind === "resistance")     await evalResistance(input);
         else if (kind === "specialization") await evalSpecialization(input);
       } catch (err) {
-        console.error("Eval error", err);
+        console.error("TSDC | Eval error", err);
       }
     });
-  });
+  }
+
+  Hooks.on("renderChatMessageHTML", (msg, html) => bind(html, msg));
 }
 
 /* ============ ATAQUE ============ */
@@ -183,15 +189,18 @@ async function evalAttack(p) {
   });
   if (!res) return;
 
-  const success = (Number(p.totalShown) >= Number(res.td));
-  const margin  = Number(p.totalShown) - Number(res.td);
+  const success  = (Number(p.totalShown) >= Number(res.td));
+  const margin   = Number(p.totalShown) - Number(res.td);
   const canLearn = (p.policy === "learning" && success && p.otherTotal != null);
   const diff     = canLearn ? Math.abs(Number(p.totalShown) - Number(p.otherTotal)) : 0;
   const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
 
   await ChatMessage.create({
-    whisper: ChatMessage.getWhisperRecipients("GM"),
-    content: `<p><b>Ataque</b> ${success ? "ACIERTO ✅" : "FALLO ❌"} — margen <b>${margin}</b>${res.targetName?` vs <b>${res.targetName}</b>`:""}${p.policy==="learning" ? ` • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>` : ""}.</p>`
+    whisper: gmWhisperIds(),
+    content:
+      `<p><b>Ataque</b> ${success ? "ACIERTO ✅" : "FALLO ❌"} — margen <b>${margin}</b>` +
+      `${res.targetName?` vs <b>${res.targetName}</b>`:""}` +
+      `${p.policy==="learning" ? ` • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>` : ""}.</p>`
   });
 
   if (success && p.policy === "learning" && learned) {
@@ -256,18 +265,18 @@ async function evalDefense(p) {
   });
   if (!res1) return;
 
-  const atkTotal = Number(res1.atkTotal || 0);
+  const atkTotal   = Number(res1.atkTotal || 0);
   const damageType = res1.dtype;
-  const success = (defShown >= atkTotal);
+  const success    = (defShown >= atkTotal);
 
-  const other = (p.otherTotal != null) ? Number(p.otherTotal) : null;
+  const other    = (p.otherTotal != null) ? Number(p.otherTotal) : null;
   const canLearn = (p.policy === "learning" && success && other != null);
   const diff     = canLearn ? Math.abs(defShown - other) : 0;
   const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
 
   if (success) {
     await ChatMessage.create({
-      whisper: ChatMessage.getWhisperRecipients("GM"),
+      whisper: gmWhisperIds(),
       speaker: ChatMessage.getSpeaker({ actor }),
       content: `<p><b>Defensa</b> ÉXITO ✅ — margen ${defShown - atkTotal} • Localización: <b>${locLabel(bodyPart)}</b> • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
     });
@@ -305,7 +314,7 @@ async function evalDefense(p) {
   const sev = severityFromImpactBlock(impactTotal, bVal);
 
   await ChatMessage.create({
-    whisper: ChatMessage.getWhisperRecipients("GM"),
+    whisper: gmWhisperIds(),
     speaker: ChatMessage.getSpeaker({ actor }),
     content: `
       <div>
@@ -317,7 +326,7 @@ async function evalDefense(p) {
   });
 
   if (sev) {
-    const aid = mapDamageToAilmentId(damageType, sev);
+    const aid = mapDamageToAilmentId(damageType);
     if (aid) {
       await Ail.addAilment(actor, aid, {
         severity: sev,
@@ -343,7 +352,7 @@ async function evalSpecialization(p) {
   const shown = Number(p.totalShown ?? 0);
   const other = (p.otherTotal != null) ? Number(p.otherTotal) : null;
 
-  const res = await foundry.applications.api.DialogV2.prompt({
+  const td = await foundry.applications.api.DialogV2.prompt({
     window: { title: "Evaluar Especialización" },
     content: `
       <form class="t-col" style="gap:8px;">
@@ -359,16 +368,16 @@ async function evalSpecialization(p) {
       callback: (_ev, button) => Number(button.form.elements.td?.value || 10)
     }
   });
-  if (res == null) return;
+  if (td == null) return;
 
-  const success = (shown >= Number(res));
+  const success  = (shown >= Number(td));
   const canLearn = (p.policy === "learning" && success && other != null);
   const diff     = canLearn ? Math.abs(shown - other) : 0;
   const learned  = canLearn ? (diff >= Number(p.rank || 0)) : false;
 
   await ChatMessage.create({
-    whisper: ChatMessage.getWhisperRecipients("GM"),
-    content: `<p><b>Especialización</b> ${success ? "ÉXITO ✅" : "FALLO ❌"} • TD ${res} • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
+    whisper: gmWhisperIds(),
+    content: `<p><b>Especialización</b> ${success ? "ÉXITO ✅" : "FALLO ❌"} • TD ${td} • Aprendizaje: <b>${learned ? "Sí" : "No"}</b>.</p>`
   });
 
   if (success && learned && p.key) {
@@ -440,14 +449,13 @@ async function evalResistance(p) {
 
   if (success) {
     await ChatMessage.create({
-      whisper: ChatMessage.getWhisperRecipients("GM"),
+      whisper: gmWhisperIds(),
       speaker: ChatMessage.getSpeaker({ actor }),
       content: `<p><b>Resistencia</b> ÉXITO ✅ — margen ${margin} • Tipo: <b>${p.resType ?? "-"}</b>.</p>`
     });
     return;
   }
 
-  // Fallo → aplicar efecto y progreso
   if (key) {
     await Ail.addAilment(actor, key, { source: p.resType, kind });
   } else {
@@ -456,7 +464,7 @@ async function evalResistance(p) {
   await addProgress(actor, "resistances", p.resType, 1);
 
   await ChatMessage.create({
-    whisper: ChatMessage.getWhisperRecipients("GM"),
+    whisper: gmWhisperIds(),
     speaker: ChatMessage.getSpeaker({ actor }),
     content: `<p><b>Resistencia</b> FALLO ❌ — margen ${margin} • Aplicado <b>${key || kind}</b>.</p>`
   });

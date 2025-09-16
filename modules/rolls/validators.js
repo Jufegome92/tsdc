@@ -12,9 +12,13 @@ export async function validateAttackRangeAndVision({ attackerToken, targetToken,
   // "cover_level": "none" | "light" | "medium" | "total"
   if (pkg.visibility_level === "none") return { ok:false, reason:"Sin visión del objetivo." };
   if (pkg.cover_level === "total" || pkg.attack_mod_from_cover === "unreachable") return { ok:false, reason:"Cobertura total: inalcanzable." };
-
-  if (Number.isFinite(weaponRangeM) && (pkg.distance_m ?? Infinity) > weaponRangeM) {
-    return { ok:false, reason:`Fuera del rango del arma (${weaponRangeM} m).` };
+  
+  // Rango (si se especifica)
+  if (Number.isFinite(weaponRangeM)) {
+    const dist = Number(pkg.distance_m ?? Infinity);
+    if (dist > weaponRangeM) {
+      return { ok:false, reason:`Fuera de rango (${dist.toFixed(1)} m > ${weaponRangeM} m).` };
+    }
   }
   return { ok:true, pkg };
 }

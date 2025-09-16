@@ -44,6 +44,21 @@ const LIGHT_BASE = {
   oil_lamp: 6
 };
 
+function cellsEveryOther(a, b) {
+  const gs = canvas?.scene?.grid?.size || 100;
+  const ax = a.center?.x ?? a.x, ay = a.center?.y ?? a.y;
+  const bx = b.center?.x ?? b.x, by = b.center?.y ?? b.y;
+
+  // Diferencias en casillas (redondeadas al centro de celda)
+  const dx = Math.abs(Math.round((bx - ax) / gs));
+  const dy = Math.abs(Math.round((by - ay) / gs));
+
+  const diag = Math.min(dx, dy);               // pasos diagonales
+  const straight = Math.max(dx, dy) - diag;    // pasos rectos
+  // 1–2–1–2…  ≡ diag + floor(diag/2) extra por los pares
+  return straight + diag + Math.floor(diag / 2);
+}
+
 // Reducciones específicas por entorno severo (si aplica)
 const LIGHT_OVERRIDES = {
   // en niebla densa: antorcha ~2 m, vela ~1 m
@@ -155,18 +170,7 @@ function getEffectiveLightRadiusMeters(actorTokenOrActor, env) {
 
 /** Calcula distancia en metros entre tokens (centros) */
 function distanceMetersBetween(tokenA, tokenB) {
-  try {
-    const ax = tokenA.center?.x ?? tokenA.x;
-    const ay = tokenA.center?.y ?? tokenA.y;
-    const bx = tokenB.center?.x ?? tokenB.x;
-    const by = tokenB.center?.y ?? tokenB.y;
-    const px = Math.hypot(bx - ax, by - ay); // píxeles
-    const gridSize = canvas?.grid?.size ?? 100;
-    const cells = px / gridSize;
-    return cells * CELL_M;
-  } catch (_e) {
-    return 0;
-  }
+  return cellsEveryOther(tokenA, tokenB) * CELL_M;
 }
 
 /** Estima Cobertura con rayos al contorno del objetivo (actualizado a v12+) */
@@ -207,15 +211,11 @@ function estimateCoverLevel(fromToken, toToken) {
       }
       // Fallbacks *muy* defensivos
       else if (CONFIG?.Canvas?.polygons?.sight?.testCollision) {
-        hit = !!CONFIG.Canvas.polygons.sight.testCollision(ray);
+        hit = !!canvas.visibility.testCollision(ray);
       }
       else if (canvas?.visibility?.testCollision) {
         // v12+ Canvas#visibility
         hit = !!canvas.visibility.testCollision(ray);
-      }
-      else if (canvas?.effects?.visibility?.testCollision) {
-        // legado (deprecado)
-        hit = !!canvas.effects.visibility.testCollision(ray);
       }
 
       if (hit) blocked++;
@@ -324,4 +324,31 @@ export function describePackage(pkg) {
   if (pkg.concealment_state === "hidden") parts.push(`Oculto`);
   if (pkg.notes?.darkness && pkg.notes.darkness !== "none") parts.push(`Oscuridad: ${pkg.notes.darkness}`);
   return parts.join(" • ");
+}
+
+/** Cobertura desde un punto (área) hacia un token */
+export function estimateCoverFromPoint(origin, toToken) {
+  const bounds = toToken?.bounds ?? toToken?.hitArea?.getBounds?.() ?? null;
+  const pts = [];
+  if (bounds) {
+    const cx = bounds.x + bounds.width/2, cy = bounds.y + bounds.height/2;
+    pts.push({x:cx, y:cy},{x:bounds.x, y:cy},{x:bounds.x+bounds.width, y:cy},{x:cx, y:bounds.y},{x:cx, y:bounds.y+bounds.height});
+  } else {
+    pts.push({x: toToken.center?.x ?? toToken.x, y: toToken.center?.y ?? toToken.y});
+  }
+  const RayCls = (foundry?.canvas?.geometry?.Ray) ?? globalThis.Ray ?? null;
+  let blocked = 0, total = pts.length;
+  for (const p of pts) {
+    const ray = RayCls ? new RayCls(origin, p) : { A:origin, B:p };
+    let hit = false;
+    if (canvas?.walls?.checkCollision) hit = !!canvas.walls.checkCollision(ray, { type:"sight", mode:"any" });
+    else if (canvas?.visibility?.testCollision) hit = !!canvas.visibility.testCollision(ray);
+    else if (CONFIG?.Canvas?.polygons?.sight?.testCollision) hit = !!CONFIG.Canvas.polygons.sight.testCollision(ray);
+    if (hit) blocked++;
+  }
+  const frac = total ? blocked/total : 0;
+  if (frac >= 0.99) return "total";
+  if (frac >= 0.5)  return "medium";
+  if (frac >= 0.25) return "light";
+  return "none";
 }

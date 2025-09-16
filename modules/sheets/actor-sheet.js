@@ -511,7 +511,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       otherTotal: otherRoll?.total ?? null
     }));
     await ChatMessage.create({
-      whisper: ChatMessage.getWhisperRecipients("GM"),
+      whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id),
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       content: `
         <div class="tsdc-eval">

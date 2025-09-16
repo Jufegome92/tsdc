@@ -3,6 +3,8 @@
 
 import { listSimpleActions, makeSpecializationAction } from "./actions.js";
 import { rotateModsOnSpawn, pruneOldCurrentTickMods } from "./mods.js";
+import { MANEUVERS } from "../features/maneuvers/data.js";
+import { makeAbilityAction } from "./actions.js";
 
 const FLAG_SCOPE = "tsdc";
 const FLAG_KEY   = "atb";
@@ -65,10 +67,10 @@ function findCombatantIdByActorId(actorId) {
   return ct?.id ?? null;
 }
 
-export async function enqueueSimpleForActor(actorId, key, targetTick=null) {
+export async function enqueueSimpleForActor(actorId, key, targetTick = null, meta = {}) {
   const ctid = findCombatantIdByActorId(actorId);
   if (!ctid) return ui.notifications?.warn("Ese actor no está en combate.");
-  return enqueueSimple(ctid, key, targetTick);
+  return enqueueSimple(ctid, key, targetTick, meta);
 }
 export async function enqueueSpecForActor(actorId, { specKey, category, CT, targetTick=null }) {
   const ctid = findCombatantIdByActorId(actorId);
@@ -84,6 +86,10 @@ function resolveQueued(desc) {
   if (desc.kind === "simple") {
     return listSimpleActions().find(d => d.key === desc.key) ?? null;
   }
+  if (desc.kind === "maneuver") {
+    const m = MANEUVERS?.[desc.key];
+    return m ? makeAbilityAction(m, { key: desc.key, clazz: "maneuver" }) : null;
+  }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
       specKey: desc.specKey,
@@ -96,7 +102,7 @@ function resolveQueued(desc) {
 
 /* ===== Internals ===== */
 
-function spawnCard(state, combatantId, def) {
+function spawnCard(state, combatantId, def, meta = null) {
   state.placementCounter += 1;
   return {
     actor: combatantId,
@@ -106,7 +112,8 @@ function spawnCard(state, combatantId, def) {
     placement_order: state.placementCounter,
     phase: (def.init_ticks > 0) ? "init" : (def.exec_ticks > 0 ? "exec" : "rec"),
     ticks_left: (def.init_ticks > 0) ? def.init_ticks : (def.exec_ticks > 0 ? def.exec_ticks : def.rec_ticks),
-    started_this_tick: (def.init_ticks === 0 && def.exec_ticks > 0)
+    started_this_tick: (def.init_ticks === 0 && def.exec_ticks > 0),
+    meta: meta ?? null                  // ⟵ guarda meta en la carta actual
   };
 }
 function sortExec(list) {
@@ -140,11 +147,17 @@ async function stepOnceInternal() {
       const def  = resolveQueued(desc);
       if (!def) { idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick); continue; }
 
-      // Instántaneas: ejecuta y sigue viendo si hay otra en este tick
       const CTsum = (def.init_ticks + def.exec_ticks + def.rec_ticks);
       if (CTsum === 0) {
         try {
-          await def.perform?.({ actor: ct.actor, combat, combatant: ct, tick: state.tick, startedThisTick: true });
+          await def.perform?.({
+            actor: ct.actor,
+            combat,
+            combatant: ct,
+            tick: state.tick,
+            startedThisTick: true,
+            meta: desc?.meta || {}           // ⟵ también para instantáneas
+          });
         } catch (e) { console.error("ATB perform (instantáneo) error", e); }
         idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
         continue;
@@ -184,12 +197,15 @@ async function stepOnceInternal() {
     const actor = ct?.actor;
     if (!actor) continue;
 
-    // Buscar def por actionKey (simple o spec)
+    // Buscar def real
     let defReal = listSimpleActions().find(d => d.key === ensureActorState(state, ci.actor).current?.actionKey) ?? null;
     if (!defReal && ensureActorState(state, ci.actor).current?.actionKey?.startsWith?.("spec:")) {
       const parts = ensureActorState(state, ci.actor).current.actionKey.split(":"); // spec:key:CT
       defReal = makeSpecializationAction({ specKey: parts[1], category: "physical", CT: Number(parts[2]||2) });
     }
+
+    const actorState = ensureActorState(state, ci.actor);
+    const meta = actorState?.current?.meta ?? {};
 
     try {
       await defReal?.perform?.({
@@ -197,7 +213,8 @@ async function stepOnceInternal() {
         combat,
         combatant: ct,
         tick: state.tick,
-        startedThisTick: true
+        startedThisTick: true,
+        meta                              // ⟵ pasa meta al perform
       });
     } catch (e) { console.error("ATB perform error", e); }
   }
@@ -264,16 +281,22 @@ function canPlanForCombatant(ct) {
   return level >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER || ct?.isOwner;
 }
 
-export async function enqueueSimple(combatantId, key, targetTick=null) {
+export async function enqueueSimple(combatantId, key, targetTick=null, meta = {}) {
   const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
   const ct = c.combatants.get(combatantId);
   if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
 
   const state = await readState();
   const t = (targetTick == null) ? Number(state.planningTick || state.tick || 0) : Number(targetTick);
+
   ensureActorState(state, combatantId).queue.push({
-    kind: "simple", key, targetTick: t, qorder: ++state.qOrderCounter
+    kind: "simple",
+    key,
+    meta: meta ?? {},
+    targetTick: t,
+    qorder: ++state.qOrderCounter
   });
+
   await writeState(state);
 }
 

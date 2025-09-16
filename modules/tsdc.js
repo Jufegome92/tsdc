@@ -4,7 +4,7 @@ import * as Attr from "./features/attributes/index.js";
 import * as Evo from "./features/advantage/index.js";
 import { TSDCActor } from "./documents/actor.js";
 import { TSDCActorSheet } from "./sheets/actor-sheet.js";
-// import "./rolls/post-eval.js";
+import "./rolls/post-eval.js";
 import { registerChatListeners } from "./chat/listeners.js";
 import { setTrackLevel } from "./progression.js";
 import { SPECIES_NATURAL_WEAPONS } from "./features/species/natural-weapons.js";

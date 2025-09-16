@@ -1,7 +1,7 @@
 // modules/rolls/post-eval.js
 import { addProgress, addFail } from "../progression.js";
 
-/** Aplica progreso según tus reglas (INCLUYE fallos) */
+/** Aplica progreso según tus reglas (incluye fallos) */
 async function applyProgressFor(actor, flags, success, learned) {
   const { type, policy, meta } = flags ?? {};
   if (!actor || !type) return null;
@@ -13,7 +13,6 @@ async function applyProgressFor(actor, flags, success, learned) {
     }
     return null;
   }
-
   if (type === "attack") {
     if (policy === "learning" && meta?.key) {
       const trackType = meta.isManeuver ? "maneuvers" : "weapons";
@@ -22,19 +21,16 @@ async function applyProgressFor(actor, flags, success, learned) {
     }
     return null;
   }
-
   if (type === "defense") {
     if (policy === "learning") {
-      if (success) {
-        return await addProgress(actor, "defense", "evasion", 1);
-      } else if (meta?.armorType) {
+      if (success) return await addProgress(actor, "defense", "evasion", 1);
+      if (meta?.armorType) {
         await addProgress(actor, "armor", meta.armorType, 1);
         await addFail(actor, "defense", "evasion", 1);
       }
     }
     return null;
   }
-
   if (type === "resistance") {
     if (!success && meta?.key) {
       await addProgress(actor, "resistances", meta.key, 1);
@@ -42,7 +38,6 @@ async function applyProgressFor(actor, flags, success, learned) {
     }
     return null;
   }
-
   return null;
 }
 
@@ -65,24 +60,22 @@ function evaluateWithDC(flags, dc) {
 }
 
 /** Botón "Evaluar" en cada mensaje de tirada (solo GM) */
-Hooks.on("renderChatMessageHTML", (message, html) => {
+function addEvalBtn(message, htmlLike) {
   const f = message?.flags?.tsdc;
   if (!f || !game.user?.isGM) return;
+  const el = htmlLike?.[0] ?? htmlLike;
+  if (!el) return;
 
   const btn = document.createElement("a");
   btn.className = "button t-btn secondary";
   btn.style.marginTop = "6px";
   btn.textContent = "Evaluar";
-
   btn.addEventListener("click", async () => {
     const res = await foundry.applications.api.DialogV2.prompt({
       window: { title: "Evaluar Tirada (DC oculto)" },
       content: `
         <form class="t-col" style="gap:8px;">
-          <div class="t-field">
-            <label>DC</label>
-            <input type="number" name="dc" value="10">
-          </div>
+          <div class="t-field"><label>DC</label><input type="number" name="dc" value="10"></div>
           <div class="muted">Solo tú ves este DC. El jugador no lo verá.</div>
         </form>
       `,
@@ -109,12 +102,15 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
       (usedPolicy === "learning" ? `Aprendizaje: ${learned ? "Sí" : "No"}` : null)
     ].filter(Boolean).join(" • ");
 
-    ChatMessage.create({
-      whisper: ChatMessage.getWhisperRecipients("GM"),
+    await ChatMessage.create({
+      whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id),
       content: `<p><strong>Evaluación</strong> — ${summary}</p>`,
       speaker: message.speaker
     });
   }, { once: true });
 
-  (html.querySelector(".message-content, .dice-result") ?? html).appendChild(btn);
-});
+  (el.querySelector(".message-content, .dice-result") ?? el).appendChild(btn);
+}
+
+// Soporta jQuery y HTMLElement
+Hooks.on("renderChatMessageHTML", (m, html) => addEvalBtn(m, html));

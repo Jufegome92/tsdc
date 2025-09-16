@@ -4,20 +4,88 @@
 
 import { rollAttack } from "../rolls/dispatcher.js";
 import { pushPenaltyForCurrentTick, scheduleBonusForNextAction } from "./mods.js";
-import { MANEUVERS } from "../features/maneuvers/data.js";
 import { buildPerceptionPackage, packageToRollContext, describePackage } from "../perception/index.js";
 import { validateMovePath } from "../rolls/validators.js";
-import { tryReactOpportunity, openReactionWindow } from "./reactions.js";
+import { tryReactOpportunity, openReactionWindow,performOpportunityAttack } from "./reactions.js";
+import { promptOpportunityDialog } from "./rx-dialog.js";
 import { triggerFumbleReactions } from "../atb/reactions.js";
+import { getEquippedWeaponKey } from "../features/inventory/index.js";
+import { weaponRangeM } from "../combat/range.js";
+import { validateAttackRangeAndVision } from "../rolls/validators.js";
+import { shouldPromptHere } from "./rx-dialog.js";
+import { performFeature } from "../features/runner.js";
+import { MANEUVERS } from "../features/maneuvers/data.js";
+// import { APTITUDES } from "../features/aptitudes/data.js";
+// import { RELIC_POWERS } from "../features/relics/data.js";
+
+const MELEE_RANGE_M = 1.0;
 
 /* ===== Helpers ===== */
 function distanceM(a, b) {
-  const ray = new Ray(a.center, b.center);
-  const cells = canvas.grid.measureDistances([{ ray }], { gridSpaces: true })?.[0];
-  const gridSize = canvas?.scene?.grid?.size || 100;
-  const fallback = ray.distance / gridSize;
-  return (Number.isFinite(cells) ? cells : fallback) * 1; // 1 casilla = 1 m
+  return cellsEveryOther(a, b) * 1;
 }
+
+function cellsEveryOther(a, b) {
+  const gs = canvas?.scene?.grid?.size || 100;
+  const ax = a.center?.x ?? a.x, ay = a.center?.y ?? a.y;
+  const bx = b.center?.x ?? b.x, by = b.center?.y ?? b.y;
+
+  // Diferencias en casillas (redondeadas al centro de celda)
+  const dx = Math.abs(Math.round((bx - ax) / gs));
+  const dy = Math.abs(Math.round((by - ay) / gs));
+
+  const diag = Math.min(dx, dy);               // pasos diagonales
+  const straight = Math.max(dx, dy) - diag;    // pasos rectos
+  // 1–2–1–2…  ≡ diag + floor(diag/2) extra por los pares
+  return straight + diag + Math.floor(diag / 2);
+}
+
+function ownerUsersOfActor(actor) {
+  const OWNER = CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? "OWNER";
+  return game.users.filter(u =>
+    actor?.testUserPermission?.(u, OWNER) || u.isGM
+  );
+}
+
+function attackerChoiceHere(actorToken) {
+  const OWNER = CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? "OWNER";
+  return actorToken?.actor?.testUserPermission?.(game.user, OWNER) || game.user.isGM;
+}
+
+async function pickAttackTarget({ actorToken, storedId = null }) {
+  if (!actorToken?.actor) return null;
+
+  // targets activos de los dueños del atacante (y GM)
+  const owners = ownerUsersOfActor(actorToken.actor);
+  const ownerTargets = [...new Set(
+    owners.flatMap(u => Array.from(u.targets ?? []))
+  )].filter(t =>
+    t?.actor && !t.document.hidden && t.id !== actorToken.id
+  );
+
+  if (ownerTargets.length === 1) return ownerTargets[0];
+
+  if (ownerTargets.length > 1) {
+    // Si este cliente es quien decide, abrimos selector; si no, usamos el primero (ya lo eligió “alguien”)
+    if (!attackerChoiceHere(actorToken)) return ownerTargets[0];
+
+    const opts = ownerTargets.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+    const { DialogV2 } = foundry.applications.api;
+    const chosenId = await DialogV2.prompt({
+      window:{ title:"Elige objetivo del Ataque" },
+      content:`<form class="t-col" style="gap:8px;"><label>Objetivo <select name="t">${opts}</select></label></form>`,
+      ok:{ label:"Atacar", callback: (_ev, btn) => btn.form.elements.t.value }
+    });
+    return canvas.tokens.get(chosenId) ?? null;
+  }
+
+  // Sin targets activos → usa el guardado al planear (si lo hay)
+  if (storedId) return canvas.tokens.get(storedId) ?? null;
+
+  // Nada
+  return null;
+}
+
 function hostileAdjacents(t) {
   // Si prefieres “por tipo” o “por disposición”, puedes sincronizar esto con SIDE_MODE de reactions.js
   return canvas.tokens.placeables.filter(o =>
@@ -74,11 +142,14 @@ export async function actionMove({ actorToken, dest, maxMeters = null }) {
   const ny = dest.y - (actorToken.h / 2);
   await actorToken.document.update({ x: nx, y: ny });
 
-  // 6) Ofrecer reacción inmediata (auto-intento; para PJ convendría dialog)
+  // 6) Ofrecer reacción inmediata (PJ/GM decide con diálogo)
   for (const id of leavingIds) {
     const reactor = canvas.tokens.get(id);
     if (!reactor) continue;
-    await tryReactOpportunity({ reactorToken: reactor, provokerToken: actorToken });
+    const consent = await promptOpportunityDialog({ reactorToken: reactor, provokerToken: actorToken, timeoutMs: 6500 });
+    if (consent) {
+      await tryReactOpportunity({ reactorToken: reactor, provokerToken: actorToken });
+    }
   }
 
   return true;
@@ -125,28 +196,47 @@ export const InteractAction = makeDef({
 /** Ataque — CT=3 → I1+E1+R1 */
 export const AttackAction = makeDef({
   key: "attack", label: "Ataque", I: 1, E: 1, R: 1,
-  perform: async ({ actor }) => {
-    // Token del actor y primer objetivo seleccionado por el usuario
-    const actorToken  = actor?.getActiveTokens?.()?.[0]
+  perform: async ({ actor, meta }) => {
+    const actorToken = actor?.getActiveTokens?.(true)?.[0]
       ?? canvas?.tokens?.placeables?.find?.(t => t?.actor?.id === actor.id)
       ?? null;
-    const targetToken = Array.from(game.user?.targets ?? [])[0] ?? null;
 
-    let context = {};
-    if (actorToken && targetToken) {
-      const pkg = buildPerceptionPackage({ actorToken, targetToken });
-      context = packageToRollContext(pkg);
-      // Mensaje claro para el grupo (previo a la tirada)
-      await ChatMessage.create({
-        content: `<div class="tsdc-perception">${describePackage(pkg)}</div>`,
-        speaker: ChatMessage.getSpeaker({ actor })
-      });
-      if (pkg.attack_mod_from_cover === "unreachable") {
-        ui.notifications?.warn("Cobertura total: el objetivo es inalcanzable desde aquí.");
-        return;
-      }
+    // 1) objetivo elegido por el jugador (targets de sus dueños) o el que guardamos al planear
+    const storedId = meta?.targetTokenId ?? null;
+    const targetToken = await pickAttackTarget({ actorToken, storedId });
+
+    if (!actorToken || !targetToken) {
+      ui.notifications?.warn("Selecciona (target) un objetivo válido para atacar.");
+      return;
     }
-    await rollAttack(actor, { flavor: "ATB • Ataque", mode: "ask", context });
+
+    // 2) reacción previa (si la quieren usar)
+    await askPreAttackReaction(targetToken, actorToken);
+
+    // 3) resto igual que ya tenías…
+    const wKey   = getEquippedWeaponKey(actor, "main");
+    const rangeM = weaponRangeM(actor, wKey);
+
+    const v = await validateAttackRangeAndVision({ attackerToken: actorToken, targetToken, weaponRangeM: rangeM });
+    if (!v.ok) {
+      await ChatMessage.create({
+        speaker: ChatMessage.getSpeaker({ actor }),
+        content: `<p>No alcanzas a <b>${targetToken.name}</b>: ${v.reason}.</p>`
+      });
+      return;
+    }
+
+    const pkg = v.pkg;
+    const ctx = packageToRollContext(pkg);
+    await ChatMessage.create({
+      content: `<div class="tsdc-perception">${describePackage(pkg)}</div>`,
+      speaker: ChatMessage.getSpeaker({ actor })
+    });
+    if (pkg.attack_mod_from_cover === "unreachable") {
+      return ui.notifications?.warn("Cobertura total: el objetivo es inalcanzable desde aquí.");
+    }
+
+    await rollAttack(actor, { flavor: "ATB • Ataque", mode: "ask", context: ctx });
   }
 });
 
@@ -238,19 +328,39 @@ export function listSimpleActions() {
 }
 
 export function makeManeuverAction(key) {
-  const m = MANEUVERS[key];
-  if (!m?.ct) return null;
-  return {
-    kind: "maneuver",
-    key,
-    label: m.label,
-    init: m.ct.init ?? 0,
-    exec: m.ct.exec ?? 1,
-    rec:  m.ct.rec  ?? 0,
-    tags: ["maneuver", m.type, m.category, m.descriptor].filter(Boolean)
-  };
+  const m = MANEUVERS[key]; if (!m) return null;
+  return makeFeatureActionFromData(`maneuver:${key}`, { ...m, clazz:"maneuver" });
 }
 
+async function askPreAttackReaction(targetToken, attackerToken) {
+  // deja registro en estado de escena
+  openReactionWindow({
+    ownerToken: targetToken,
+    reason: "before-attack",
+    payload: { attackerId: attackerToken.id }
+  });
+
+  // solo decide el dueño del objetivo (o el GM)
+  const OWNER = CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? "OWNER";
+  const canDecide = targetToken?.actor?.testUserPermission?.(game.user, OWNER) || game.user.isGM;
+  if (!canDecide) return false;
+
+  const { DialogV2 } = foundry.applications.api;
+  const ok = await DialogV2.confirm({
+    window: { title: "Reacción (antes del ataque)" },
+    content: `<p><b>${targetToken.name}</b>: ¿usar una reacción <i>antes</i> del ataque?</p>`
+  });
+  if (!ok) return false;
+
+  // implementación simple: si están en melee, ejecuta un AO inmediato
+  const dist = distanceM(targetToken, attackerToken);
+  if (dist <= MELEE_RANGE_M) {
+    await performOpportunityAttack({ reactorToken: targetToken, targetToken: attackerToken });
+  } else {
+    ui.notifications.info(`${targetToken.name}: fuera de alcance de reacción (melee).`);
+  }
+  return true;
+}
 
 /** Ocultación — CT=2 → I1+E0+R1 (rápida, te “ancla” un instante) */
 export const HideAction = makeDef({
@@ -280,7 +390,8 @@ export const HideAction = makeDef({
     }
 
     // UI: elegir Competencia y DC
-    const choice = await Dialog.prompt({
+    const { DialogV2 } = foundry.applications.api;
+    const choice = await DialogV2.prompt({
       title: "Ocultación",
       label: "Confirmar",
       content: `
@@ -336,7 +447,8 @@ export const HideAction = makeDef({
       const res = await game.transcendence.rolls.skillCheck(actor, { skill: choice.skill, dc: DC, flavor: "Ocultación" });
       success = !!res?.success;
     } else {
-      success = await Dialog.confirm({
+      const { DialogV2 } = foundry.applications.api;
+      success = await DialogV2.confirm({
         title: "Resultado de Ocultación (fallback)",
         content: `<p>¿La tirada (${choice.skill}) superó DC ${DC}?</p>`
       });
@@ -355,3 +467,54 @@ export const HideAction = makeDef({
     }
   }
 });
+
+export function makeFeatureActionFromData(key, feature) {
+  const { init=0, exec=1, rec=0 } = feature?.ct || {};
+  return {
+    key: `feat:${key}`,
+    label: feature?.label || key,
+    init_ticks: init, exec_ticks: exec, rec_ticks: rec,
+    perform: async ({ actor, meta }) => performFeature({ actor, feature, meta })
+  };
+}
+
+// selector genérico: token o celda (cuando area>0)
+async function pickTargetOrCell({ actorToken, ability }) {
+  if ((ability.area ?? 0) > 0) {
+    // Centro de área: pedir una celda rápida (sin colocar template todavía)
+    const p = await canvas.app?.mouse?.interaction?.waitForTarget?.()  // si no existe en tu build, usa DialogV2 para pedir x,y
+              ?? { x: actorToken.center.x, y: actorToken.center.y };
+    return { kind: "cell", point: p };
+  } else {
+    // reutiliza tu selector de objetivo
+    const t = await pickAttackTarget({ actorToken });
+    return t ? { kind: "token", token: t } : null;
+  }
+}
+
+export function makeAbilityAction(ability, { key, clazz }) {
+  const I = ability.ct?.init ?? 0, E = ability.ct?.exec ?? 1, R = ability.ct?.rec ?? 0;
+  return {
+    key: `${clazz}:${key}`,
+    label: ability.label,
+    init_ticks: I, exec_ticks: E, rec_ticks: R,
+    async perform({ actor, meta }) {
+      const actorToken = actor?.getActiveTokens?.(true)?.[0] ?? canvas.tokens.placeables.find(t=>t.actor?.id===actor.id);
+      if (!actorToken) return ui.notifications.warn("Sin token activo.");
+      const pick = await pickTargetOrCell({ actorToken, ability });
+      if (!pick) return ui.notifications.warn("Selecciona un objetivo o una celda.");
+
+      // Rango
+      const rangeM = Number(ability.range ?? 1);
+      const inRange = pick.kind==="cell"
+        ? (metersDistance121(actorToken, pick.point) <= rangeM)
+        : (await validateAttackRangeAndVision({ attackerToken: actorToken, targetToken: pick.token, weaponRangeM: rangeM })).ok;
+      if (!inRange) return ui.notifications.info("Fuera de rango.");
+
+      // Aquí solo dejamos un registro genérico.
+      const where = pick.kind==="cell" ? `celda (${Math.round(pick.point.x)},${Math.round(pick.point.y)})` : `a ${pick.token.name}`;
+      await ChatMessage.create({ content: `<b>${ability.label}</b> (${clazz}) → ${where} • Área=${ability.area??0}` });
+      // TODO: aplicar efecto/plantilla/daño según ability.effect / element / save
+    }
+  };
+}

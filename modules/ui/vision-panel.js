@@ -438,7 +438,8 @@ export class TSDCVisionPanel extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       switch (action) {
         case "save-preset": {
-          const name = await Dialog.prompt({
+          const { DialogV2 } = foundry.applications.api;
+          const name = await DialogV2.prompt({
             title: "Guardar preset de escena",
             content: `<p>Nombre del preset:</p><input type="text" name="n" value="Nuevo preset">`,
             label: "Guardar",
@@ -456,7 +457,8 @@ export class TSDCVisionPanel extends HandlebarsApplicationMixin(ApplicationV2) {
           const presets = game.settings.get(SCOPE, "env.presets") || {};
           const keys = Object.keys(presets);
           if (!keys.length) return ui.notifications.warn("No hay presets guardados.");
-          const choice = await Dialog.prompt({
+          const { DialogV2 } = foundry.applications.api;
+          const choice = await DialogV2.prompt({
             title: "Cargar preset",
             content: `<p>Selecciona:</p>
               <select name="p">${keys.map(k=>`<option>${k}</option>`).join("")}</select>`,
