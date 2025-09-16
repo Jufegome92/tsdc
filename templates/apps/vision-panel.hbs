@@ -83,22 +83,26 @@
     {{!-- C) Ocultación --}}
     <div class="tab t-col" data-tab="stealth" style="gap:12px;">
       <div class="grid cols-2">
-        <label>Ocultación (seleccionados)
+        <label>Estado de ocultación
           <select data-change="concealment-kind">
             <option value="none">— Sin ocultación —</option>
             <option value="hidden">Oculto</option>
           </select>
         </label>
-        <div class="muted">Tip: la acción ATB “Ocultación” aplica este estado de forma reglada.</div>
+
+        <div class="t-row" style="gap:8px; align-items:center;">
+          <button type="button" data-action="reveal-selected">
+            <i class="fas fa-eye"></i> Quitar ocultación (seleccionados)
+          </button>
+          <button type="button" data-action="stealth-force-check">
+            <i class="fas fa-user-secret"></i> Forzar chequeo ahora
+          </button>
+        </div>
       </div>
 
-      <h3>Detección</h3>
-      <div class="t-row" style="gap:8px;">
-        <button type="button" data-action="roll-cardinal"><i class="fas fa-compass"></i> 1d8 cardinal</button>
-        <div class="muted">Úsalo cuando falle la detección pasiva para ubicar aproximado.</div>
-      </div>
-      <div class="t-row">
-        <label><input type="checkbox" disabled> AOE puede afectar ocultos si el área los cubre (placeholder)</label>
+      <div class="muted">
+        Las tiradas se hacen en secreto: Percepción (observador) vs Sigilo (oculto).
+        Si alguien detecta, por defecto se revela globalmente (configurable en el módulo).
       </div>
     </div>
 

@@ -5,10 +5,18 @@ import { getEquippedWeaponKey } from "../features/inventory/index.js";
 import { detectImpactCrit, computeBreakPower } from "../features/combat/critical.js";
 import { makeRollTotal } from "./engine.js";
 import { emitModInspector } from "./inspector.js";
+import { triggerFumbleReactions } from "../atb/reactions.js";
 
 // 🔗 Context tags
 import { buildContextTags, normalizeTags } from "./context-tags.js";
 const _atkGuard = new Set();
+
+/** === Helpers locales === */
+function primaryTokenOf(actor) { // <<< obtiene un token del actor de forma segura
+  return actor?.getActiveTokens?.(true)?.[0]
+      || canvas.tokens.placeables.find(t => t.actor?.id === actor?.id)
+      || null;
+}
 
 /** Util: crea una tarjetita para el GM con los datos necesarios para evaluar */
 async function gmEvalCard({ actor, kind, payload }) {
@@ -70,7 +78,15 @@ function makeTagsFor(opts = {}) {
     extra: opts.extraTags ?? null             // strings o alias
   });
 }
-
+/** Heurística de fumble (ajústala a tu engine si ya marcas flags) */
+function isFumbleAttack(evo) { // <<< dispara SOLO si detectas fumble real
+  const rr = evo?.resultRoll;
+  const f  = rr?.flags?.tsdc;
+  if (f?.isFumble === true || f?.crit === "fumble") return true;
+  // fallback muy básico: si el policy se llamó "fumble"
+  if (evo?.usedPolicy && /fumble/i.test(String(evo.usedPolicy))) return true;
+  return false;
+}
 /** ATAQUE */
 export async function rollAttack(actor, {
   key,
@@ -133,6 +149,12 @@ export async function rollAttack(actor, {
   // Si en tu UI quieres notas/avances, ya los tienes en patched + resultRoll:
   // const shownNotes = [...(resultRoll.notes || []), ...patched.notes];
   // const shownDiceAdvances = (resultRoll.diceAdvances || 0) + (patched.diceAdvances || 0);
+
+  // === (NUEVO) FUMBLE → abrir ventanas de reacción solo si aplica ===
+  const attackerToken = primaryTokenOf(actor); // <<<
+  if (attackerToken && isFumbleAttack(evo)) { // <<<
+    await triggerFumbleReactions({ fumblerToken: attackerToken });
+  }
 
   await gmEvalCard({
     actor, kind: "attack",

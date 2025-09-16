@@ -7,6 +7,7 @@ import {
   buildPerceptionPackage,
   describePackage
 } from "../perception/index.js";
+import { checkStealthForHidden } from "../stealth/detection.js"; 
 
 // Ensure minimal CSS so the panel works even if styles/vision-panel.css fails to load
 (function ensureVisionPanelStyle(){
@@ -412,7 +413,6 @@ export class TSDCVisionPanel extends HandlebarsApplicationMixin(ApplicationV2) {
             ui.notifications.info(`Ocultación: ${st} aplicada a ${selected.length} token(s).`);
             break;
             }
-
         default:
           console.warn("[TSDC:VP] _onChange acción desconocida:", action);
       }
@@ -489,6 +489,32 @@ export class TSDCVisionPanel extends HandlebarsApplicationMixin(ApplicationV2) {
             await setLightEffectIcon(t, "torch");
           }
           ui.notifications.info(`Antorcha asignada a ${selected.length} token(s).`);
+          break;
+        }
+
+        case "reveal-selected": {
+          const selected = canvas?.tokens?.controlled ?? [];
+          for (const t of selected) {
+            try { await t.document?.unsetFlag(SCOPE, "concealment"); } catch {}
+            try { await t.actor?.unsetFlag(SCOPE, "concealment"); } catch {}
+            try { await t.document?.update({ hidden: false }); } catch {}
+          }
+          ui.notifications.info(`Revelado ${selected.length} token(s).`);
+          break;
+        }
+
+        case "stealth-force-check": {
+          const selected = canvas?.tokens?.controlled ?? [];
+          if (!selected.length) {
+            return ui.notifications.warn("Selecciona uno o más tokens para chequear.");
+          }
+          for (const t of selected) {
+            const isHidden = t.document?.getFlag(SCOPE,"concealment")==="hidden" || t.document?.hidden === true;
+            if (isHidden) {
+              await checkStealthForHidden(t, "manual");
+            }
+          }
+          ui.notifications.info("Chequeo de ocultación realizado.");
           break;
         }
 

@@ -6,6 +6,83 @@ import { rollAttack } from "../rolls/dispatcher.js";
 import { pushPenaltyForCurrentTick, scheduleBonusForNextAction } from "./mods.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { buildPerceptionPackage, packageToRollContext, describePackage } from "../perception/index.js";
+import { validateMovePath } from "../rolls/validators.js";
+import { tryReactOpportunity, openReactionWindow } from "./reactions.js";
+import { triggerFumbleReactions } from "../atb/reactions.js";
+
+/* ===== Helpers ===== */
+function distanceM(a, b) {
+  const ray = new Ray(a.center, b.center);
+  const cells = canvas.grid.measureDistances([{ ray }], { gridSpaces: true })?.[0];
+  const gridSize = canvas?.scene?.grid?.size || 100;
+  const fallback = ray.distance / gridSize;
+  return (Number.isFinite(cells) ? cells : fallback) * 1; // 1 casilla = 1 m
+}
+function hostileAdjacents(t) {
+  // Si prefieres “por tipo” o “por disposición”, puedes sincronizar esto con SIDE_MODE de reactions.js
+  return canvas.tokens.placeables.filter(o =>
+    o.id !== t.id &&
+    o.actor &&
+    !o.document.hidden &&
+    (o.document.disposition !== t.document.disposition) &&
+    distanceM(o, t) <= MELEE_RANGE_M
+  );
+}
+
+/* ===== Acción: Movimiento =====
+ * - Valida camino.
+ * - Calcula adyacencias antes/después.
+ * - Abre ventanas de reacción "leave-melee" para hostiles que pierden adyacencia.
+ * - Mueve y da oportunidad inmediata de reaccionar (AI PNJ simple).
+ */
+export async function actionMove({ actorToken, dest, maxMeters = null }) {
+  if (!actorToken || !dest) return false;
+
+  // 1) Adyacentes hostiles ANTES
+  const beforeAdj = hostileAdjacents(actorToken).map(t => t.id);
+
+  // 2) Validar camino
+  const isValid = await validateMovePath({ token: actorToken, dest, maxMeters });
+  if (!isValid.ok) {
+    ui.notifications.warn(`Movimiento inválido: ${isValid.reason}`);
+    return false;
+  }
+
+  // 3) Precalcular adyacentes DESPUÉS (posición virtual)
+  const fake = { center: dest };
+  const afterAdj = canvas.tokens.placeables
+    .filter(o => o.id !== actorToken.id && o.actor && !o.document.hidden && (o.document.disposition !== actorToken.document.disposition))
+    .filter(o => distanceM(o, fake) <= MELEE_RANGE_M)
+    .map(o => o.id);
+
+  const leavingIds = beforeAdj.filter(id => !afterAdj.includes(id));
+
+  // 4) Abrir ventanas de reacción para cada hostil que pierde melee
+  for (const id of leavingIds) {
+    const reactor = canvas.tokens.get(id);
+    if (!reactor) continue;
+    await openReactionWindow({
+      ownerToken: reactor,
+      reason: "leave-melee",
+      expiresTick: (game.combat?.round ?? 0),
+      payload: { provokerTokenId: actorToken.id, meleeRangeM: MELEE_RANGE_M }
+    });
+  }
+
+  // 5) Mover (ajuste de x,y desde centro)
+  const nx = dest.x - (actorToken.w / 2);
+  const ny = dest.y - (actorToken.h / 2);
+  await actorToken.document.update({ x: nx, y: ny });
+
+  // 6) Ofrecer reacción inmediata (auto-intento; para PJ convendría dialog)
+  for (const id of leavingIds) {
+    const reactor = canvas.tokens.get(id);
+    if (!reactor) continue;
+    await tryReactOpportunity({ reactorToken: reactor, provokerToken: actorToken });
+  }
+
+  return true;
+}
 
 /* ===== Utiles ===== */
 

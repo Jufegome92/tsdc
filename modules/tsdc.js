@@ -18,6 +18,9 @@ import { registerAtbUI } from "./atb/ui.js";
 import { ATB_API } from "./atb/engine.js";
 import "./atb/grimoire.js";
 import { TSDCVisionPanel, registerVisionPanelControl } from "./ui/vision-panel.js";
+import { registerStealthDetection, checkStealthOnAction } from "./stealth/detection.js";
+import { actionMove } from "./atb/actions.js";
+import * as Reactions from "./atb/reactions.js";
 
 const _guardWizardOpen = new Set();
 
@@ -139,8 +142,18 @@ Hooks.once("ready", () => {
       tool: ui.controls?.tool?.name ?? ui.controls?.activeTool
     });
   } catch {}
+  registerStealthDetection();
   game.transcendence = game.transcendence || {};
+  game.transcendence.actions   = { move: actionMove };
+  game.transcendence.reactions = {
+    openWindow: Reactions.openReactionWindow,
+    tryAO: Reactions.tryReactOpportunity,
+    ao: Reactions.performOpportunityAttack,
+    triggerFumble: Reactions.triggerFumbleReactions,
+    clearWindows: Reactions.clearAllReactionWindows
+  };
   game.transcendence.atb = ATB_API;
+  game.transcendence.checkStealthOnAction = checkStealthOnAction;
   game.transcendence.openVisionPanel = () => TSDCVisionPanel.open();
   game.transcendence.openGrimoire = () => window.tsdcatb?.GrimoireApp?.openForCurrentUser();
 });
