@@ -1,19 +1,113 @@
 // modules/atb/ui.js
-// UI en Combat Tracker: Start/Pause/Step/Reset y "Planear"
+// UI en Combat Tracker: botones y diálogo "Planear" con dropdowns.
 
-import { listSimpleActions } from "./actions.js";
 import { ATB_API } from "./engine.js";
 import { ACTIONS } from "../features/actions/catalog.js";
+import { MANEUVERS } from "../features/maneuvers/data.js";
+import { RELIC_POWERS } from "../features/relics/data.js";
 
-const { DialogV2 } = foundry.applications.api;
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
+/* ========= Listas para el diálogo ========= */
+function listBasicOptions() {
+  const ids = ["mover","ataque","interactuar","soltar","hide"]; // la Especialización tiene su bloque propio
+  return ids.map(id => ({ id, name: ACTIONS[id]?.name ?? (id==="hide" ? "Ocultación" : id) }));
+}
+function listManeuverOptions(actor) {
+  const learned = actor?.system?.progression?.maneuvers ?? {};
+  const keys = Object.entries(learned).filter(([,n]) => Number(n?.rank||0) > 0).map(([k]) => k);
+  const source = keys.length ? keys : Object.keys(MANEUVERS);
+  return source.map(k => ({ key:k, name: MANEUVERS[k]?.label ?? k }));
+}
+function listRelicOptions() {
+  return Object.entries(RELIC_POWERS).map(([k,p]) => ({ key:k, name:p?.label ?? k }));
+}
+
+/* ========= Diálogo Planer ========= */
+class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
+  static DEFAULT_OPTIONS = {
+    id: "tsdc-atb-plan",
+    window: { title: "Planear acciones", icon: "fa-solid fa-list-check" },
+    position: { width: 640, height: "auto" },
+    actions: {
+      close: AtbPlanDialog.onClose,
+      "plan-basic": AtbPlanDialog.onPlanBasic,
+      "plan-maneuver": AtbPlanDialog.onPlanManeuver,
+      "plan-relic": AtbPlanDialog.onPlanRelic,
+      "plan-spec": AtbPlanDialog.onPlanSpec
+    }
+  };
+  static PARTS = { body: { template: "systems/tsdc/templates/apps/atb-plan.hbs" } };
+  static onClose(){ this._instance?.close(); }
+
+  _readTick() {
+    const v = Number(this.element?.querySelector?.('input[name="targetTick"]')?.value ?? NaN);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  static async onPlanBasic() {
+    const app = this;
+    const sel = app.element.querySelector('select[name="basicKey"]')?.value || "";
+    if (!sel) return ui.notifications.warn("Elige una acción básica.");
+    const tick = app._readTick();
+    const map = { mover:"move", ataque:"attack", interactuar:"interact", soltar:"drop", hide:"hide" };
+    const simple = map[sel];
+    if (!simple) return ui.notifications.warn("Acción básica desconocida.");
+    await ATB_API.enqueueSimpleForSelected(simple, tick);
+    ui.notifications.info(`Plan: ${sel} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
+  }
+  static async onPlanManeuver() {
+    const app = this;
+    const key = app.element.querySelector('select[name="maneuverKey"]')?.value || "";
+    if (!key) return ui.notifications.warn("Elige una maniobra.");
+    const tick = app._readTick();
+    await ATB_API.enqueueManeuverForSelected?.(key, tick);
+    ui.notifications.info(`Plan: Maniobra ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
+  }
+  static async onPlanRelic() {
+    const app = this;
+    const key = app.element.querySelector('select[name="relicKey"]')?.value || "";
+    if (!key) return ui.notifications.warn("Elige un poder de reliquia.");
+    const tick = app._readTick();
+    await ATB_API.enqueueRelicForSelected?.(key, tick);
+    ui.notifications.info(`Plan: Reliquia ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
+  }
+  static async onPlanSpec() {
+    const app = this;
+    const specKey = app.element.querySelector('input[name="specKey"]')?.value?.trim() || "";
+    if (!specKey) return ui.notifications.warn("Ingresa la clave de la especialización.");
+    const category = app.element.querySelector('select[name="specCat"]')?.value || "physical";
+    const CT = Number(app.element.querySelector('select[name="specCT"]')?.value || 2);
+    const tick = app._readTick();
+    await ATB_API.enqueueSpecForSelected({ specKey, category, CT, targetTick: tick });
+    ui.notifications.info(`Plan: Esp. ${specKey} (CT ${CT}) ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
+  }
+
+  async _prepareContext() {
+    const planningTick = await ATB_API.getPlanningTick();
+    const a = canvas.tokens?.controlled?.[0]?.actor ?? game.user?.character ?? null;
+    return {
+      planningTick,
+      basicOptions: listBasicOptions(),
+      maneuverOptions: listManeuverOptions(a),
+      relicOptions: listRelicOptions()
+    };
+  }
+  static open() { if (!this._instance) this._instance = new this(); this._instance.render(true); return this._instance; }
+}
+
+export function openPlanDialogForSelection(){ return AtbPlanDialog.open(); }
+
+/* ========= Botones en el Combat Tracker ========= */
 export function registerAtbUI() {
-  // Robust header hook for V13: some environments don't fire getCombatTrackerHeaderButtons reliably.
+  // Fallback robusto para V13
   Hooks.on("getApplicationHeaderButtons", (app, buttons) => {
     try {
-      // Target the Combat Tracker specifically
-      const isCombatTracker = app instanceof ui.combat.constructor || app.constructor?.name?.includes("CombatTracker");
+      const isCombatTracker =
+        (app instanceof ui.combat.constructor) ||
+        (app?.constructor?.name?.includes?.("CombatTracker"));
       if (!isCombatTracker) return;
+
       buttons.unshift({
         class: "atb-plan",
         label: "Planear",
@@ -30,9 +124,7 @@ export function registerAtbUI() {
           else game?.socket?.emit?.("system.tsdc", { action: "open-atb-tracker" });
         }
       });
-    } catch(e) {
-      console.error("TSDC ATB | header buttons fallback error", e);
-    }
+    } catch (e) { console.error("TSDC ATB | header buttons fallback error", e); }
   });
 
   Hooks.on("getCombatTrackerHeaderButtons", (_tracker, buttons) => {
@@ -47,142 +139,4 @@ export function registerAtbUI() {
   // macro helper
   game.transcendence = game.transcendence || {};
   game.transcendence.openPlanDialog = openPlanDialogForSelection;
-}
-
-export async function openPlanDialogForSelection() {
-  console.log('ATB UI: openPlanDialogForSelection invoked');
-
-  const simple = listSimpleActions();
-  const simpleOpts = simple
-    .map(a => `<option value="${a.key}">${a.label} (CT ${a.init_ticks + a.exec_ticks + a.rec_ticks})</option>`)
-    .join("");
-
-  const planning = await ATB_API.getPlanningTick?.() ?? 0;
-
-  const content = `
-    <form class="t-col" style="gap:10px;min-width:520px;">
-      <div class="t-row" style="gap:10px; align-items:center;">
-        <label style="min-width:110px;">Tick destino</label>
-        <input type="number" name="targetTick" value="${planning}" min="0" style="width:100px;">
-      </div>
-
-      <fieldset class="t-col" style="gap:6px;">
-        <legend>Acción simple</legend>
-        <div class="t-row" style="gap:8px;align-items:center;">
-          <label style="min-width:88px;">Acción</label>
-          <select name="simpleKey">${simpleOpts}</select>
-          <label>Veces</label>
-          <input type="number" name="simpleTimes" value="1" min="1" style="width:80px;">
-        </div>
-      </fieldset>
-
-      <fieldset class="t-col" style="gap:6px;">
-        <legend>Especialización</legend>
-        <div class="t-row" style="gap:8px;align-items:center;">
-          <label style="min-width:88px;">Clave</label>
-          <input name="specKey" placeholder="p.ej. acrobacias" style="width:180px;">
-          <label>Categoría</label>
-          <select name="specCat">
-            <option value="physical">Física</option>
-            <option value="mental">Mental</option>
-            <option value="knowledge">Saberes</option>
-            <option value="social">Social</option>
-          </select>
-          <label>CT</label>
-          <select name="specCT"><option>1</option><option selected>2</option><option>3</option></select>
-        </div>
-      </fieldset>
-    </form>
-
-    <div data-card-preview style="margin-top:12px;"></div>
-  `;
-
-  const dlg = new DialogV2({
-    window: { title: "Planear acciones (selección actual)" },
-    position: { width: 600 },
-    content,
-    buttons: [
-      {
-        label: "Encolar acción simple",
-        action: "enqueue-simple",
-        callback: async (_ev, _btn, dialog) => {
-          const root = (dialog?.element instanceof HTMLElement)
-            ? dialog.element
-            : (dialog?.element?.[0] || dialog?.element?.el || null);
-          if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
-          const form  = root.querySelector("form");
-          const key   = String(form.elements.simpleKey?.value || "");
-          const times = Math.max(1, Number(form.elements.simpleTimes?.value || 1));
-          const tTick = Number(form.elements.targetTick?.value ?? planning);
-          if (!key) return ui.notifications?.warn("Elige una acción simple.");
-          for (let i = 0; i < times; i++) await ATB_API.enqueueSimpleForSelected(key, tTick);
-          ui.notifications?.info(`Encolado ${key} × ${times} para tick ${tTick}`);
-        }
-      },
-      {
-        label: "Encolar especialización",
-        action: "enqueue-spec",
-        callback: async (_ev, _btn, dialog) => {
-          const root = (dialog?.element instanceof HTMLElement)
-            ? dialog.element
-            : (dialog?.element?.[0] || dialog?.element?.el || null);
-          if (!root) { console.warn("ATB UI: dialog has no root element"); return; }
-          const form  = root.querySelector("form");
-          const specKey  = String(form.elements.specKey?.value || "").trim();
-          const category = String(form.elements.specCat?.value || "physical");
-          const CT       = Number(form.elements.specCT?.value || 2);
-          const tTick    = Number(form.elements.targetTick?.value ?? planning);
-          if (!specKey) return ui.notifications?.warn("Ingresa la clave de la especialización.");
-          await ATB_API.enqueueSpecForSelected({ specKey, category, CT, targetTick: tTick });
-          ui.notifications?.info(`Encolada Especialización ${specKey} (CT=${CT}) para tick ${tTick}.`);
-        }
-      },
-      { label: "Cerrar", action: "close" }
-    ]
-  });
-
-  dlg.render(true);
-
-  Hooks.once("renderDialogV2", (app, html) => {
-    if (app !== dlg) return;
-    const root = html instanceof HTMLElement ? html : (html?.[0] || html?.el || null);
-    if (!root) return;
-
-    const sel = root.querySelector('select[name="simpleKey"]');
-    const ct  = root.querySelector('select[name="specCT"]');
-    const refresh = () => renderActionPreview(root, sel?.value, Number(ct?.value || 2));
-    sel?.addEventListener("change", refresh);
-    ct?.addEventListener("change", refresh);
-    refresh();
-  });
-}
-
-async function renderActionPreview(root, actionId, chosenCT = 2) {
-  const slot = root.querySelector("[data-card-preview]");
-  if (!slot) return;
-  const SIMPLE_TO_ACTIONS = {
-    move: "mover",
-    attack: "ataque",
-    interact: "interactuar",
-    defend: "defender",
-    specialization: "especializacion"
-  };
-  const mapped = SIMPLE_TO_ACTIONS[actionId] ?? actionId;
-  const def = ACTIONS[mapped];
-  if (!def) { slot.innerHTML = ""; return; }
-
-  const ct = def.ctOptions ? (def.ctOptions[chosenCT] || def.ctOptions[2]) : def.ct;
-
-  const rt =
-    foundry.applications?.handlebars?.renderTemplate
-    ?? globalThis.renderTemplate;
-
-  if (!rt) {
-    console.error("No hay función renderTemplate disponible.");
-    slot.innerHTML = "";
-    return;
-  }
-
-  const html = await rt("systems/tsdc/templates/cards/action-card.hbs", { ...def, ct });
-  slot.innerHTML = html;
 }

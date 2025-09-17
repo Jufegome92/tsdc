@@ -1,6 +1,10 @@
 // modules/atb/grimoire.js
-console.log("TSDC | grimoire.js cargado");
-const HUD_OBSERVERS = new WeakMap();
+import { ATB_API } from "./engine.js";
+import { ACTIONS } from "../features/actions/catalog.js";
+import { MANEUVERS } from "../features/maneuvers/data.js";
+import { RELIC_POWERS } from "../features/relics/data.js";
+
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 (function ensureStyle() {
   const ID = "tsdc-grimoire-style";
@@ -8,47 +12,11 @@ const HUD_OBSERVERS = new WeakMap();
   const s = document.createElement("style");
   s.id = ID;
   s.textContent = `
-    /* Fuerza scroll en el grimorio, independientemente del tema */
-    .tsdc.grimoire,
-    .tsdc.grimoire .window-content,
-    #tsdc-grimoire,
-    #tsdc-grimoire .window-content {
-      overflow-y: auto !important;
-      max-height: 80vh !important;
-      height: auto !important;
-    }
-    /* Por si el tema usa contenedores internos */
-    .tsdc.grimoire .sheet-body,
-    .tsdc.grimoire .content,
-    .tsdc.grimoire [data-scroll],
-    #tsdc-grimoire .sheet-body,
-    #tsdc-grimoire .content,
-    #tsdc-grimoire [data-scroll] {
-      overflow-y: auto !important;
-      max-height: 80vh !important;
-    }
+    .tsdc.grimoire, .tsdc.grimoire .window-content { overflow-y:auto !important; max-height:80vh !important; }
+    .tsdc.grimoire .g-tabs .active { background: var(--color-underline-header); }
   `;
   document.head.appendChild(s);
 })();
-
-import { ATB_API } from "./engine.js";
-import { ACTIONS } from "../features/actions/catalog.js";
-import { MANEUVERS } from "../features/maneuvers/data.js";
-
-/* =========================
- * Utilidades
- * ========================= */
-function _normalizeControlsArg(arg) {
-  if (Array.isArray(arg)) return arg;                       // v10–v12
-  if (Array.isArray(arg?.controls)) return arg.controls;    // v13+
-  if (Array.isArray(ui?.controls?.controls)) return ui.controls.controls;
-  return [];
-}
-
-const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
-
-const SIMPLE_ID_TO_KEY = { mover:"move", ataque:"attack", interactuar:"interact", soltar:"drop" };
-const BASIC_ORDER = ["mover", "ataque", "interactuar", "soltar", "especializacion"];
 
 function hasTemplateRenderer() {
   return !!(foundry.applications?.handlebars?.renderTemplate || globalThis.renderTemplate);
@@ -58,247 +26,123 @@ function renderTpl(path, data) {
   return rt(path, data);
 }
 
-/* =========================
- * Data helpers
- * ========================= */
+/* ===== Helpers para colecciones ===== */
+function collectBasics() {
+  const ids = ["mover","ataque","interactuar","soltar","especializacion","hide"];
+  return ids.map(id => {
+    const def = ACTIONS[id];
+    const title = def?.name ?? (id==="hide"?"Ocultación":id);
+    const ct = def?.ct ?? def?.ctOptions?.[2] ?? null;
+    return { id, title, subtitle: ct ? `CT ${ct.I||0}/${ct.E||0}/${ct.R||0}` : "", def };
+  });
+}
 function collectLearnedManeuvers(actor) {
   const out = [];
   const tree = actor?.system?.progression?.maneuvers || {};
   for (const [key, node] of Object.entries(tree)) {
-    const rank = Number(node?.rank || 0);
-    if (rank <= 0) continue;
-    const m = MANEUVERS[key];
-    if (!m?.ct) continue;
+    if (Number(node?.rank||0) <= 0) continue;
+    const m = MANEUVERS[key]; if (!m) continue;
     out.push({
       id: key,
-      name: m.label ?? key,
-      description: m.description ?? "",
-      ct: { I: m.ct.init ?? 0, E: m.ct.exec ?? 1, R: m.ct.rec ?? 0 },
-      range: m.range ?? "—",
-      area: m.area ?? "—",
-      keywords: {
-        type:"maneuver",
-        clazz: m.type ?? "",
-        category: m.category ?? "",
-        descriptors: [].concat(m.descriptor||[]),
-        elements: [].concat(m.element||[])
-      },
-      rolls: m.rolls ?? []
+      title: m.label ?? key,
+      subtitle: m.ct ? `CT ${m.ct.init||0}/${m.ct.exec||1}/${m.ct.rec||0}` : "",
+      def: m
     });
   }
   return out;
 }
-function collectLearnedAptitudes(actor) {
+function collectRelics(/*actor*/) {
+  return Object.entries(RELIC_POWERS).map(([key, p]) => ({
+    id: key, title: p.label ?? key,
+    subtitle: p.ct ? `CT ${p.ct.init||0}/${p.ct.exec||1}/${p.ct.rec||0}` : "",
+    def: p
+  }));
+}
+function collectAptitudes(actor) {
   const apt = actor?.system?.progression?.aptitudes || {};
   const out = [];
   for (const [id, node] of Object.entries(apt)) {
     const known = !!node?.known || Number(node?.rank||0) > 0;
     if (!known) continue;
-    const def = ACTIONS[id];
-    if (def) { out.push(def); continue; }
+    const def = ACTIONS[id] ?? { id, name: node?.label ?? id, description: node?.description ?? "", ct: node?.ct ?? { I:0,E:1,R:0 } };
     out.push({
-      id, name: node?.label ?? id, description: node?.description ?? "",
-      ct: node?.ct ?? { I:0, E:1, R:0 },
-      range: node?.range ?? "—",
-      area: node?.area ?? "—",
-      keywords: { type:"aptitude", clazz:"", category:"", descriptors:[], elements:[] },
-      rolls: node?.rolls ?? []
+      id, title: def.name ?? id,
+      subtitle: def.ct ? `CT ${def.ct.I||0}/${def.ct.E||1}/${def.ct.R||0}` : "",
+      def
     });
   }
   return out;
 }
 
-/* =========================
- * App Grimorio
- * ========================= */
+/* ===== App ===== */
 export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
-  static DEFAULT_OPTIONS =  {
+  static DEFAULT_OPTIONS = {
     id: "tsdc-grimoire",
-    classes: ["tsdc", "grimoire"],
-    window: { icon: "fa-solid fa-book fas fa-book", title: "Grimorio", resizable: true },
-    position: { width: 760, height: 640 },
+    classes: ["tsdc","grimoire"],
+    window: { icon: "fa-solid fa-book", title: "Grimorio", resizable: true },
+    position: { width: 780, height: 640 },
     actions: {
       close: GrimoireApp.onClose,
-      "tick-prev": GrimoireApp.onTickPrev,
-      "tick-next": GrimoireApp.onTickNext,
       "apply-filter": GrimoireApp.onApplyFilter,
-      "plan-basic": GrimoireApp.onPlanBasic,
-      "plan-catalog": GrimoireApp.onPlanCatalog,
-      "plan-maneuver": GrimoireApp.onPlanManeuver,
-      "plan-aptitude": GrimoireApp.onPlanAptitude
+      "switch-tab": GrimoireApp.onTab,
+      "open-plan": GrimoireApp.onOpenPlan
     }
   };
-  static DEFAULT_SUBCLASS_OPTIONS = this.DEFAULT_OPTIONS;
   static PARTS = { body: { template: "systems/tsdc/templates/apps/grimoire.hbs" } };
 
   constructor(actorId, options={}) {
     super(options);
     this.actorId = actorId ?? null;
     this._query = "";
+    this._tab = "basic";
     this._onUpdate = () => this.render(false);
     Hooks.on("updateActor", this._onUpdate);
     Hooks.on("updateCombat", this._onUpdate);
   }
-  async close(opts) {
-    Hooks.off("updateActor", this._onUpdate);
-    Hooks.off("updateCombat", this._onUpdate);
-    return super.close(opts);
-  }
+  async close(opts){ Hooks.off("updateActor",this._onUpdate); Hooks.off("updateCombat",this._onUpdate); return super.close(opts); }
 
-  /** Fuerza scroll aunque el tema lo bloquee */
-  activateListeners(html) {
-    super.activateListeners?.(html);
-    try {
-      const el = this.element;
-      const body = el?.querySelector?.(".window-content") || el;
-      if (el) { el.style.overflowY = "auto"; el.style.maxHeight = "80vh"; el.style.minHeight = "360px"; }
-      if (body) { body.style.overflowY = "auto"; body.style.maxHeight = "80vh"; }
-    } catch (e) {
-      console.warn("TSDC | No se pudo aplicar overflow al Grimorio:", e);
-    }
-  }
-
-  // ==== Actions
-  static onClose() { ATBTrackerApp._instance?.close(); }
-  static async onTickPrev(){ await ATB_API.adjustPlanningTick(-1); }
-  static async onTickNext(){ await ATB_API.adjustPlanningTick(+1); }
-  static onApplyFilter(){
-    const input = this.element?.querySelector?.('[data-ref="filter"]');
-    this._query = (input?.value || "").trim().toLowerCase();
-    this.render(false);
-  }
-  static async onPlanBasic(_ev, btn) {
-    const app = this;
-    const card = btn.closest?.("[data-card]"); if (!card) return;
-    const id   = card.dataset.id;
-    const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
-    const targetTick = tickStr === "" ? null : Number(tickStr);
-    const simpleKey = SIMPLE_ID_TO_KEY[id];
-    if (id === "especializacion") return ui.notifications?.warn("Usa Catálogo → Especialización.");
-    if (!simpleKey) return ui.notifications?.warn("Acción no planeable aún.");
-
-    if (simpleKey === "attack") {
-      const tgt = Array.from(game.user?.targets ?? [])[0] ?? null;
-      await ATB_API.enqueueSimpleForActor(app.actorId, simpleKey, targetTick, {
-        targetTokenId: tgt?.id ?? null
-      });
-    } else {
-      await ATB_API.enqueueSimpleForActor(app.actorId, simpleKey, targetTick);
-    }
-    ui.notifications?.info(`Plan (${id}) ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
-  }
-  static async onPlanCatalog(_ev, btn) {
-    const app = this;
-    const card = btn.closest?.("[data-card]"); if (!card) return;
-    const id   = card.dataset.id;
-    const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
-    const targetTick = tickStr === "" ? null : Number(tickStr);
-    if (id === "especializacion") {
-      const specKey = card.querySelector('input[name="specKey"]')?.value?.trim() || "";
-      const speccat = card.querySelector('select[name="specCat"]')?.value || "physical";
-      const ct      = Number(card.querySelector('select[name="specCT"]')?.value || 2);
-      if (!specKey) return ui.notifications?.warn("Ingresa la clave de la especialización.");
-      await ATB_API.enqueueSpecForActor(app.actorId, { specKey, category: speccat, CT: ct, targetTick });
-      return ui.notifications?.info(`Plan: Especialización ${specKey} (CT ${ct}) ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
-    }
-    if (id in SIMPLE_ID_TO_KEY) {
-      await ATB_API.enqueueSimpleForActor(app.actorId, SIMPLE_ID_TO_KEY[id], targetTick);
-      return ui.notifications?.info(`Plan (${id}) ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
-    }
-    ui.notifications?.warn("Esta acción del catálogo aún no es planeable desde el libro.");
-  }
-  static async onPlanManeuver(_ev, btn) {
-    const app = this;
-    const card = btn.closest?.("[data-card]"); if (!card) return;
-    const id   = card.dataset.id;
-    const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
-    const targetTick = tickStr === "" ? null : Number(tickStr);
-
-    const tgt = Array.from(game.user?.targets ?? [])[0] ?? null;
-    await ATB_API.enqueueSimpleForActor(app.actorId, "attack", targetTick, {
-      targetTokenId: tgt?.id ?? null
-    });
-    ui.notifications?.info(`Plan: Maniobra ${id} ${targetTick!=null?`→ tick ${targetTick}`:"(tick de planeación)"}`);
-  }
-  static async onPlanAptitude(_ev, btn) {
-    const app = this;
-    const card = btn.closest?.("[data-card]"); if (!card) return;
-    const id   = card.dataset.id;
-    const tickStr = card.querySelector('input[name="targetTick"]')?.value ?? "";
-    const targetTick = tickStr === "" ? null : Number(tickStr);
-    ui.notifications?.warn("Falta mapear esta Aptitud a una acción ATB concreta.");
-  }
+  static onClose(){ this._instance?.close(); }
+  static onTab(ev, btn){ this._tab = btn?.dataset?.tab || "basic"; this.render(false); }
+  static onApplyFilter(){ const input = this.element?.querySelector?.('[data-ref="filter"]'); this._query = (input?.value||"").trim().toLowerCase(); this.render(false); }
+  static onOpenPlan(){ game.transcendence?.openAtbTracker?.(); /* o bien openPlanDialogForSelection() si prefieres abrir el diálogo */ }
 
   async _prepareContext() {
     const actor = game.actors?.get?.(this.actorId) || null;
     const planningTick = await ATB_API.getPlanningTick();
-    const q = (this._query || "").trim().toLowerCase();
-    const canPlan = !!(game.combat && actor && game.combat.combatants.find(c => c.actor?.id === actor.id));
+    const q = (this._query||"").trim().toLowerCase();
+
+    const toHtml = async (def) => hasTemplateRenderer()
+      ? await renderTpl("systems/tsdc/templates/cards/action-card.hbs", { ...def })
+      : `<div class="tsdc-card"><header class="c-head">${def?.name ?? def?.label ?? "—"}</header></div>`;
 
     // Básicas
-    const cardsBasic = [];
-    for (const id of BASIC_ORDER) {
-      const def = ACTIONS[id];
-      if (def) {
-        const chosenCT = def.ctOptions ? (def.ctOptions[2] ? 2 : Number(Object.keys(def.ctOptions)[0])) : null;
-        const ct = def.ctOptions ? (def.ctOptions[chosenCT] || Object.values(def.ctOptions)[0]) : def.ct;
-        const html = hasTemplateRenderer()
-          ? await renderTpl("systems/tsdc/templates/cards/action-card.hbs", { ...def, ct })
-          : `<div class="tsdc-card"><header class="c-head">${def.name}</header></div>`;
-        cardsBasic.push({ id, html, isSpec:(id==="especializacion") });
-      } else {
-        cardsBasic.push({ id, html:`<div class="tsdc-card"><header class="c-head">${id}</header></div>`, isSpec:false });
-      }
-    }
+    const basics = collectBasics()
+      .filter(x => !q || String(x.title).toLowerCase().includes(q))
+      .map(async x => ({ ...x, html: await toHtml(ACTIONS[x.id] ?? x.def) }));
+    const cardsBasic = await Promise.all(basics);
 
-    // Catálogo (mostrar al menos Especialización)
-    const cardsCatalog = [];
-    if (!q || "especializacion".includes(q)) {
-      const def = ACTIONS["especializacion"];
-      const chosenCT = def?.ctOptions ? (def.ctOptions[2] ? 2 : Number(Object.keys(def.ctOptions)[0])) : null;
-      const ct = def?.ctOptions ? (def.ctOptions[chosenCT] || Object.values(def.ctOptions)[0]) : def?.ct;
-      const html = hasTemplateRenderer() && def
-        ? await renderTpl("systems/tsdc/templates/cards/action-card.hbs", { ...def, ct })
-        : `<div class="tsdc-card"><header class="c-head">Especialización</header></div>`;
-      cardsCatalog.push({ id:"especializacion", html, isSpec:true });
-    }
+    // Maniobras / Reliquias / Aptitudes
+    const ms = collectLearnedManeuvers(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
+    const rs = collectRelics(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
+    const as = collectAptitudes(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
 
-    // Mis maniobras
-    const maneuvers = collectLearnedManeuvers(actor);
-    const cardsManeuvers = [];
-    for (const def of maneuvers) {
-      const hay = (s) => (String(s||"").toLowerCase().includes(q));
-      if (q && !(hay(def.name)||hay(def.description))) continue;
-      const html = hasTemplateRenderer()
-        ? await renderTpl("systems/tsdc/templates/cards/action-card.hbs", { ...def })
-        : `<div class="tsdc-card"><header class="c-head">${def.name}</header></div>`;
-      cardsManeuvers.push({ id:def.id, html });
-    }
+    const cardsManeuvers = await Promise.all(ms.map(async x => ({ ...x, html: await toHtml(x.def) })));
+    const cardsRelics    = await Promise.all(rs.map(async x => ({ ...x, html: await toHtml(x.def) })));
+    const cardsAptitudes = await Promise.all(as.map(async x => ({ ...x, html: await toHtml(x.def) })));
 
-    // Mis aptitudes
-    const aptitudes = collectLearnedAptitudes(actor);
-    const cardsAptitudes = [];
-    for (const def of aptitudes) {
-      const hay = (s) => (String(s||"").toLowerCase().includes(q));
-      if (q && !(hay(def.name)||hay(def.description))) continue;
-      const html = hasTemplateRenderer()
-        ? await renderTpl("systems/tsdc/templates/cards/action-card.hbs", { ...def })
-        : `<div class="tsdc-card"><header class="c-head">${def.name}</header></div>`;
-      cardsAptitudes.push({ id:def.id, html });
-    }
-
-    return { actorName: actor?.name ?? "—", planningTick, canPlan, query:q,
-      cardsBasic, cardsCatalog, cardsManeuvers, cardsAptitudes };
+    return {
+      actorName: actor?.name ?? "—",
+      planningTick,
+      query: q,
+      activeTab: this._tab,
+      cardsBasic, cardsManeuvers, cardsRelics, cardsAptitudes
+    };
   }
 
-  // API de apertura con permisos
+  // Aperturas
   static openForActor(actorId) {
-    const actor = game.actors?.get?.(actorId);
-    if (!actor) return ui.notifications?.warn("Actor no encontrado.");
-    const canOpen = game.user.isGM ||
-                    actor.isOwner ||
-                    actor.testUserPermission?.(game.user, "OWNER") ||
-                    actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
+    const actor = game.actors?.get?.(actorId); if (!actor) return ui.notifications?.warn("Actor no encontrado.");
+    const canOpen = game.user.isGM || actor.isOwner || actor.testUserPermission?.(game.user, "OWNER") || actor.testUserPermission?.(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER);
     if (!canOpen) return ui.notifications?.warn("No puedes abrir el grimorio de otro personaje.");
     if (!this._instances) this._instances = new Map();
     let app = this._instances.get(actorId);
@@ -316,278 +160,202 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 }
 
-/* =========================
- * Inyección de botones (robusta)
- * ========================= */
-function __addActorHeaderButton(app, html) {
-  const $ = window.jQuery ?? window.$;
-  const actor = app?.actor ?? app?.document;
-  console.log("TSDC | renderActorSheet hook fired", { has$: !!$, actorId: actor?.id, v2: !!app?.elementV2 });
-  if (!$) return;
-  if (!actor || actor.documentName !== "Actor") return;
+// =========================
+// HUD/SceneControls/Sheet buttons (V13-safe)
+// =========================
+// ===== helpers de permisos (igual que ya tienes) =====
 
-  // html puede ser jQuery, ArrayLike o HTMLElement; si viene vacío, usa el root del app
-  const $container = $(html?.[0] ?? html ?? app?.element ?? app?.elementV2);
-  if (!$container.length) return;
+// ===== NUEVO: búsqueda robusta del contenedor "derecha" =====
+function findRightContainer(root) {
+  if (!root) return null;
 
-  const $win = $container.closest(".window-app");
-  if (!$win.length) return;
-  if ($win.find('[data-action="tsdc-grimoire-header"]').length) return;
+  // 1) Selectores conocidos (core + temas + v13)
+  let right =
+    root.querySelector('[data-group="right"]') ||
+    root.querySelector('[data-group="Right"]') ||
+    root.querySelector('.col.right') ||
+    root.querySelector('.right') ||
+    root.querySelector('.tokenhud__right') ||
+    root.querySelector('.token-hud__right') ||
+    root.querySelector('.tokenhud-col-right');
 
-  const $header = $win.find(".window-header");
-  if (!$header.length) return;
+  if (right) return right;
 
-  let $actions = $header.find(".header-actions");
-  if (!$actions.length) $actions = $(`<div class="header-actions" />`).appendTo($header);
-
-  const $btn = $(`
-    <a class="header-control" data-action="tsdc-grimoire-header" title="Abrir Grimorio">
-      <i class="fa-solid fa-book"></i><span style="margin-left:.35rem;">Grimorio</span>
-    </a>
-  `);
-  $btn.on("click", () => window.tsdcatb?.GrimoireApp?.openForActor(actor.id));
-  $actions.prepend($btn);
-
-  console.log("TSDC | Sheet: botón del grimorio insertado");
-}
-
-/* =========================
- * HUD del token (robusto, DOM + Observer)
- * ========================= */
-function __injectHudBtn($root, hud) {
-  const $ = window.jQuery ?? window.$;
-  if (!$) return;
-  if (!$root || !$root.length) return;
-
-  // 1) Encuentra la columna derecha (sin filtros)
-  const $right = $root.find('.col.right, [data-group="right"]').first();
-  if (!$right.length) return; // si aún no existe, el caller volverá a intentar
-
-  // 2) Evita duplicados
-  if ($right.find('.control-icon.tsdc-grimoire').length) return;
-
-  // 3) Copia el tag que ya usa el HUD (button o div)
-  const tag = ($right.find('.control-icon').first().prop('tagName') || 'BUTTON').toLowerCase();
-  const $btn = $(
-    `<${tag} class="control-icon tsdc-grimoire" data-action="tsdc-grimoire"
-       title="Abrir Grimorio" data-tooltip="Abrir Grimorio">
-       <i class="fa-solid fa-book"></i>
-     </${tag}>`
+  // 2) Heurístico: columna que contiene el botón de "Toggle Combat" (espadas)
+  const swords = root.querySelector(
+    '.control-icon i[class*="sword"], .control-icon[data-action*="combat"], .control-icon.combat'
   );
+  if (swords) return swords.closest('.col, [data-group], .right, .tokenhud__right, .token-hud__right') || swords.parentElement;
 
-  $btn.on('click', () => {
-    const actor = (hud?.object ?? hud?.token)?.actor;
-    if (!actor) return ui.notifications?.warn("Selecciona tu token (o asigna tu actor).");
-    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
-  });
+  // 3) Heurístico: padre del primer control-icon disponible (último recurso)
+  const firstIcon = root.querySelector('.control-icon');
+  if (firstIcon?.parentElement) return firstIcon.parentElement;
 
-  $right.append($btn);
-  console.log("TSDC | TokenHUD: botón Grimorio insertado");
-}
-
-
-function __asEl(maybeHtml, maybeHud) {
-  if (!maybeHtml) return (maybeHud?.element ?? null) || null;
-  if (maybeHtml instanceof Element) return maybeHtml;
-  // jQuery-like
-  if (typeof maybeHtml === "object" && "0" in maybeHtml) return maybeHtml[0] ?? null;
   return null;
 }
 
-function __logEl(prefix, el) {
-  try {
-    const tag = el?.tagName || "null";
-    const cls = el?.className || "";
-    console.log(`TSDC | ${prefix}:`, {tag, cls});
-  } catch {}
-}
-
-function __findRightColumn(rootEl) {
-  if (!rootEl) return null;
-  // Intenta selectores típicos de core y temas
-  const selectors = [
-    ".col.right",
-    "[data-group='right']",
-    ".right",
-    ".right-col",
-    ".rightcol",
-    ".tokenhud .right",      // por si el tema anida más
-    ".tokenhud [data-group='right']"
-  ];
-  for (const sel of selectors) {
-    const node = rootEl.querySelector(sel);
-    if (node) return node;
-  }
-  return null;
-}
-
-function __firstControlIcon(rootEl) {
-  if (!rootEl) return null;
-  return rootEl.querySelector(".control-icon");
-}
-
-function __injectHudBtn_Native(rootEl, hud) {
-  if (!rootEl) return;
-
-  // 1) Encuentra columna derecha
-  const right = __findRightColumn(rootEl);
-  __logEl("HUD right-col", right);
-  if (!right) return; // no está lista aún, el caller reintenta
-
-  // si el token no tiene actor o no lo puedes abrir, no pintes el botón
-  const actor = (hud?.object ?? hud?.token)?.actor;
+// ===== NUEVO: inyección con espera/observación =====
+// --- Helpers ---
+function canOpenGrimoireForActor(actor) {
+  if (!actor) return false;
   const OWNER = (CONST?.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? 3);
-  const canOpen = !!actor && (
-    game.user.isGM ||
-    actor.isOwner ||
-    actor.testUserPermission?.(game.user, "OWNER") ||
-    actor.testUserPermission?.(game.user, OWNER)
-  );
-  if (!canOpen) return;
-
-  // 2) Evita duplicados
-  if (right.querySelector(".control-icon.tsdc-grimoire")) {
-    console.log("TSDC | HUD: botón ya existe, no se duplica");
-    return;
-  }
-
-  // 3) Copia el tag del primer icono existente (<button> o <div>)
-  const proto = __firstControlIcon(rootEl);
-  __logEl("HUD first control-icon", proto);
-  const tag = (proto?.tagName || "BUTTON").toLowerCase();
-
-  const btn = document.createElement(tag);
-  btn.className = "control-icon tsdc-grimoire";
-  btn.setAttribute("data-action", "tsdc-grimoire");
-  btn.setAttribute("title", "Abrir Grimorio");
-  btn.setAttribute("data-tooltip", "Abrir Grimorio");
-
-  const i = document.createElement("i");
-  i.className = "fa-solid fa-book";
-  btn.appendChild(i);
-
-  btn.addEventListener("click", () => {
-    const actor = (hud?.object ?? hud?.token)?.actor;
-    if (!actor) return ui.notifications?.warn("Selecciona tu token (o asigna tu actor).");
-    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
-  });
-
-  right.appendChild(btn);
-  console.log("TSDC | HUD: botón Grimorio insertado OK");
+  return game.user.isGM ||
+         actor.isOwner ||
+         actor.testUserPermission?.(game.user, "OWNER") ||
+         actor.testUserPermission?.(game.user, OWNER);
 }
 
-function __addHudButton_Robusto(hud, html) {
-  const rootEl = __asEl(html, hud);
-  __logEl("renderTokenHUD root", rootEl);
+// Siempre obtener el HUD "vivo" del DOM
+function getLiveHudRoot() {
+  return document.querySelector('#token-hud.placeable-hud');
+}
 
-  // Si por cualquier razón no hay root, sal con log
-  if (!rootEl) {
-    console.warn("TSDC | renderTokenHUD: no rootEl");
-    return;
-  }
+function insertGrimoireBtn() {
+  const root = getLiveHudRoot();
+  if (!root) return false;
 
-  // Espera 1 frame para que el HUD termine de montar sus columnas
-  requestAnimationFrame(() => {
-    try { __injectHudBtn_Native(rootEl, hud); } catch (e) { console.error(e); }
+  // Ancla: botón de combate si existe; si no, cualquier control-icon
+  const combatBtn =
+    root.querySelector('.control-icon i[class*="sword"]')?.closest('.control-icon') ||
+    root.querySelector('.control-icon[data-action*="combat"]') ||
+    root.querySelector('.control-icon.combat') ||
+    null;
 
-    // (opcional) un solo observer por rootEl
-    if (!HUD_OBSERVERS.has(rootEl)) {
-      const mo = new MutationObserver(() => {
-        try { __injectHudBtn_Native(rootEl, hud); } catch {}
-      });
-      mo.observe(rootEl, { childList: true, subtree: true });
-      HUD_OBSERVERS.set(rootEl, mo);
-      console.log("TSDC | HUD: observer activo");
-    } else {
-      console.log("TSDC | HUD: observer ya activo");
+  const refIcon = combatBtn || root.querySelector('.control-icon');
+  if (!refIcon) return false;
+
+  const container = refIcon.parentElement;
+  if (!container) return false;
+
+  // Permisos con actor del HUD activo o token seleccionado
+  const actor = ui?.tokens?.control?.object?.actor
+             ?? canvas.tokens?.controlled?.[0]?.actor
+             ?? game.user?.character
+             ?? null;
+  if (!canOpenGrimoireForActor(actor)) return true;
+
+  if (container.querySelector('.control-icon.tsdc-grimoire')) return true;
+
+  const tag = (refIcon.tagName || 'BUTTON').toLowerCase();
+  const btn = document.createElement(tag);
+  btn.className = 'control-icon tsdc-grimoire';
+  btn.dataset.action = 'tsdc-grimoire';
+  btn.title = 'Abrir Grimorio';
+  btn.setAttribute('data-tooltip', 'Abrir Grimorio');
+  btn.innerHTML = '<i class="fa-solid fa-book"></i>';
+  btn.addEventListener('click', () => {
+    GrimoireApp.openForActor(actor.id);
+  });
+
+  combatBtn?.nextSibling
+    ? container.insertBefore(btn, combatBtn.nextSibling)
+    : container.appendChild(btn);
+
+  console.log('TSDC | HUD: botón Grimorio insertado');
+  return true;
+}
+
+function scheduleHudInsert() {
+  // Reintentos para temas que montan tarde
+  const delays = [0, 16, 50, 120, 250, 500, 1000];
+  let done = false;
+  delays.forEach(d => setTimeout(() => { if (!done) done = insertGrimoireBtn(); }, d));
+}
+
+function addSceneControlButtonDOM(_app, html) {
+  const root = (html?.[0] ?? html ?? null);
+  if (!root) return;
+
+  // pestaña de herramientas del token
+  const tokenTab = root.querySelector('.scene-control[data-control="token"]');
+  const list = tokenTab?.parentElement?.querySelector('ol.control-tools') ||
+               root.querySelector('ol.control-tools'); // temas distintos
+
+  if (!list || list.querySelector('li[data-tool="tsdc-grimoire"]')) return;
+
+  const li = document.createElement('li');
+  li.className = 'control-tool';
+  li.dataset.tool = 'tsdc-grimoire';
+  li.title = 'Abrir Grimorio';
+  li.innerHTML = '<i class="fa-solid fa-book"></i>';
+  li.addEventListener('click', () => {
+    const tk = canvas.tokens?.controlled?.[0] ?? null;
+    const actor = tk?.actor ?? game.user?.character ?? null;
+    if (!actor) return ui.notifications?.warn('Selecciona tu token o asigna tu actor.');
+    GrimoireApp.openForActor(actor.id);
+  });
+
+  list.appendChild(li);
+}
+
+// ===== Barra izquierda: forma oficial (se llama múltiples veces) =====
+function registerSceneControlTool(arg) {
+  const controls = Array.isArray(arg) ? arg : (arg?.controls ?? []);
+  console.log('TSDC | getSceneControlButtons', { count: controls?.length ?? 0 });
+  const tokenCtl = controls?.find(c => c.name === 'token');
+  if (!tokenCtl) return;
+  tokenCtl.tools ??= [];
+  if (tokenCtl.tools.some(t => t.name === 'tsdc-grimoire')) return;
+
+  tokenCtl.tools.push({
+    name: 'tsdc-grimoire',
+    title: 'Abrir Grimorio',
+    icon: 'fas fa-book',
+    button: true,
+    visible: true,
+    onClick: () => {
+      const tk = canvas.tokens?.controlled?.[0];
+      const actor = tk?.actor ?? game.user?.character;
+      if (!actor) return ui.notifications.warn('Selecciona tu token o asigna tu actor.');
+      GrimoireApp.openForActor(actor.id);
     }
   });
 }
 
+// ===== NUEVO: función que faltaba (evita el ReferenceError) =====
+function addActorHeaderButton(app, html) {
+  const el = (html?.[0] ?? html ?? app?.element ?? null);
+  if (!el) return;
+  const win = el.closest?.('.window-app'); if (!win) return;
+  const header = win.querySelector('.window-header'); if (!header) return;
 
-/* =========================
- * Scene Controls (fallback DOM)
- * ========================= */
-function __addSceneControlButton_DOM(_app, html /*, data */) {
-  // Pestaña "token"
-  const $ = window.jQuery ?? window.$; if (!$) return;
-  const $html = $(html?.[0] ?? html);
-  if (!$html.length) return;
+  let actions = header.querySelector('.header-actions');
+  if (!actions) {
+    actions = document.createElement('div');
+    actions.className = 'header-actions';
+    header.appendChild(actions);
+  }
+  if (actions.querySelector('[data-action="tsdc-grimoire-header"]')) return;
 
-  // Contenedor de herramientas de la pestaña activa
-  const $tools = $html.find('.scene-control[data-control="token"] ~ ol.control-tools');
-  // Si no lo encontramos (tema distinto), buscamos cualquier grupo de tools con data-control="token"
-  const $tokenCtl = $html.find('.scene-control[data-control="token"]');
-  const $list = $tools.length ? $tools : $tokenCtl.parent().find('ol.control-tools').first();
-  if (!$list.length) return;
-
-  if ($list.find('li[data-tool="tsdc-grimoire"]').length) return;
-
-  const $li = $(`
-    <li class="control-tool" data-tool="tsdc-grimoire" title="Abrir Grimorio">
-      <i class="fas fa-book fa-solid fa-book"></i>
-    </li>
-  `);
-  $li.on('click', () => {
-    const tk = canvas.tokens?.controlled?.[0];
-    const actor = tk?.actor ?? game.user?.character;
-    if (!actor) return ui.notifications.warn("Selecciona tu token o asigna tu actor.");
-    window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
+  const a = document.createElement('a');
+  a.className = 'header-control';
+  a.dataset.action = 'tsdc-grimoire-header';
+  a.title = 'Abrir Grimorio';
+  a.innerHTML = '<i class="fa-solid fa-book"></i><span style="margin-left:.35rem;">Grimorio</span>';
+  a.addEventListener('click', () => {
+    const actor = app?.actor ?? app?.document ?? null;
+    if (!actor) return;
+    GrimoireApp.openForActor(actor.id);
   });
-
-  $list.append($li);
+  actions.prepend(a);
 }
 
-/* =========================
- * Registro
- * ========================= */
-Hooks.once("init", () => {
-  // mantenemos tu getSceneControlButtons (si alguna vez trae datos, perfecto)
-  Hooks.on("getSceneControlButtons", (arg) => {
-    const controls = Array.isArray(arg) ? arg : arg?.controls ?? [];
-    console.log("TSDC | getSceneControlButtons hook fired", { count: controls?.length ?? 0 });
-    const tokenCtl = controls?.find?.(c => c.name === "token");
-    if (!tokenCtl) return;
-    tokenCtl.tools ??= [];
-    if (tokenCtl.tools.some(t => t.name === "tsdc-grimoire")) return;
-    tokenCtl.tools.push({
-      name: "tsdc-grimoire",
-      title: "Abrir Grimorio",
-      icon: "fas fa-book",
-      button: true,
-      visible: true,
-      onClick: () => {
-        const tk = canvas.tokens?.controlled?.[0];
-        const actor = tk?.actor ?? game.user?.character;
-        if (!actor) return ui.notifications.warn("Selecciona tu token o asigna tu actor.");
-        window.tsdcatb?.GrimoireApp?.openForActor(actor.id);
-      }
-    });
-  });
+// ===== Hooks =====
+Hooks.once('init', () => {
+  Hooks.on('getSceneControlButtons', registerSceneControlTool);
 });
 
-Hooks.once("ready", () => {
-  console.log("TSDC | registrando botones del Grimorio…");
-  // HUD del token (DOM + observer)
-  console.log("TSDC | hook renderTokenHUD registrado");
-  Hooks.on("renderTokenHUD", __addHudButton_Robusto);
+Hooks.once('ready', () => {
+  console.log('TSDC | ready: registrando HUD y cabeceras…');
 
-  // Fallback DOM en la barra de controles
-  Hooks.on("renderSceneControls", __addSceneControlButton_DOM);
-  Hooks.on("canvasReady", () => {
-    // una pasada extra cuando todo está listo
-    ui.controls?.render?.({
-      controls: ui.controls?.controls ?? [],
-      tool: ui.controls?.tool?.name ?? ui.controls?.activeTool
-    });
+  Hooks.on('renderTokenHUD',      scheduleHudInsert);
+  Hooks.on('renderTokenHUDV2',    scheduleHudInsert);
+  Hooks.on('refreshTokenHUD',     scheduleHudInsert);
+  Hooks.on('controlToken',        scheduleHudInsert);
+  // Fuerza un render de la barra tras cargar
+  ui.controls?.render?.({
+    controls: ui.controls?.controls ?? [],
+    tool: ui.controls?.tool?.name ?? ui.controls?.activeTool
   });
-
-  // botones en cabecera (se mantienen igual)
-  Hooks.on("renderActorSheet", __addActorHeaderButton);
-  Hooks.on("renderActorSheetV2", __addActorHeaderButton);
-  console.log("TSDC | Grimorio: botones registrados");
 });
-
-
-/* Exponer para macros */
 try { window.tsdcatb = { ...(window.tsdcatb ?? {}), GrimoireApp }; } catch {}

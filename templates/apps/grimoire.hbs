@@ -3,9 +3,7 @@
     <div class="g-title"><i class="fa-solid fa-book" style="margin-right:6px;"></i>Necronomicón — <b>{{actorName}}</b></div>
 
     <div class="g-plan" style="display:flex;align-items:center;gap:8px;margin-left:12px;">
-      <button type="button" data-action="tick-prev" title="Tick de planeación anterior">‹</button>
       <div>Plan: <b>{{planningTick}}</b></div>
-      <button type="button" data-action="tick-next" title="Tick de planeación siguiente">›</button>
     </div>
 
     <div class="g-filter" style="display:flex;align-items:center;gap:6px;margin-left:16px;">
@@ -14,90 +12,83 @@
     </div>
 
     <span style="flex:1;"></span>
+    <nav class="g-tabs" style="display:flex; gap:6px;">
+      <button type="button" data-action="switch-tab" data-tab="basic"     {{#if (eq activeTab "basic")}}class="active"{{/if}}>Básicas</button>
+      <button type="button" data-action="switch-tab" data-tab="maneuvers" {{#if (eq activeTab "maneuvers")}}class="active"{{/if}}>Maniobras</button>
+      <button type="button" data-action="switch-tab" data-tab="relics"    {{#if (eq activeTab "relics")}}class="active"{{/if}}>Reliquias</button>
+      <button type="button" data-action="switch-tab" data-tab="aptitudes" {{#if (eq activeTab "aptitudes")}}class="active"{{/if}}>Aptitudes</button>
+    </nav>
     <button type="button" data-action="close">Cerrar</button>
   </header>
+
   <div class="g-body">
+    <!-- Básicas -->
+    {{#if (eq activeTab "basic")}}
     <section class="g-section">
-      <h3 style="margin:6px 0 8px;">Básicas</h3>
-      <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+      <div class="g-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
         {{#each cardsBasic as |c|}}
-          <div class="g-card" data-card data-id="{{c.id}}">
-            {{{c.html}}}
-            <div class="g-ctrl" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-              <label>Tick</label>
-              <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
-              <button type="button" data-action="plan-basic" {{#unless ../canPlan}}disabled{{/unless}}>Planear</button>
-            </div>
-          </div>
-        {{/each}}
-      </div>
-    </section>
-
-    <section class="g-section" style="margin-top:14px;">
-      <h3 style="margin:6px 0 8px;">Catálogo</h3>
-      <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-        {{#each cardsCatalog as |c|}}
-          <div class="g-card" data-card data-id="{{c.id}}">
-            {{{c.html}}}
-            <div class="g-ctrl" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px;">
-              {{#if (eq c.id "especializacion")}}
-                <label>Clave</label><input name="specKey" style="width:160px;" placeholder="p.ej. acrobacias">
-                <label>Cat.</label>
-                <select name="specCat" style="width:120px;">
-                  <option value="physical">Física</option>
-                  <option value="mental">Mental</option>
-                  <option value="knowledge">Saberes</option>
-                  <option value="social">Social</option>
-                </select>
-                <label>CT</label>
-                <select name="specCT" style="width:80px;">
-                  <option>1</option><option selected>2</option><option>3</option>
-                </select>
-              {{/if}}
-
-              <label>Tick</label>
-              <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
-
-              <button type="button" data-action="plan-catalog" {{#unless ../canPlan}}disabled{{/unless}}>
-                {{#if (eq c.id "especializacion")}}Planear Especialización{{else}}Planear{{/if}}
-              </button>
-            </div>
-          </div>
-        {{/each}}
-      </div>
-    </section>
-
-    {{#if cardsManeuvers.length}}
-    <section class="g-section" style="margin-top:14px;">
-      <h3 style="margin:6px 0 8px;">Mis Maniobras</h3>
-      <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-        {{#each cardsManeuvers as |c|}}
-          <div class="g-card" data-card data-id="{{c.id}}">
-            {{{c.html}}}
-            <div class="g-ctrl" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-              <label>Tick</label>
-              <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
-              <button type="button" data-action="plan-maneuver" {{#unless ../canPlan}}disabled{{/unless}}>Planear</button>
-            </div>
-          </div>
+          <details class="g-item" data-card data-id="{{c.id}}">
+            <summary style="padding:8px;border-radius:8px;background:var(--color-underline-header);cursor:pointer;">
+              <b>{{c.title}}</b>
+              <span style="opacity:.7;margin-left:8px;">{{c.subtitle}}</span>
+              <a style="float:right; font-size:12px; opacity:.8;" data-action="open-plan">Planear en ATB</a>
+            </summary>
+            <div class="g-card" style="margin-top:8px;">{{{c.html}}}</div>
+          </details>
         {{/each}}
       </div>
     </section>
     {{/if}}
 
-    {{#if cardsAptitudes.length}}
-    <section class="g-section" style="margin-top:14px;">
-      <h3 style="margin:6px 0 8px;">Mis Aptitudes</h3>
-      <div class="g-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+    <!-- Maniobras -->
+    {{#if (eq activeTab "maneuvers")}}
+    <section class="g-section">
+      <div class="g-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+        {{#each cardsManeuvers as |c|}}
+          <details class="g-item" data-card data-id="{{c.id}}">
+            <summary style="padding:8px;border-radius:8px;background:var(--color-underline-header);cursor:pointer;">
+              <b>{{c.title}}</b>
+              <span style="opacity:.7;margin-left:8px;">{{c.subtitle}}</span>
+              <a style="float:right; font-size:12px; opacity:.8;" data-action="open-plan">Planear en ATB</a>
+            </summary>
+            <div class="g-card" style="margin-top:8px;">{{{c.html}}}</div>
+          </details>
+        {{/each}}
+      </div>
+    </section>
+    {{/if}}
+
+    <!-- Reliquias -->
+    {{#if (eq activeTab "relics")}}
+    <section class="g-section">
+      <div class="g-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+        {{#each cardsRelics as |c|}}
+          <details class="g-item" data-card data-id="{{c.id}}">
+            <summary style="padding:8px;border-radius:8px;background:var(--color-underline-header);cursor:pointer;">
+              <b>{{c.title}}</b>
+              <span style="opacity:.7;margin-left:8px;">{{c.subtitle}}</span>
+              <a style="float:right; font-size:12px; opacity:.8;" data-action="open-plan">Planear en ATB</a>
+            </summary>
+            <div class="g-card" style="margin-top:8px;">{{{c.html}}}</div>
+          </details>
+        {{/each}}
+      </div>
+    </section>
+    {{/if}}
+
+    <!-- Aptitudes -->
+    {{#if (eq activeTab "aptitudes")}}
+    <section class="g-section">
+      <div class="g-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
         {{#each cardsAptitudes as |c|}}
-          <div class="g-card" data-card data-id="{{c.id}}">
-            {{{c.html}}}
-            <div class="g-ctrl" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-              <label>Tick</label>
-              <input type="number" name="targetTick" placeholder="(plan)" style="width:90px;">
-              <button type="button" data-action="plan-aptitude" {{#unless ../canPlan}}disabled{{/unless}}>Planear</button>
-            </div>
-          </div>
+          <details class="g-item" data-card data-id="{{c.id}}">
+            <summary style="padding:8px;border-radius:8px;background:var(--color-underline-header);cursor:pointer;">
+              <b>{{c.title}}</b>
+              <span style="opacity:.7;margin-left:8px;">{{c.subtitle}}</span>
+              <a style="float:right; font-size:12px; opacity:.8;" data-action="open-plan">Planear en ATB</a>
+            </summary>
+            <div class="g-card" style="margin-top:8px;">{{{c.html}}}</div>
+          </details>
         {{/each}}
       </div>
     </section>

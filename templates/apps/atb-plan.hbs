@@ -1,0 +1,78 @@
+<div class="tsdc-atb-plan">
+  <header class="t-row" style="align-items:center; gap:10px; margin-bottom:10px;">
+    <div class="t-title">Planear acciones (selección actual)</div>
+    <span style="flex:1;"></span>
+    <button type="button" data-action="close">Cerrar</button>
+  </header>
+
+  <div class="t-col" style="gap:12px;">
+    <div class="t-row" style="gap:10px; align-items:center;">
+      <label>Tick destino</label>
+      <input name="targetTick" type="number" value="{{planningTick}}" style="width:120px;">
+    </div>
+
+    <section class="t-card">
+      <h3>Acción básica</h3>
+      <div class="t-row" style="gap:10px; align-items:center;">
+        <select name="basicKey" style="min-width:260px;">
+          <option value="">— Elegir —</option>
+          {{#each basicOptions as |o|}}
+            <option value="{{o.id}}">{{o.name}}</option>
+          {{/each}}
+        </select>
+        <span style="flex:1;"></span>
+        <button type="button" data-action="plan-basic">Encolar acción básica</button>
+      </div>
+    </section>
+
+    <section class="t-card">
+      <h3>Maniobra</h3>
+      <div class="t-row" style="gap:10px; align-items:center;">
+        <select name="maneuverKey" style="min-width:260px;">
+          <option value="">— Elegir —</option>
+          {{#each maneuverOptions as |o|}}
+            <option value="{{o.key}}">{{o.name}}</option>
+          {{/each}}
+        </select>
+        <span style="flex:1;"></span>
+        <button type="button" data-action="plan-maneuver">Encolar maniobra</button>
+      </div>
+    </section>
+
+    <section class="t-card">
+      <h3>Poder de reliquia</h3>
+      <div class="t-row" style="gap:10px; align-items:center;">
+        <select name="relicKey" style="min-width:260px;">
+          <option value="">— Elegir —</option>
+          {{#each relicOptions as |o|}}
+            <option value="{{o.key}}">{{o.name}}</option>
+          {{/each}}
+        </select>
+        <span style="flex:1;"></span>
+        <button type="button" data-action="plan-relic">Encolar poder</button>
+      </div>
+    </section>
+
+    <section class="t-card">
+      <h3>Especialización</h3>
+      <div class="t-row" style="gap:10px; flex-wrap:wrap; align-items:center;">
+        <label>Clave <input name="specKey" placeholder="p.ej. acrobacias" style="width:200px;"></label>
+        <label>Cat.
+          <select name="specCat" style="width:140px;">
+            <option value="physical">Física</option>
+            <option value="mental">Mental</option>
+            <option value="knowledge">Saberes</option>
+            <option value="social">Social</option>
+          </select>
+        </label>
+        <label>CT
+          <select name="specCT" style="width:90px;">
+            <option>1</option><option selected>2</option><option>3</option>
+          </select>
+        </label>
+        <span style="flex:1;"></span>
+        <button type="button" data-action="plan-spec">Encolar especialización</button>
+      </div>
+    </section>
+  </div>
+</div>

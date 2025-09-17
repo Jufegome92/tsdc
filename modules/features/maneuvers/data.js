@@ -1,31 +1,30 @@
-// modules/features/maneuvers/data.js
 // Catálogo de Maniobras (resumen mínimo; amplía libremente)
-
 export const MANEUVERS = {
-  // Clave canónica sin acentos y en minúsculas (igual que armas/especializaciones).
-  // === EJEMPLOS ===
-
+  // === Tus ejemplos existentes ===
   barrido: {
     label: "Barrido",
-    type: "attack",                  // "attack" | "buff" (mejora/soporte)
-    category: "active",              // "active" | "free" | "reaction"
-    clazz: "maneuver",               // "maneuver" | "attack" | "item" | etc.
-    range: 1,                        // alcance en casillas
-    area: 0,                         // tamaño del área (0 = objetivo único)
-    element: null,                   // "water"|"fire"|"earth"|"air"|"light"|"dark"|combos|null
-    save: null,                      // p.ej. "evasion"|"composure"|null
-    requires: null,                  // texto de requisitos (arma, estado, etc.)
-    descriptor: "corte",             // taxonomía propia (para combos)
-    duration: null,                  // texto/turnos
-    attackAttr: "agility",           // atributo a usar en la T.A si aplica
-    impactAttr: "agility",           // atributo a usar en la T.I si aplica
+    type: "attack",
+    category: "active",
+    clazz: "maneuver",
+    range: 1,          // en casillas
+    area: 0,           // objetivo único
+    // NUEVO: puedes ignorar areaShape cuando area=0
+    areaShape: null,   // "cone" | "line" | "circle" | null
+    areaWidth: null,   // ancho (solo para "line"), en casillas
+    element: null,
+    save: null,
+    requires: null,
+    descriptor: "corte",
+    duration: null,
+    attackAttr: "agility",
+    impactAttr: "agility",
     effect: "Golpe amplio a 1 casilla, puede derribar en éxito alto.",
     levels: [
       "N1: se ejecuta como ataque normal (sin descriptor en combos).",
       "N2: efecto normal pero sin usar descriptor en combos.",
       "N3: uso completo, permite encadenar descriptor."
     ],
-    compLevels: 3 ,                   // maniobras solo tienen 3 niveles de competencia
+    compLevels: 3,
     ct: { init: 1, exec: 1, rec: 1 },
   },
 
@@ -36,6 +35,8 @@ export const MANEUVERS = {
     clazz: "maneuver",
     range: 1,
     area: 0,
+    areaShape: null,
+    areaWidth: null,
     element: null,
     save: "composure",
     requires: null,
@@ -51,7 +52,76 @@ export const MANEUVERS = {
     ],
     compLevels: 3,
     ct: { init: 0, exec: 1, rec: 0 },
-  }
+  },
 
-  // Agrega aquí tus maniobras…
+  // === NUEVAS: rango/área de prueba ===
+
+  /** Cono frontal desde el actor (área = longitud del cono, en casillas) */
+  barrido_cono: {
+    label: "Barrido en Cono",
+    type: "attack",
+    category: "active",
+    clazz: "maneuver",
+    range: 1,              // casillas para “enganchar”
+    area: 3,               // longitud del cono en casillas
+    areaShape: "cone",
+    areaWidth: null,       // no aplica a cone
+    element: null,
+    save: null,
+    requires: null,
+    descriptor: "corte",
+    duration: null,
+    attackAttr: "agility",
+    impactAttr: "agility",
+    effect: "Ataque en cono corto frente al usuario.",
+    levels: ["N1", "N2", "N3"],
+    compLevels: 3,
+    ct: { init: 0, exec: 1, rec: 1 },
+  },
+
+  /** Línea proyectada desde el actor (área=longitud; areaWidth=ancho), ambos en casillas */
+  estocada_linea: {
+    label: "Estocada en Línea",
+    type: "attack",
+    category: "active",
+    clazz: "maneuver",
+    range: 2,              // debes estar a <=2 casillas para iniciar
+    area: 6,               // longitud de la línea
+    areaShape: "line",
+    areaWidth: 1,          // ancho en casillas
+    element: null,
+    save: null,
+    requires: null,
+    descriptor: "letal",
+    duration: null,
+    attackAttr: "agility",
+    impactAttr: "agility",
+    effect: "Empuje en línea que perfora objetivos alineados.",
+    levels: ["N1", "N2", "N3"],
+    compLevels: 3,
+    ct: { init: 0, exec: 1, rec: 1 },
+  },
+
+  /** Círculo centrado en el actor (área=radio en casillas) */
+  giro_circular: {
+    label: "Giro Circular",
+    type: "attack",
+    category: "active",
+    clazz: "maneuver",
+    range: 0,              // autocentrado
+    area: 2,               // radio en casillas
+    areaShape: "circle",
+    areaWidth: null,
+    element: null,
+    save: null,
+    requires: null,
+    descriptor: "fluctuante",
+    duration: null,
+    attackAttr: "agility",
+    impactAttr: "agility",
+    effect: "Corte circular que alcanza a los adyacentes ampliados.",
+    levels: ["N1", "N2", "N3"],
+    compLevels: 3,
+    ct: { init: 1, exec: 1, rec: 1 },
+  }
 };

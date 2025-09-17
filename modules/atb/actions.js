@@ -16,7 +16,7 @@ import { shouldPromptHere } from "./rx-dialog.js";
 import { performFeature } from "../features/runner.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 // import { APTITUDES } from "../features/aptitudes/data.js";
-// import { RELIC_POWERS } from "../features/relics/data.js";
+import { RELIC_POWERS } from "../features/relics/data.js";
 
 const MELEE_RANGE_M = 1.0;
 
@@ -24,6 +24,92 @@ const MELEE_RANGE_M = 1.0;
 function distanceM(a, b) {
   return cellsEveryOther(a, b) * 1;
 }
+
+function metersDistance121ToPoint(token, point) {
+  // Distancia token→punto (patrón 1–2–1–2…) en METROS
+  const cells = cellsEveryOtherToPoint(token, point);
+  return cells * 1;
+}
+
+function sceneUnitsPerCell() {
+  const d = canvas?.dimensions;
+  // Foundry: "distance" = unidades por celda (p.ej. 1 = 1m); "size" = px por celda
+  return Number(d?.distance ?? 1);
+}
+
+function cellsToUnits(cells) {
+  return Number(cells ?? 0) * sceneUnitsPerCell();
+}
+
+// Distancia 1-2-1-2… entre token y un punto (en casillas)
+function cellsEveryOtherToPoint(token, point) {
+  const gs = canvas?.scene?.grid?.size || 100;
+  const ax = token.center?.x ?? token.x, ay = token.center?.y ?? token.y;
+  const bx = point?.x ?? point?.center?.x ?? 0;
+  const by = point?.y ?? point?.center?.y ?? 0;
+  const dx = Math.abs(Math.round((bx - ax) / gs));
+  const dy = Math.abs(Math.round((by - ay) / gs));
+  const diag = Math.min(dx, dy);
+  const straight = Math.max(dx, dy) - diag;
+  return straight + diag + Math.floor(diag / 2);
+}
+
+// Crea un MeasuredTemplate acorde al feature.areaShape
+async function drawAreaTemplateForFeature({ feature, actorToken, targetOrPoint }) {
+  if (!feature || !actorToken) return null;
+  const shape = feature.areaShape || null;
+  const areaCells = Number(feature.area ?? 0);
+  if (!shape || areaCells <= 0) return null;
+
+  const units = cellsToUnits(areaCells);
+  const widthUnits = cellsToUnits(feature.areaWidth ?? 1);
+
+  // origen
+  const origin = (() => {
+    if (shape === "circle" && feature.range === 0) return actorToken.center;        // autocentrado
+    if (targetOrPoint?.kind === "cell") return targetOrPoint.point;                 // punto elegido
+    if (targetOrPoint?.kind === "token") return targetOrPoint.token.center;         // centro del token objetivo
+    return actorToken.center;
+  })();
+
+  /** @type {MeasuredTemplateSource} */
+  let data;
+  switch (shape) {
+    case "cone":
+      data = {
+        t: "cone",
+        x: origin.x, y: origin.y,
+        distance: units,      // en unidades de escena
+        angle: 60,
+        direction: actorToken.rotation ?? 0
+      };
+      break;
+    case "line":
+      data = {
+        t: "ray",
+        x: origin.x, y: origin.y,
+        distance: units,
+        width: Math.max(widthUnits, sceneUnitsPerCell()) // ancho mínimo = 1 celda
+      };
+      break;
+    case "circle":
+      data = {
+        t: "circle",
+        x: origin.x, y: origin.y,
+        distance: units
+      };
+      break;
+    default:
+      return null;
+  }
+
+  const [tmpl] = await canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [{
+    ...data,
+    flags: { tsdc: { spawnedBy: "tsdc", featureKey: feature?.label || "feature" } }
+  }]);
+  return tmpl ?? null;
+}
+
 
 function cellsEveryOther(a, b) {
   const gs = canvas?.scene?.grid?.size || 100;
@@ -41,14 +127,14 @@ function cellsEveryOther(a, b) {
 }
 
 function ownerUsersOfActor(actor) {
-  const OWNER = CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? "OWNER";
+  const OWNER = Number(CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? CONST.DOCUMENT_PERMISSION_LEVELS?.OWNER ?? 3);
   return game.users.filter(u =>
     actor?.testUserPermission?.(u, OWNER) || u.isGM
   );
 }
 
 function attackerChoiceHere(actorToken) {
-  const OWNER = CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? "OWNER";
+  const OWNER = Number(CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? CONST.DOCUMENT_PERMISSION_LEVELS?.OWNER ?? 3);
   return actorToken?.actor?.testUserPermission?.(game.user, OWNER) || game.user.isGM;
 }
 
@@ -332,6 +418,11 @@ export function makeManeuverAction(key) {
   return makeFeatureActionFromData(`maneuver:${key}`, { ...m, clazz:"maneuver" });
 }
 
+export function makeRelicPowerAction(key) {
+  const p = RELIC_POWERS[key]; if (!p) return null;
+  return makeFeatureActionFromData(`relic:${key}`, { ...p, clazz:"relic_power" });
+}
+
 async function askPreAttackReaction(targetToken, attackerToken) {
   // deja registro en estado de escena
   openReactionWindow({
@@ -341,7 +432,7 @@ async function askPreAttackReaction(targetToken, attackerToken) {
   });
 
   // solo decide el dueño del objetivo (o el GM)
-  const OWNER = CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? "OWNER";
+  const OWNER = Number(CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? CONST.DOCUMENT_PERMISSION_LEVELS?.OWNER ?? 3);
   const canDecide = targetToken?.actor?.testUserPermission?.(game.user, OWNER) || game.user.isGM;
   if (!canDecide) return false;
 
@@ -474,21 +565,88 @@ export function makeFeatureActionFromData(key, feature) {
     key: `feat:${key}`,
     label: feature?.label || key,
     init_ticks: init, exec_ticks: exec, rec_ticks: rec,
-    perform: async ({ actor, meta }) => performFeature({ actor, feature, meta })
+    perform: async ({ actor, meta }) => {
+      // 0) Ejecuta tu runner como antes
+      await performFeature({ actor, feature, meta });
+
+      try {
+        // 1) Si tiene área, permite seleccionar punto/objetivo y dibujar
+        if (Number(feature?.area ?? 0) > 0 && feature?.areaShape) {
+          const actorToken = actor?.getActiveTokens?.(true)?.[0]
+            ?? canvas.tokens.placeables.find(t=>t.actor?.id===actor.id);
+          if (!actorToken) return;
+
+          const pick = await pickTargetOrCellForFeature({ actorToken, feature });
+          if (!pick) return;
+
+          // 2) Rango (en casillas) antes de dibujar
+          if (!inRangeForFeature({ actorToken, feature, pick })) {
+            ui.notifications.info("Fuera de rango.");
+            return;
+          }
+          await drawAreaTemplateForFeature({ feature, actorToken, targetOrPoint: pick });
+        }
+      } catch (e) {
+        console.warn("TSDC: draw template error", e);
+      }
+    }
   };
 }
 
-// selector genérico: token o celda (cuando area>0)
+
+// selector genérico para "abilities" (no features)
 async function pickTargetOrCell({ actorToken, ability }) {
-  if ((ability.area ?? 0) > 0) {
-    // Centro de área: pedir una celda rápida (sin colocar template todavía)
-    const p = await canvas.app?.mouse?.interaction?.waitForTarget?.()  // si no existe en tu build, usa DialogV2 para pedir x,y
-              ?? { x: actorToken.center.x, y: actorToken.center.y };
-    return { kind: "cell", point: p };
+  const area = Number(ability?.area ?? 0);
+  if (area > 0) {
+    // AoE: si range=0, autocentro; si no, usa el target del usuario como punto
+    if ((ability.range ?? 0) === 0) {
+      return { kind: "cell", point: actorToken.center };
+    }
+    const tgt = Array.from(game.user.targets ?? [])[0] ?? null;
+    if (tgt) return { kind: "cell", point: tgt.center };
+    // fallback: frente/centro del actor
+    return { kind: "cell", point: actorToken.center };
   } else {
-    // reutiliza tu selector de objetivo
+    // objetivo único
     const t = await pickAttackTarget({ actorToken });
     return t ? { kind: "token", token: t } : null;
+  }
+}
+
+// selector genérico: token o celda (cuando area>0)
+async function pickTargetOrCellForFeature({ actorToken, feature }) {
+  const area = Number(feature?.area ?? 0);
+  if (area > 0 && feature?.areaShape) {
+    // Elegir celda si es explosión a distancia, o usar autocentro si range=0
+    if (feature.range === 0 && feature.areaShape === "circle") {
+      return { kind: "cell", point: actorToken.center };
+    }
+    // a dedo: si no tienes un picker custom, puedes usar el target del usuario como "punto"
+    const tgt = Array.from(game.user.targets)[0];
+    if (tgt) return { kind: "cell", point: tgt.center };
+    // fallback: origen en frente del actor
+    return { kind: "cell", point: actorToken.center };
+  } else {
+    // objetivo único
+    const t = await pickAttackTarget({ actorToken });
+    return t ? { kind: "token", token: t } : null;
+  }
+}
+
+function inRangeForFeature({ actorToken, feature, pick }) {
+  const rCells = Number(feature?.range ?? 0);
+  if (pick.kind === "token") {
+    // Reusa tu validador completo (visión + cobertura) con “arma a distancia = rango en unidades”
+    const rangeM = rCells * sceneUnitsPerCell();
+    // OJO: si no quieres validar visión aquí, quítalo y solo chequea distancia
+    return validateAttackRangeAndVision({
+      attackerToken: actorToken,
+      targetToken: pick.token,
+      weaponRangeM: rangeM
+    }).ok;
+  } else {
+    const cells = cellsEveryOtherToPoint(actorToken, pick.point);
+    return cells <= rCells;
   }
 }
 
@@ -507,7 +665,7 @@ export function makeAbilityAction(ability, { key, clazz }) {
       // Rango
       const rangeM = Number(ability.range ?? 1);
       const inRange = pick.kind==="cell"
-        ? (metersDistance121(actorToken, pick.point) <= rangeM)
+        ? (metersDistance121ToPoint(actorToken, pick.point) <= rangeM)
         : (await validateAttackRangeAndVision({ attackerToken: actorToken, targetToken: pick.token, weaponRangeM: rangeM })).ok;
       if (!inRange) return ui.notifications.info("Fuera de rango.");
 

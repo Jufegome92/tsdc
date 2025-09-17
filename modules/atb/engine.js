@@ -5,6 +5,7 @@ import { listSimpleActions, makeSpecializationAction } from "./actions.js";
 import { rotateModsOnSpawn, pruneOldCurrentTickMods } from "./mods.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { makeAbilityAction } from "./actions.js";
+import { RELIC_POWERS } from "../features/relics/data.js";
 
 const FLAG_SCOPE = "tsdc";
 const FLAG_KEY   = "atb";
@@ -77,6 +78,65 @@ export async function enqueueSpecForActor(actorId, { specKey, category, CT, targ
   if (!ctid) return ui.notifications?.warn("Ese actor no está en combate.");
   return enqueueSpecialization(ctid, { specKey, category, CT, targetTick });
 }
+export async function enqueueManeuver(combatantId, key, targetTick = null) {
+  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
+  const ct = c.combatants.get(combatantId);
+  if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+
+  const state = await readState();
+  const t = (targetTick == null) ? Number(state.planningTick || state.tick || 0) : Number(targetTick);
+  ensureActorState(state, combatantId).queue.push({
+    kind: "maneuver", key, targetTick: t, qorder: ++state.qOrderCounter
+  });
+  await writeState(state);
+}
+
+export async function enqueueRelicPower(combatantId, key, targetTick = null) {
+  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
+  const ct = c.combatants.get(combatantId);
+  if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+
+  const state = await readState();
+  const t = (targetTick == null) ? Number(state.planningTick || state.tick || 0) : Number(targetTick);
+  ensureActorState(state, combatantId).queue.push({
+    kind: "relic", key, targetTick: t, qorder: ++state.qOrderCounter
+  });
+  await writeState(state);
+}
+
+export async function enqueueManeuverForSelected(key, targetTick = null) {
+  const c = getCombat(); if (!c) return;
+  const sel = canvas.tokens?.controlled ?? [];
+  if (!sel.length) {
+    const a = game.user?.character ?? null;
+    if (a) {
+      const ct = c.combatants.find(x => x.actor?.id === a.id);
+      if (ct) return enqueueManeuver(ct.id, key, targetTick);
+    }
+    return ui.notifications?.warn("No hay token seleccionado ni personaje asignado.");
+  }
+  for (const tk of sel) {
+    const ct = c.combatants.find(x => x.tokenId === tk.id);
+    if (ct) await enqueueManeuver(ct.id, key, targetTick);
+  }
+}
+
+export async function enqueueRelicForSelected(key, targetTick = null) {
+  const c = getCombat(); if (!c) return;
+  const sel = canvas.tokens?.controlled ?? [];
+  if (!sel.length) {
+    const a = game.user?.character ?? null;
+    if (a) {
+      const ct = c.combatants.find(x => x.actor?.id === a.id);
+      if (ct) return enqueueRelicPower(ct.id, key, targetTick);
+    }
+    return ui.notifications?.warn("No hay token seleccionado ni personaje asignado.");
+  }
+  for (const tk of sel) {
+    const ct = c.combatants.find(x => x.tokenId === tk.id);
+    if (ct) await enqueueRelicPower(ct.id, key, targetTick);
+  }
+}
 
 
 /* ===== Resolver descriptor → def ===== */
@@ -90,6 +150,10 @@ function resolveQueued(desc) {
     const m = MANEUVERS?.[desc.key];
     return m ? makeAbilityAction(m, { key: desc.key, clazz: "maneuver" }) : null;
   }
+  if (desc.kind === "relic") {
+    const p = RELIC_POWERS?.[desc.key];
+    return p ? makeAbilityAction(p, { key: desc.key, clazz: "relic" }) : null;
+  }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
       specKey: desc.specKey,
@@ -99,7 +163,6 @@ function resolveQueued(desc) {
   }
   return null;
 }
-
 /* ===== Internals ===== */
 
 function spawnCard(state, combatantId, def, meta = null) {
@@ -351,5 +414,7 @@ export const ATB_API = {
   // encolado
   enqueueSimple, enqueueSpecialization,
   enqueueSimpleForSelected, enqueueSpecForSelected,
-  enqueueSimpleForActor, enqueueSpecForActor
+  enqueueSimpleForActor, enqueueSpecForActor,
+  enqueueManeuverForSelected, enqueueRelicForSelected,
+  enqueueManeuver, enqueueRelicPower
 };
