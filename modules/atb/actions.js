@@ -15,8 +15,9 @@ import { validateAttackRangeAndVision } from "../rolls/validators.js";
 import { shouldPromptHere } from "./rx-dialog.js";
 import { performFeature } from "../features/runner.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
-// import { APTITUDES } from "../features/aptitudes/data.js";
+import { APTITUDES } from "../features/aptitudes/data.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
+import { runDefenseFlow } from "../combat/defense-flow.js";
 
 const MELEE_RANGE_M = 1.0;
 
@@ -35,6 +36,16 @@ function sceneUnitsPerCell() {
   const d = canvas?.dimensions;
   // Foundry: "distance" = unidades por celda (p.ej. 1 = 1m); "size" = px por celda
   return Number(d?.distance ?? 1);
+}
+
+function getAbilityRank(actor, clazz, key) {
+  const tree = (clazz==="maneuver") ? "maneuvers"
+            : (clazz==="relic"||clazz==="relic_power") ? "relics"
+            : "aptitudes";
+  const node = actor?.system?.progression?.[tree]?.[key] ?? {};
+  const known = !!node.known;
+  const rank  = Number(node.rank || 0);
+  return known && rank===0 ? 1 : rank; // “conocida” sin rank ⇒ trátala como N1
 }
 
 function cellsToUnits(cells) {
@@ -140,35 +151,33 @@ function attackerChoiceHere(actorToken) {
 
 async function pickAttackTarget({ actorToken, storedId = null }) {
   if (!actorToken?.actor) return null;
-
-  // targets activos de los dueños del atacante (y GM)
   const owners = ownerUsersOfActor(actorToken.actor);
-  const ownerTargets = [...new Set(
-    owners.flatMap(u => Array.from(u.targets ?? []))
-  )].filter(t =>
-    t?.actor && !t.document.hidden && t.id !== actorToken.id
-  );
+  const ownerTargets = [...new Set(owners.flatMap(u => Array.from(u.targets ?? [])))]
+    .filter(t => t?.actor && !t.document.hidden && t.id !== actorToken.id);
 
-  if (ownerTargets.length === 1) return ownerTargets[0];
+  const askAlways = game.settings.get("tsdc","askTargetEveryExec");
+  const { DialogV2 } = foundry.applications.api;
 
-  if (ownerTargets.length > 1) {
-    // Si este cliente es quien decide, abrimos selector; si no, usamos el primero (ya lo eligió “alguien”)
-    if (!attackerChoiceHere(actorToken)) return ownerTargets[0];
-
+  // Si hay varios, ofrece selector
+  if (ownerTargets.length > 1 || (askAlways && attackerChoiceHere(actorToken) && (ownerTargets.length > 0 || storedId))) {
     const opts = ownerTargets.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
-    const { DialogV2 } = foundry.applications.api;
+    // fallback al storedId si no hay targets activos
+    const stored = storedId ? canvas.tokens.get(storedId) : null;
+    const extra = (!ownerTargets.length && stored) ? `<option value="${stored.id}">${stored.name}</option>` : "";
     const chosenId = await DialogV2.prompt({
-      window:{ title:"Elige objetivo del Ataque" },
-      content:`<form class="t-col" style="gap:8px;"><label>Objetivo <select name="t">${opts}</select></label></form>`,
-      ok:{ label:"Atacar", callback: (_ev, btn) => btn.form.elements.t.value }
+      window:{ title:"Elige objetivo" },
+      content:`<form><label>Objetivo <select name="t">${opts}${extra}</select></label></form>`,
+      ok:{ label:"Confirmar", callback: (_ev, btn) => btn.form.elements.t.value }
     });
     return canvas.tokens.get(chosenId) ?? null;
   }
 
-  // Sin targets activos → usa el guardado al planear (si lo hay)
+  // 1 objetivo activo → úsalo
+  if (ownerTargets.length === 1) return ownerTargets[0];
+
+  // sin targets → intenta el guardado al planear
   if (storedId) return canvas.tokens.get(storedId) ?? null;
 
-  // Nada
   return null;
 }
 
@@ -322,7 +331,15 @@ export const AttackAction = makeDef({
       return ui.notifications?.warn("Cobertura total: el objetivo es inalcanzable desde aquí.");
     }
 
-    await rollAttack(actor, { flavor: "ATB • Ataque", mode: "ask", context: ctx });
+    const atkRes = await rollAttack(actor, { flavor: "ATB • Ataque", mode: "ask", context: ctx, opposed: true });
+
+    await runDefenseFlow({
+      attackerActor: actor,
+      attackerToken: actorToken,
+      targetToken,
+      attackCtx: ctx,
+      attackResult: atkRes ?? null
+    });
   }
 });
 
@@ -421,6 +438,11 @@ export function makeManeuverAction(key) {
 export function makeRelicPowerAction(key) {
   const p = RELIC_POWERS[key]; if (!p) return null;
   return makeFeatureActionFromData(`relic:${key}`, { ...p, clazz:"relic_power" });
+}
+
+export function makeAptitudeAction(key) {
+  const p = RELIC_POWERS[key]; if (!p) return null;
+  return makeFeatureActionFromData(`aptitude:${key}`, { ...p, clazz:"aptitude" });
 }
 
 async function askPreAttackReaction(targetToken, attackerToken) {
@@ -657,21 +679,37 @@ export function makeAbilityAction(ability, { key, clazz }) {
     label: ability.label,
     init_ticks: I, exec_ticks: E, rec_ticks: R,
     async perform({ actor, meta }) {
-      const actorToken = actor?.getActiveTokens?.(true)?.[0] ?? canvas.tokens.placeables.find(t=>t.actor?.id===actor.id);
+      const actorToken = actor?.getActiveTokens?.(true)?.[0]
+        ?? canvas.tokens.placeables.find(t=>t.actor?.id===actor.id);
       if (!actorToken) return ui.notifications.warn("Sin token activo.");
+
+      const rank = getAbilityRank(actor, clazz, key);
+      const gating = {
+        mode: rank<=1 ? "N1" : (rank===2 ? "N2" : "N3"),
+        suppressEffect: rank <= 1,
+        suppressDescriptorInCombos: rank <= 2
+      };
+
       const pick = await pickTargetOrCell({ actorToken, ability });
       if (!pick) return ui.notifications.warn("Selecciona un objetivo o una celda.");
 
       // Rango
       const rangeM = Number(ability.range ?? 1);
+      const rCells = Number(ability.range ?? 0);
       const inRange = pick.kind==="cell"
-        ? (metersDistance121ToPoint(actorToken, pick.point) <= rangeM)
-        : (await validateAttackRangeAndVision({ attackerToken: actorToken, targetToken: pick.token, weaponRangeM: rangeM })).ok;
+        ? (cellsEveryOtherToPoint(actorToken, pick.point) <= rCells)
+        : (await validateAttackRangeAndVision({
+            attackerToken: actorToken,
+            targetToken: pick.token,
+            weaponRangeM: rCells * sceneUnitsPerCell()
+          })).ok;
       if (!inRange) return ui.notifications.info("Fuera de rango.");
+      
+      await performFeature({ actor, feature: ability, meta: { ...(meta||{}), gating, pick } });
 
       // Aquí solo dejamos un registro genérico.
-      const where = pick.kind==="cell" ? `celda (${Math.round(pick.point.x)},${Math.round(pick.point.y)})` : `a ${pick.token.name}`;
-      await ChatMessage.create({ content: `<b>${ability.label}</b> (${clazz}) → ${where} • Área=${ability.area??0}` });
+      const where = pick.kind==="cell" ? "celda seleccionada" : `a ${pick.token.name}`;
+      await ChatMessage.create({ content: `<b>${ability.label}</b> (${clazz}) [${gating.mode}] → ${where}` });
       // TODO: aplicar efecto/plantilla/daño según ability.effect / element / save
     }
   };

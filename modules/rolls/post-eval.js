@@ -63,6 +63,9 @@ function evaluateWithDC(flags, dc) {
 function addEvalBtn(message, htmlLike) {
   const f = message?.flags?.tsdc;
   if (!f || !game.user?.isGM) return;
+
+  if (f?.opposed === true || f?.noEval === true || f?.evalMode === "opposed") return;
+  
   const el = htmlLike?.[0] ?? htmlLike;
   if (!el) return;
 

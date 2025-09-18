@@ -2,6 +2,9 @@
 import { listSimpleActions, makeSpecializationAction } from "./actions.js";
 import { openPlanDialogForSelection } from "./ui.js";
 import { ATB_API } from "./engine.js";
+import { MANEUVERS } from "../features/maneuvers/data.js";
+import { RELIC_POWERS } from "../features/relics/data.js";
+import { APTITUDES } from "../features/aptitudes/data.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -39,8 +42,24 @@ function getState() {
 
 function resolveQueued(desc) {
   if (!desc) return null;
-  if (desc.kind === "simple") {
-    return listSimpleActions().find(d => d.key === desc.key) ?? null;
+  if (desc.kind === "simple") { 
+    const s = listSimpleActions().find(d => d.key === desc.key);
+    return s ? { key: s.key, label: s.label, init_ticks: s.init_ticks, exec_ticks: s.exec_ticks, rec_ticks: s.rec_ticks } : null;
+   }
+  if (desc.kind === "maneuver") {
+    const m = MANEUVERS?.[desc.key];
+    if (!m) return null;
+    return { key:`maneuver:${desc.key}`, label: m.label, init_ticks:m.ct?.init||0, exec_ticks:m.ct?.exec||1, rec_ticks:m.ct?.rec||0 };
+  }
+  if (desc.kind === "relic") {
+    const p = RELIC_POWERS?.[desc.key];
+    if (!p) return null;
+    return { key:`relic:${desc.key}`, label: p.label, init_ticks:p.ct?.init||0, exec_ticks:p.ct?.exec||1, rec_ticks:p.ct?.rec||0 };
+  }
+  if (desc.kind === "aptitude") {
+    const a = APTITUDES?.[desc.key];
+    if (!a) return null;
+    return { key:`aptitude:${desc.key}`, label: a.label, init_ticks:a.ct?.init||0, exec_ticks:a.ct?.exec||1, rec_ticks:a.ct?.rec||0 };
   }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
@@ -55,8 +74,20 @@ function resolveQueued(desc) {
 function labelFromKey(key) {
   const simple = listSimpleActions().find(d => d.key === key);
   if (simple) return simple.label ?? simple.key;
+
+  if (key?.startsWith?.("maneuver:")) {
+    const k = key.split(":")[1];
+    return MANEUVERS[k]?.label ?? `Maniobra ${k}`;
+  }
+  if (key?.startsWith?.("relic:")) {
+    const k = key.split(":")[1];
+    return RELIC_POWERS[k]?.label ?? `Reliquia ${k}`;
+  }
+  if (key?.startsWith?.("aptitude:")) {
+    const k = key.split(":")[1];
+    return APTITUDES[k]?.label ?? `Aptitud ${k}`;
+  }
   if (key?.startsWith?.("spec:")) {
-    // spec:key:CT
     const parts = key.split(":");
     return `Esp. ${parts[1] ?? "?"} (CT ${parts[2] ?? "?"})`;
   }

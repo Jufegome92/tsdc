@@ -1,6 +1,6 @@
 <div class="tsdc-atb-plan">
   <header class="t-row" style="align-items:center; gap:10px; margin-bottom:10px;">
-    <div class="t-title">Planear acciones (selección actual)</div>
+    <div class="t-title">Planear acciones — <b>{{actorName}}</b></div>
     <span style="flex:1;"></span>
     <button type="button" data-action="close">Cerrar</button>
   </header>
@@ -53,6 +53,20 @@
       </div>
     </section>
 
+    <section class="t-card">
+      <h3>Aptitud</h3>
+      <div class="t-row" style="gap:10px; align-items:center;">
+        <select name="aptitudeKey" style="min-width:260px;">
+          <option value="">— Elegir —</option>
+          {{#each aptitudesOptions as |o|}}
+            <option value="{{o.key}}">{{o.name}}</option>
+          {{/each}}
+        </select>
+        <span style="flex:1;"></span>
+        <button type="button" data-action="plan-aptitude">Encolar aptitud</button>
+      </div>
+    </section>
+    
     <section class="t-card">
       <h3>Especialización</h3>
       <div class="t-row" style="gap:10px; flex-wrap:wrap; align-items:center;">

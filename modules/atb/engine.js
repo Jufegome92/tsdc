@@ -6,6 +6,7 @@ import { rotateModsOnSpawn, pruneOldCurrentTickMods } from "./mods.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { makeAbilityAction } from "./actions.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
+import { APTITUDES } from "../features/aptitudes/data.js"
 
 const FLAG_SCOPE = "tsdc";
 const FLAG_KEY   = "atb";
@@ -104,6 +105,24 @@ export async function enqueueRelicPower(combatantId, key, targetTick = null) {
   await writeState(state);
 }
 
+export async function enqueueAptitude(combatantId, key, targetTick = null) {
+  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
+  const ct = c.combatants.get(combatantId);
+  if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+
+  const actor = ct?.actor;
+  const node = actor?.system?.progression?.aptitudes?.[key];
+  const hasIt = !!node?.known || Number(node?.rank||0) > 0;
+  if (!hasIt) return ui.notifications?.warn("No conoces esa Aptitud.");
+
+  const state = await readState();
+  const t = (targetTick == null) ? Number(state.planningTick || state.tick || 0) : Number(targetTick);
+  ensureActorState(state, combatantId).queue.push({
+    kind: "aptitude", key, targetTick: t, qorder: ++state.qOrderCounter
+  });
+  await writeState(state);
+}
+
 export async function enqueueManeuverForSelected(key, targetTick = null) {
   const c = getCombat(); if (!c) return;
   const sel = canvas.tokens?.controlled ?? [];
@@ -138,14 +157,30 @@ export async function enqueueRelicForSelected(key, targetTick = null) {
   }
 }
 
+export async function enqueueAptitudeForSelected(key, targetTick = null) {
+  const c = getCombat(); if (!c) return;
+  const sel = canvas.tokens?.controlled ?? [];
+  if (!sel.length) {
+    const a = game.user?.character ?? null;
+    if (a) {
+      const ct = c.combatants.find(x => x.actor?.id === a.id);
+      if (ct) return enqueueAptitude(ct.id, key, targetTick);
+    }
+    return ui.notifications?.warn("No hay token seleccionado ni personaje asignado.");
+  }
+  for (const tk of sel) {
+    const ct = c.combatants.find(x => x.tokenId === tk.id);
+    if (ct) await enqueueAptitude(ct.id, key, targetTick);
+  }
+}
 
 /* ===== Resolver descriptor → def ===== */
 
 function resolveQueued(desc) {
   if (!desc) return null;
-  if (desc.kind === "simple") {
-    return listSimpleActions().find(d => d.key === desc.key) ?? null;
-  }
+  if (desc.kind === "simple") { 
+     return listSimpleActions().find(d => d.key === desc.key) ?? null;
+   }
   if (desc.kind === "maneuver") {
     const m = MANEUVERS?.[desc.key];
     return m ? makeAbilityAction(m, { key: desc.key, clazz: "maneuver" }) : null;
@@ -153,6 +188,10 @@ function resolveQueued(desc) {
   if (desc.kind === "relic") {
     const p = RELIC_POWERS?.[desc.key];
     return p ? makeAbilityAction(p, { key: desc.key, clazz: "relic" }) : null;
+  }
+  if (desc.kind === "aptitude") {
+    const a = APTITUDES?.[desc.key];
+    return a ? makeAbilityAction(a, { key: desc.key, clazz: "aptitude" }) : null;
   }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
@@ -262,7 +301,21 @@ async function stepOnceInternal() {
 
     // Buscar def real
     let defReal = listSimpleActions().find(d => d.key === ensureActorState(state, ci.actor).current?.actionKey) ?? null;
-    if (!defReal && ensureActorState(state, ci.actor).current?.actionKey?.startsWith?.("spec:")) {
+    const aKey = ensureActorState(state, ci.actor).current?.actionKey ?? "";
+    if (!defReal && aKey.startsWith("maneuver:")) {
+      const k = aKey.split(":")[1];
+      const m = MANEUVERS[k]; if (m) defReal = makeAbilityAction(m, { key: k, clazz: "maneuver" });
+    }
+    if (!defReal && aKey.startsWith("relic:")) {
+      const k = aKey.split(":")[1];
+      const p = RELIC_POWERS[k]; if (p) defReal = makeAbilityAction(p, { key: k, clazz: "relic" });
+    }
+    if (!defReal && aKey.startsWith("aptitude:")) {
+      const k = aKey.split(":")[1];
+      const a = APTITUDES[k]; if (a) defReal = makeAbilityAction(a, { key: k, clazz: "aptitude" });
+    }
+
+    if (!defReal && aKey.startsWith("spec:")) {
       const parts = ensureActorState(state, ci.actor).current.actionKey.split(":"); // spec:key:CT
       defReal = makeSpecializationAction({ specKey: parts[1], category: "physical", CT: Number(parts[2]||2) });
     }
@@ -376,20 +429,20 @@ export async function enqueueSpecialization(combatantId, { specKey, category, CT
   await writeState(state);
 }
 
-export async function enqueueSimpleForSelected(key, targetTick = null) {
+export async function enqueueSimpleForSelected(key, targetTick = null, meta = {}) {
   const c = getCombat(); if (!c) return;
   const sel = canvas.tokens?.controlled ?? [];
   if (!sel.length) {
-    // fallback a user.character
     const a = game.user?.character ?? null;
-    if (a) return enqueueSimpleForActor(a.id, key, targetTick);
+    if (a) return enqueueSimpleForActor(a.id, key, targetTick, meta); // 👈 meta
     return ui.notifications?.warn("No hay token seleccionado ni personaje asignado.");
   }
   for (const tk of sel) {
     const ct = c.combatants.find(x => x.tokenId === tk.id);
-    if (ct) await enqueueSimple(ct.id, key, targetTick);
+    if (ct) await enqueueSimple(ct.id, key, targetTick, meta); // 👈 meta
   }
 }
+
 
 
 export async function enqueueSpecForSelected({ specKey, category, CT, targetTick = null }) {
@@ -415,6 +468,6 @@ export const ATB_API = {
   enqueueSimple, enqueueSpecialization,
   enqueueSimpleForSelected, enqueueSpecForSelected,
   enqueueSimpleForActor, enqueueSpecForActor,
-  enqueueManeuverForSelected, enqueueRelicForSelected,
-  enqueueManeuver, enqueueRelicPower
+  enqueueManeuverForSelected, enqueueRelicForSelected, enqueueAptitudeForSelected,
+  enqueueManeuver, enqueueRelicPower, enqueueAptitude
 };

@@ -47,8 +47,10 @@
         "weapons": {
         },
         "maneuvers": {
-          "trip":  { "level": 0, "rank": 0, "progress": 0 },     
-          "feint": { "level": 0, "rank": 0, "progress": 0 }
+        },
+        "aptitudes": {
+        },
+        "relics": {
         },
         "defense": {
           "evasion": { "level": 0, "rank": 0, "progress": 0 }

@@ -85,7 +85,11 @@ Hooks.once("init", () => {
     name:"Oscuridad"
   });
   game.settings.register("tsdc", "env.lightOverride", { scope:"world", config:false, type:Object, default:null });
-
+  game.settings.register("tsdc","askTargetEveryExec",{
+    name: "Pedir objetivo en cada ejecución",
+    hint: "Al comenzar EXEC de ataques/abilities, abrir selector/confirmación de objetivo.",
+    scope: "world", config: true, type: Boolean, default: true
+  });
 
   // Helpers de Handlebars
   const H = globalThis.Handlebars ?? window.Handlebars;

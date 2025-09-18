@@ -6,7 +6,7 @@ import { detectImpactCrit, computeBreakPower } from "../features/combat/critical
 import { makeRollTotal } from "./engine.js";
 import { emitModInspector } from "./inspector.js";
 import { triggerFumbleReactions } from "../atb/reactions.js";
-
+const TSDC_ATB = { opposedContext: false };
 // 🔗 Context tags
 import { buildContextTags } from "./context-tags.js";
 
@@ -92,7 +92,8 @@ export async function rollAttack(actor, {
   penalty = 0,
   mode = "ask",
   flavor,
-  context = {}
+  context = {},
+  opposed = false
 } = {}) {
   if (!isManeuver && (!key || !key.trim())) {
     const k = getEquippedWeaponKey(actor, "main");
@@ -103,6 +104,7 @@ export async function rollAttack(actor, {
   const path  = isManeuver ? `system.progression.maneuvers.${key}.rank` : `system.progression.weapons.${key}.rank`;
   const rank  = Number(foundry.utils.getProperty(actor, path) || 0);
 
+  if (opposed) _tsdcSetOpposedContext(true);
   let evo;
   try {
     evo = await resolveEvolution({
@@ -137,7 +139,7 @@ export async function rollAttack(actor, {
   }
 
   // Tarjeta GM para evaluar
-  await gmEvalCard({
+  if (!opposed) await gmEvalCard({
     actor, kind: "attack",
     payload: {
       actorId: actor.id ?? actor._id ?? null,
@@ -241,7 +243,8 @@ export async function rollDefense(actor, {
   penalty = 0,
   mode = "ask",
   flavor,
-  context = {}
+  context = {},
+  opposed = false
 } = {}) {
   const { formula } = buildDefenseFormula(actor, { armorBonus, bonus, penalty });
   const rank = Number(foundry.utils.getProperty(actor, `system.progression.defense.evasion.rank`) || 0);
@@ -257,6 +260,7 @@ export async function rollDefense(actor, {
   else if (r <= 95) bodyPart = "legs";
   else bodyPart = "chest";
 
+  if (opposed) _tsdcSetOpposedContext(true);
   const evo = await resolveEvolution({
     type: "defense", mode, formula, rank,
     flavor: flavor ?? `Defensa`, actor, meta: { armorType }
@@ -274,7 +278,7 @@ export async function rollDefense(actor, {
 
   await emitModInspector(actor, { phase: "defense", tag: "TD" }, patched.breakdown);
 
-  await gmEvalCard({
+  if (!opposed) await gmEvalCard({
     actor, kind: "defense",
     payload: {
       actorId: actor.id ?? actor._id ?? null,
@@ -332,3 +336,20 @@ export async function rollResistance(actor, {
 
   return { total: patched.total, tags, evo };
 }
+
+export function _tsdcSetOpposedContext(v=true) { TSDC_ATB.opposedContext = !!v; }
+// Pre-hook: si viene una tirada con flags.tsdc y estamos en contexto ATB, márcala como opuesta
+Hooks.on("preCreateChatMessage", (doc, data) => {
+  try {
+    const f = data?.flags?.tsdc;
+    if (!f) return;
+    const isAtkOrDef = (f.type === "attack" || f.type === "defense");
+    if (isAtkOrDef && TSDC_ATB.opposedContext) {
+      data.flags.tsdc.opposed = true;
+      data.flags.tsdc.evalMode = "opposed";
+    }
+  } catch (_) {}
+});
+
+// Después de crear el mensaje, apaga el contexto (evita marcar mensajes no relacionados)
+Hooks.on("createChatMessage", () => { TSDC_ATB.opposedContext = false; });

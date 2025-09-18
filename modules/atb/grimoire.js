@@ -3,6 +3,7 @@ import { ATB_API } from "./engine.js";
 import { ACTIONS } from "../features/actions/catalog.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
+import { APTITUDES } from "../features/aptitudes/data.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -40,24 +41,58 @@ function collectLearnedManeuvers(actor) {
   const out = [];
   const tree = actor?.system?.progression?.maneuvers || {};
   for (const [key, node] of Object.entries(tree)) {
-    if (Number(node?.rank||0) <= 0) continue;
+    const rank = Number(node?.rank || 0);
+    if (rank <= 0) continue;
     const m = MANEUVERS[key]; if (!m) continue;
     out.push({
       id: key,
       title: m.label ?? key,
-      subtitle: m.ct ? `CT ${m.ct.init||0}/${m.ct.exec||1}/${m.ct.rec||0}` : "",
+      subtitle: `N${rank} · CT ${m.ct?.init||0}/${m.ct?.exec||1}/${m.ct?.rec||0}`,
+      level: rank,
       def: m
     });
   }
   return out;
 }
-function collectRelics(/*actor*/) {
-  return Object.entries(RELIC_POWERS).map(([key, p]) => ({
-    id: key, title: p.label ?? key,
-    subtitle: p.ct ? `CT ${p.ct.init||0}/${p.ct.exec||1}/${p.ct.rec||0}` : "",
-    def: p
-  }));
+
+function collectLearnedAptitudes(actor) {
+  const tree = actor?.system?.progression?.aptitudes || {};
+  const out = [];
+  for (const [key, node] of Object.entries(tree)) {
+    const rank = Number(node?.rank || 0);
+    const known = !!node?.known || rank > 0;
+    if (!known) continue;
+    const a = APTITUDES[key]; if (!a) continue;
+    out.push({
+      id: key,
+      title: a.label ?? key,
+      subtitle: `N${rank} · CT ${a.ct?.init||0}/${a.ct?.exec||1}/${a.ct?.rec||0}`,
+      level: rank,
+      def: a
+    });
+  }
+  return out;
 }
+
+
+function collectLearnedRelics(actor) {
+  const out = [];
+  const tree = actor?.system?.progression?.relics || {};
+  for (const [key, node] of Object.entries(tree)) {
+    const rank = Number(node?.rank || 0);
+    if (rank <= 0) continue;
+    const p = RELIC_POWERS[key]; if (!p) continue;
+    out.push({
+      id: key,
+      title: p.label ?? key,
+      subtitle: `N${rank} · CT ${p.ct?.init||0}/${p.ct?.exec||1}/${p.ct?.rec||0}`,
+      level: rank,
+      def: p
+    });
+  }
+  return out;
+}
+
 function collectAptitudes(actor) {
   const apt = actor?.system?.progression?.aptitudes || {};
   const out = [];
@@ -123,8 +158,8 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     // Maniobras / Reliquias / Aptitudes
     const ms = collectLearnedManeuvers(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
-    const rs = collectRelics(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
-    const as = collectAptitudes(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
+    const rs = collectLearnedRelics(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
+    const as = collectLearnedAptitudes(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
 
     const cardsManeuvers = await Promise.all(ms.map(async x => ({ ...x, html: await toHtml(x.def) })));
     const cardsRelics    = await Promise.all(rs.map(async x => ({ ...x, html: await toHtml(x.def) })));

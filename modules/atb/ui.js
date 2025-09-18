@@ -5,6 +5,7 @@ import { ATB_API } from "./engine.js";
 import { ACTIONS } from "../features/actions/catalog.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
+import { APTITUDES } from "../features/aptitudes/data.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -14,13 +15,24 @@ function listBasicOptions() {
   return ids.map(id => ({ id, name: ACTIONS[id]?.name ?? (id==="hide" ? "Ocultación" : id) }));
 }
 function listManeuverOptions(actor) {
-  const learned = actor?.system?.progression?.maneuvers ?? {};
-  const keys = Object.entries(learned).filter(([,n]) => Number(n?.rank||0) > 0).map(([k]) => k);
-  const source = keys.length ? keys : Object.keys(MANEUVERS);
-  return source.map(k => ({ key:k, name: MANEUVERS[k]?.label ?? k }));
+  const tree = actor?.system?.progression?.maneuvers ?? {};
+  return Object.entries(tree)
+    .filter(([,n]) => Number(n?.rank || 0) > 0)
+    .map(([key, n]) => ({ key, name: `${MANEUVERS[key]?.label ?? key} (N${n.rank})` }));
 }
-function listRelicOptions() {
-  return Object.entries(RELIC_POWERS).map(([k,p]) => ({ key:k, name:p?.label ?? k }));
+
+function listRelicOptions(actor) {
+  const tree = actor?.system?.progression?.relics ?? {};
+  return Object.entries(tree)
+    .filter(([,n]) => Number(n?.rank || 0) > 0)
+    .map(([key, n]) => ({ key, name: `${RELIC_POWERS[key]?.label ?? key} (N${n.rank})` }));
+}
+
+function listAptitudesOptions(actor) {
+  const tree = actor?.system?.progression?.aptitudes ?? {};
+  return Object.entries(tree)
+    .filter(([,n]) => !!n?.known || Number(n?.rank || 0) > 0)
+    .map(([key, n]) => ({ key, name: `${APTITUDES[key]?.label ?? key} ${n?.rank?`(N${n.rank})`:""}` }));
 }
 
 /* ========= Diálogo Planer ========= */
@@ -34,7 +46,8 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
       "plan-basic": AtbPlanDialog.onPlanBasic,
       "plan-maneuver": AtbPlanDialog.onPlanManeuver,
       "plan-relic": AtbPlanDialog.onPlanRelic,
-      "plan-spec": AtbPlanDialog.onPlanSpec
+      "plan-spec": AtbPlanDialog.onPlanSpec,
+      "plan-aptitude": AtbPlanDialog.onPlanAptitude,
     }
   };
   static PARTS = { body: { template: "systems/tsdc/templates/apps/atb-plan.hbs" } };
@@ -50,10 +63,17 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     const sel = app.element.querySelector('select[name="basicKey"]')?.value || "";
     if (!sel) return ui.notifications.warn("Elige una acción básica.");
     const tick = app._readTick();
+
     const map = { mover:"move", ataque:"attack", interactuar:"interact", soltar:"drop", hide:"hide" };
     const simple = map[sel];
     if (!simple) return ui.notifications.warn("Acción básica desconocida.");
-    await ATB_API.enqueueSimpleForSelected(simple, tick);
+
+    // 👇 nuevo: si es ataque y hay target local, guardamos su id
+    const tgt = Array.from(game.user?.targets ?? [])[0] ?? null;
+    const meta = {};
+    if (simple === "attack" && tgt) meta.targetTokenId = tgt.id;
+
+    await ATB_API.enqueueSimpleForSelected(simple, tick, meta);  // 👈 ahora pasa meta
     ui.notifications.info(`Plan: ${sel} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
   static async onPlanManeuver() {
@@ -72,6 +92,15 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     await ATB_API.enqueueRelicForSelected?.(key, tick);
     ui.notifications.info(`Plan: Reliquia ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
+  static async onPlanAptitude() {
+    const app = this;
+    const key = app.element.querySelector('select[name="aptitudeKey"]')?.value || "";
+    if (!key) return ui.notifications.warn("Elige una Aptitud.");
+    const tick = app._readTick();
+    await ATB_API.enqueueAptitudeForSelected?.(key, tick);
+    ui.notifications.info(`Plan: Aptitud ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
+  }
+
   static async onPlanSpec() {
     const app = this;
     const specKey = app.element.querySelector('input[name="specKey"]')?.value?.trim() || "";
@@ -88,9 +117,11 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     const a = canvas.tokens?.controlled?.[0]?.actor ?? game.user?.character ?? null;
     return {
       planningTick,
+      actorName: a?.name ?? "—",
       basicOptions: listBasicOptions(),
       maneuverOptions: listManeuverOptions(a),
-      relicOptions: listRelicOptions()
+      relicOptions: listRelicOptions(a),
+      aptitudesOptions: listAptitudesOptions(a)
     };
   }
   static open() { if (!this._instance) this._instance = new this(); this._instance.render(true); return this._instance; }
