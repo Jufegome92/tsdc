@@ -74,6 +74,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     if (simple === "attack" && tgt) meta.targetTokenId = tgt.id;
 
     await ATB_API.enqueueSimpleForSelected(simple, tick, meta);  // 👈 ahora pasa meta
+    window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
     ui.notifications.info(`Plan: ${sel} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
   static async onPlanManeuver() {
@@ -82,6 +83,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!key) return ui.notifications.warn("Elige una maniobra.");
     const tick = app._readTick();
     await ATB_API.enqueueManeuverForSelected?.(key, tick);
+    window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
     ui.notifications.info(`Plan: Maniobra ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
   static async onPlanRelic() {
@@ -90,6 +92,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!key) return ui.notifications.warn("Elige un poder de reliquia.");
     const tick = app._readTick();
     await ATB_API.enqueueRelicForSelected?.(key, tick);
+    window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
     ui.notifications.info(`Plan: Reliquia ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
   static async onPlanAptitude() {
@@ -98,6 +101,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!key) return ui.notifications.warn("Elige una Aptitud.");
     const tick = app._readTick();
     await ATB_API.enqueueAptitudeForSelected?.(key, tick);
+    window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
     ui.notifications.info(`Plan: Aptitud ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
 
@@ -109,6 +113,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     const CT = Number(app.element.querySelector('select[name="specCT"]')?.value || 2);
     const tick = app._readTick();
     await ATB_API.enqueueSpecForSelected({ specKey, category, CT, targetTick: tick });
+    window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
     ui.notifications.info(`Plan: Esp. ${specKey} (CT ${CT}) ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
 

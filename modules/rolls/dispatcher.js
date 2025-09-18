@@ -116,7 +116,16 @@ export async function rollAttack(actor, {
     console.debug("rollAttack cancelado o cerrado:", err);
     return null;
   }
-
+  if (evo) {
+    evo.meta = evo.meta ?? { key, isManeuver };
+    // Garantiza otherRoll cuando hubo dos tiradas (execution/learning)
+    if (!evo.otherRoll && evo.resultRoll && (evo.usedPolicy === "execution" || evo.usedPolicy === "learning")) {
+      // Si no tenemos referencia al otro dado, fuerza una segunda tirada para estimarlo
+      // (Esto es muy raro si aplicaste el Parche 1; queda como “airbag”)
+      const tmp = new Roll(formula); await tmp.evaluate();
+      evo.otherRoll = (tmp.total === evo.resultRoll.total) ? tmp : tmp; // placeholder seguro
+    }
+  }
   const { resultRoll, otherRoll, usedPolicy } = evo || {};
   if (!resultRoll || typeof resultRoll.total !== "number") return null;
 

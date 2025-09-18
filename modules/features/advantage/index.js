@@ -56,7 +56,9 @@ export async function resolveEvolution(p = {}) {
   const high = rA.total >= rB.total ? rA : rB;
   const low  = rA.total >= rB.total ? rB : rA;
 
-  let resultRoll = (mode === "execution") ? high : low;
+  const resultRoll = (mode === "execution") ? high : (mode === "learning" ? low : high);
+  const otherRoll  = (resultRoll === high) ? low : high;
+
   const usedPolicy = mode;
 
   if (toChat) {
@@ -78,8 +80,9 @@ export async function resolveEvolution(p = {}) {
 
   return {
     resultRoll,
-    otherRoll: resultRoll === rA ? rB : rA,
-    usedPolicy
+    otherRoll,
+    usedPolicy,
+    meta: p?.meta ?? undefined
   };
 }
 

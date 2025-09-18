@@ -233,9 +233,14 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
     };
   }
 
-  static open() {
-    if (!this._instance) this._instance = new this();
-    this._instance.render(true);
+  static open(forceNew = false) {
+    // Si nos piden una nueva, o la actual está cerrada, reconstruimos
+    const closed = !this._instance || this._instance._state === "closed";
+    if (forceNew || closed) {
+      try { this._instance?.close({ force: true }); } catch {}
+      this._instance = new this();
+    }
+    this._instance.render(true, { focus: true });
     return this._instance;
   }
 }
@@ -269,9 +274,19 @@ export function registerAtbAutoOpen() {
       (combat?.started && (changes?.round === 1 || changes?.turn === 0));
     const turnOrRound = ("turn" in (changes||{})) || ("round" in (changes||{}));
     if (justStarted || turnOrRound) {
-      ATBTrackerApp.open();
+      ATBTrackerApp.open(!!justStarted);
       game.socket?.emit("system.tsdc", { action: "open-atb-tracker" });
     }
+  });
+
+  Hooks.on("deleteCombat", () => {
+    try { ATBTrackerApp._instance?.close({ force: true }); } catch {}
+    ATBTrackerApp._instance = null;
+  });
+
+  Hooks.on("combatEnd", () => {
+    try { ATBTrackerApp._instance?.close({ force: true }); } catch {}
+    ATBTrackerApp._instance = null;
   });
 }
 
