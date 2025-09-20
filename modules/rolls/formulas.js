@@ -2,6 +2,7 @@
 // Helpers para construir fórmulas a partir del actor + su progreso
 
 import { levelToRank } from "../progression.js";
+import { getWeaponDef } from "../features/weapons/index.js";
 
 /** lectura segura */
 function gp(obj, path, d=0) {
@@ -37,14 +38,36 @@ export function buildAttackFormula(actor, { isManeuver=false, key, attrKey, bonu
  * (rango de competencia con el arma x dado del arma) + (atributo * grado del arma + bonificador)
  * p.ej. rango=2; arma d6 grado 2; agilidad 3 => 2d6 + (3*2) + bonus = 2d6 + 6 + bonus
  */
-export function buildImpactFormula(actor, { key, die="d6", grade=1, attrKey, bonus=0 }) {
+export async function buildImpactFormula(actor, { key, die=null, grade=null, attrKey=null, bonus=0 } = {}) {
+  // 1) Definición de arma desde catálogo (clave en minúsculas)
+  let def = key ? getWeaponDef(String(key).toLowerCase()) : null;
+  // Si no es arma conocida, intenta “katana” equipada cuando te llegue en el future
+  if (!def) {
+    try {
+      const { getEquippedWeaponKey } = await import("../features/inventory/index.js");
+      const ek = getEquippedWeaponKey(actor, "main");
+      def = ek ? getWeaponDef(String(ek).toLowerCase()) : null;
+    } catch(_) {}
+  }
+
+  // 2) Atributo a usar: parámetro → arma.attackAttr → "agility"
+  const usedAttrKey = String(attrKey || def?.attackAttr || "agility");
+  const A = Number(actor.system?.attributes?.[usedAttrKey] ?? 0);
+
+  // 3) Dado base y grado: parámetro → arma → fallback sensato
+  const usedDie   = String(die   || def?.damageDie || "d6");
+  const usedGrade = Math.max(1, Number(grade ?? def?.grade ?? 1));
+
+  // 4) # de dados = RANGO de competencia con el arma (mínimo 1)
   const { rank } = getTrack(actor, `system.progression.weapons.${key}`);
-  const A = Number(actor.system?.attributes?.[attrKey] ?? 0);
-  const dieCount = Math.max(0, Number(rank||0));
-  const dieTerm = dieCount > 0 ? `${dieCount}${die}` : "0";
-  const flat = (A * Number(grade||1)) + Number(bonus||0);
-  const formula = `${dieTerm} + ${flat}`;
-  return { formula, rank, attr: A, flat };
+  const diceCount = Math.max(1, Number(rank || 1));
+
+  // 5) Plano = (Atributo * Grado) + bonus
+  const flat = (A * usedGrade) + Number(bonus || 0);
+
+  // 6) Fórmula final
+  const formula = `${diceCount}${usedDie} + ${flat}`;
+  return { formula, die: usedDie, grade: usedGrade, attrKey: usedAttrKey, rank: diceCount, flat };
 }
 
 /** Defensa (evasión): 1d10 + nivel de competencia evasiva + agilidad + armadura + bonificador */

@@ -10,6 +10,7 @@ import { rollAttack, rollDefense, rollImpact } from "../rolls/dispatcher.js";
 import { addProgress } from "../progression.js";
 import { computeBlockingAt } from "../features/armors/index.js";
 import { buildImpactFormula } from "../rolls/formulas.js";
+import { applyManeuverEffects } from "./effects.js"
 
 const CHAT = (html, actor=null) => ChatMessage.create({
   content: html,
@@ -207,6 +208,17 @@ export async function runDefenseFlow({
     return;
   }
 
+  // 4.1) Efectos sobre "golpe" (no dependen de daño neto)
+  if (attackResult?.evo?.meta?.isManeuver && attackCtx?.maneuverDef?.effects) {
+    await applyManeuverEffects({
+      attacker: attackerActor,
+      defender: targetToken.actor,
+      maneuverDef: attackCtx.maneuverDef,
+      attackTotal: atkTotal,
+      trigger: "on_hit"
+    });
+  }
+
   // 5) Impacto vs Bloqueo
   const { impact, block } = await resolveImpactVsBlock({
     attackerActor, attackerToken, targetToken,
@@ -228,6 +240,16 @@ export async function runDefenseFlow({
 
   // 6) Aplicar daño (por zona si tienes, o general)
   await applyDamageOrWound({ defenderToken: targetToken, amount: net, hitLocation: hitLocation });
+
+  // 7) NUEVO: efectos de maniobra (derribado, empujar, etc.)
+ if (attackResult?.evo?.meta?.isManeuver && attackCtx?.maneuverDef?.effects) {
+   await applyManeuverEffects({
+     attacker: attackerActor,
+     defender: targetToken.actor,
+     maneuverDef: attackCtx.maneuverDef,
+     attackTotal: atkTotal
+   });
+ }
 }
 
 /* ======================================================
@@ -247,7 +269,7 @@ async function requestDefenseRoll({ defender, defenderToken, attackerActor, atta
         total: Number(res?.total ?? 0),
         evo: res?.evo ?? null,
         policy: res?.evo?.usedPolicy ?? "execution",
-        hitLocation: res?.hitLocation || res?.location || null
+        hitLocation: res?.hitLocation || res?.location || res?.bodyPart || null
       };
     }
   } catch (e) { console.warn("TSDC | rollDefense no disponible/usable:", e); }
@@ -262,7 +284,7 @@ async function requestDefenseRoll({ defender, defenderToken, attackerActor, atta
         total: Number(res?.total ?? 0),
         evo: res?.evo ?? null,
         policy: res?.evo?.usedPolicy ?? "execution",
-        hitLocation: res?.hitLocation || res?.location || null
+        hitLocation: res?.hitLocation || res?.location || res?.bodyPart || null
       };
     }
     if (engine?.skillCheck) {
@@ -318,18 +340,31 @@ async function resolveImpactVsBlock({ attackerActor, attackerToken, targetToken,
 
   // Intentar fórmula “real” a partir de meta
   if (impact == null) {
-    // Lee meta del ataque para armar fórmula realista
+    // Deja que buildImpactFormula resuelva dado/grade/atributo según el arma
     const meta = attackResult?.evo?.meta || {};
-    const atkKey  = meta.key || null;
-    const die     = meta.die     || "d6";   // ajusta si ya guardas el dado del arma
-    const grade   = Number(meta.grade ?? 1);
-    const attrKey = meta.attrKey || "agility";
-    const bonus   = Number(meta.bonus ?? 0);
+    const isManeuver = !!meta.isManeuver;
+    // Si es maniobra, el "key" es la maniobra — necesitamos la KEY del arma
+    let atkKey = isManeuver ? (meta.weaponKey || null) : (meta.key || null);
 
     try {
-      const impactDef = buildImpactFormula(attackerActor, { key: atkKey, die, grade, attrKey, bonus });
+      // Si por alguna razón no vino key, intenta arma equipada
+      if (!atkKey) {
+        const { getEquippedWeaponKey } = await import("../features/inventory/index.js");
+        atkKey = getEquippedWeaponKey(attackerActor, "main");
+      }
+      const hintedAttr =
+        attackCtx?.hints?.impactAttr ||
+        attackCtx?.hints?.attackAttr || // en maniobras/abilities a veces viene aquí
+        null;
+
+      const impactDef = buildImpactFormula(attackerActor, { key: atkKey, die: meta.impactDie ?? null, grade: meta.impactGrade ?? null, attrKey: hintedAttr });
       const impactMsg = await rollImpact(attackerActor, impactDef);
-      impact = Number(impactMsg?.total ?? impactMsg?.roll?.total ?? null);
+      const impactRaw =
+        impactMsg?.resultRoll?.total ??
+        impactMsg?.total ??
+        impactMsg?.roll?.total ??
+        null;
+      if (impactRaw != null) impact = Number(impactRaw);
     } catch (e) {
       console.warn("TSDC | build/roll impact error, using estimateImpact fallback:", e);
     }
@@ -419,9 +454,13 @@ async function applyDamageOrWound({ defenderToken, amount, hitLocation }) {
 function zoneHealthPath(actor, hitLocation) {
   const s = String(hitLocation||"").toLowerCase();
   if (actor?.system?.health?.parts) {
-    if (s.includes("head") || s.includes("cabeza")) return "health.parts.head.value";
-    if (s.includes("arm")  || s.includes("brazo"))  return "health.parts.arms.value";
-    if (s.includes("leg")  || s.includes("pierna")) return "health.parts.legs.value";
+    if (s.includes("head") || s.includes("cabeza"))   return "health.parts.head.value";
+    if (s.includes("arm")  || s.includes("brazo")
+      || s.includes("bracer") || s.includes("bracers")) return "health.parts.arms.value";
+    if (s.includes("leg")  || s.includes("pierna")
+      || s.includes("boot") || s.includes("boots")
+      || s.includes("pie")  || s.includes("pies"))      return "health.parts.legs.value";
+    if (s.includes("chest") || s.includes("torso"))    return "health.parts.torso.value";
     return "health.parts.torso.value";
   }
   return null;

@@ -118,6 +118,13 @@ export async function rollAttack(actor, {
   }
   if (evo) {
     evo.meta = evo.meta ?? { key, isManeuver };
+    // Si es maniobra, guarda qué arma se usó para pegar
+    if (isManeuver) {
+      try {
+        const wKey = getEquippedWeaponKey(actor, "main");
+        if (wKey) evo.meta.weaponKey = wKey;
+      } catch (_) {}
+    }
     // Garantiza otherRoll cuando hubo dos tiradas (execution/learning)
     if (!evo.otherRoll && evo.resultRoll && (evo.usedPolicy === "execution" || evo.usedPolicy === "learning")) {
       // Si no tenemos referencia al otro dado, fuerza una segunda tirada para estimarlo
@@ -261,7 +268,8 @@ export async function rollDefense(actor, {
   const d100 = new Roll("1d100"); await d100.evaluate();
   const r = d100.total;
   let bodyPart = "chest";
-  if (r <= 10) bodyPart = "head";
+  if (r <= 5) bodyPart = "head";
+  else if (r <= 10) bodyPart = "boots";
   else if (r <= 45) bodyPart = "chest";
   else if (r <= 60) bodyPart = "bracers";
   else if (r <= 75) bodyPart = "bracers";
@@ -302,7 +310,7 @@ export async function rollDefense(actor, {
     }
   });
 
-  return { total: patched.total, bodyPart, tags, evo };
+  return { total: patched.total, bodyPart, hitLocation: bodyPart, tags, evo };
 }
 
 /** ─────────── RESISTENCIA ─────────── */

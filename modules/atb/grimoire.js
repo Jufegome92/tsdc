@@ -4,6 +4,7 @@ import { ACTIONS } from "../features/actions/catalog.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
 import { APTITUDES } from "../features/aptitudes/data.js";
+import { actorKnownManeuvers, actorKnownRelicPowers, actorKnownNotes } from "../features/known.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -130,7 +131,10 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.actorId = actorId ?? null;
     this._query = "";
     this._tab = "basic";
-    this._onUpdate = () => this.render(false);
+    this._onUpdate = (doc, diff, options, userId) => {
+      if (doc.id === this.actor?.id)
+     this.render(false);
+    };
     Hooks.on("updateActor", this._onUpdate);
     Hooks.on("updateCombat", this._onUpdate);
   }
@@ -143,6 +147,10 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async _prepareContext() {
     const actor = game.actors?.get?.(this.actorId) || null;
+    const knownM = actorKnownManeuvers(actor);
+    const knownR = actorKnownRelicPowers(actor);
+    const notes  = actorKnownNotes(actor);
+
     const planningTick = await ATB_API.getPlanningTick();
     const q = (this._query||"").trim().toLowerCase();
 
@@ -157,8 +165,28 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const cardsBasic = await Promise.all(basics);
 
     // Maniobras / Reliquias / Aptitudes
-    const ms = collectLearnedManeuvers(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
-    const rs = collectLearnedRelics(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
+    const ms = actorKnownManeuvers(actor).map(key => {
+      const m = MANEUVERS[key];
+      const rank = Number(actor?.system?.progression?.maneuvers?.[key]?.rank || 0);
+      return {
+        id: key,
+        title: m?.label ?? key,
+        subtitle: `N${rank} · CT ${m?.ct?.init||0}/${m?.ct?.exec||1}/${m?.ct?.rec||0}`,
+        level: rank,
+        def: m
+      };
+    }).filter(x => !q || String(x.title).toLowerCase().includes(q));
+    const rs = actorKnownRelicPowers(actor).map(key => {
+      const p = RELIC_POWERS[key];
+      const rank = Number(actor?.system?.progression?.relics?.[key]?.rank || 0);
+      return {
+        id: key,
+        title: p?.label ?? key,
+        subtitle: `N${rank} · CT ${p?.ct?.init||0}/${p?.ct?.exec||1}/${p?.ct?.rec||0}`,
+        level: rank,
+        def: p
+      };
+    }).filter(x => !q || String(x.title).toLowerCase().includes(q));
     const as = collectLearnedAptitudes(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
 
     const cardsManeuvers = await Promise.all(ms.map(async x => ({ ...x, html: await toHtml(x.def) })));

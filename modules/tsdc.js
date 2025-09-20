@@ -21,6 +21,8 @@ import { TSDCVisionPanel, registerVisionPanelControl } from "./ui/vision-panel.j
 import { registerStealthDetection, checkStealthOnAction } from "./stealth/detection.js";
 import { actionMove } from "./atb/actions.js";
 import * as Reactions from "./atb/reactions.js";
+import * as Grants from "./features/grants.js";
+import * as Known from "./features/known.js";
 
 const _guardWizardOpen = new Set();
 
@@ -148,6 +150,8 @@ Hooks.once("ready", () => {
   } catch {}
   registerStealthDetection();
   game.transcendence = game.transcendence || {};
+  game.transcendence.grants = Grants; 
+  game.transcendence.known = Known;
   game.transcendence.actions   = { move: actionMove };
   game.transcendence.reactions = {
     openWindow: Reactions.openReactionWindow,

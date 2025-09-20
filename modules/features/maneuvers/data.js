@@ -26,6 +26,14 @@ export const MANEUVERS = {
     ],
     compLevels: 3,
     ct: { init: 1, exec: 1, rec: 1 },
+    effects: [
+    {
+      id: "KNOCKDOWN_ON_HIT",
+      trigger: "on_hit",                 // cuándo evaluar (tras aplicar daño)
+      save: { group: "alteration", bonus: 0 },// usa TR de “Alteración”
+      onFail: { ailmentId: "DERRIBADO" }      // aplica este agravio si falla la TR
+    }
+  ]
   },
 
   finta: {

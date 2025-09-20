@@ -4,6 +4,7 @@ import { getEquippedWeaponKey } from "../features/inventory/index.js";
 import { weaponRangeM } from "../combat/range.js";
 import { metersBetweenTokenAndToken, metersBetweenPointAndToken, pickCanvasPoint, tokensInRadius } from "../combat/targeting.js";
 import { validateAttackRangeAndVision } from "../rolls/validators.js"; // ya te valida mono-objetivo
+import { runDefenseFlow } from "../combat/defense-flow.js";
 
 function coverToCtx(cover) {
   return cover === "light" ? "partial" : cover === "medium" ? "heavy" : cover === "total" ? "total" : "none";
@@ -25,7 +26,7 @@ function emitResistancePrompt({ actor, victimToken, feature }) {
 export async function performFeature({ actor, feature, meta = {} }) {
   const actorToken = actor?.getActiveTokens?.(true)?.[0]
     ?? canvas?.tokens?.placeables?.find?.(t => t?.actor?.id === actor.id);
-  if (!actorToken) return;
+  if (!actorToken) return ui.notifications?.warn("Actor sin token activo.");
 
   const wKey   = meta.weaponKey ?? getEquippedWeaponKey(actor, "main");
   const rangeM = Number.isFinite(feature?.range) ? Number(feature.range) : weaponRangeM(actor, wKey);
@@ -81,6 +82,42 @@ export async function performFeature({ actor, feature, meta = {} }) {
     }
     return;
   }
+
+  if (feature?.type === "attack" && (feature?.area ?? 0) === 0) {
+     const targetToken =
+       meta.targetToken
+       ?? Array.from(game.user?.targets ?? [])[0]
+       ?? null;
+     if (!targetToken?.actor) return ui.notifications?.warn("Selecciona (target) un objetivo válido.");
+
+     // Validación de rango/visión habitual (ya la tienes):
+     const pkg = await buildPerceptionPackage({ actorToken, targetToken });
+     const ctx = packageToRollContext(pkg);
+     if (pkg.attack_mod_from_cover === "unreachable") {
+       return ui.notifications?.warn("Cobertura total: inalcanzable desde aquí.");
+     }
+
+     // CLAVE de la maniobra y bandera isManeuver
+     const fKey = meta?.featureKey || feature?.id || meta?.key; // p.ej. "barrido"
+     const atkRes = await rollAttack(actor, {
+       key: fKey,
+       isManeuver: true,
+       flavor: `${(meta?.clazz || feature?.clazz || "maneuver").toUpperCase()} • ${feature.label}`,
+       mode: "ask",
+       context: ctx,
+       opposed: true
+     });
+
+     // Orquestar defensa y aprendizaje
+     await runDefenseFlow({
+       attackerActor: actor,
+       attackerToken: actorToken,
+       targetToken,
+       attackCtx: ctx,
+       attackResult: atkRes ?? null
+     });
+     return;
+   }
 
   /* == B) Mono-objetivo (area = 0): usa tu validador estándar == */
   const targetToken = meta.targetToken

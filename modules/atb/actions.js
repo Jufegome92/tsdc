@@ -441,8 +441,8 @@ export function makeRelicPowerAction(key) {
 }
 
 export function makeAptitudeAction(key) {
-  const p = RELIC_POWERS[key]; if (!p) return null;
-  return makeFeatureActionFromData(`aptitude:${key}`, { ...p, clazz:"aptitude" });
+  const a = APTITUDES[key]; if (!a) return null;
+  return makeFeatureActionFromData(`aptitude:${key}`, { ...a, clazz:"aptitude" });
 }
 
 async function askPreAttackReaction(targetToken, attackerToken) {
@@ -705,7 +705,7 @@ export function makeAbilityAction(ability, { key, clazz }) {
           })).ok;
       if (!inRange) return ui.notifications.info("Fuera de rango.");
       
-      await performFeature({ actor, feature: ability, meta: { ...(meta||{}), gating, pick } });
+      await performFeature({ actor, feature: ability, meta: { ...(meta||{}), gating, pick, featureKey: key, clazz } });
 
       // Aquí solo dejamos un registro genérico.
       const where = pick.kind==="cell" ? "celda seleccionada" : `a ${pick.token.name}`;

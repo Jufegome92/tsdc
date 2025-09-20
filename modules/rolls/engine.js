@@ -1,6 +1,7 @@
 // tsdc/modules/rolls/engine.js
 import { applySpeciesToRoll } from "../features/species/effects.js";
 import { applyAtbModsToRoll } from "../atb/mods.js";
+import * as Ail from "../ailments/index.js";
 
 /* =========================
    Normalización de tags
@@ -153,7 +154,7 @@ export function makeRollTotal(actor, baseTotal, ctx = {}) {
     console.warn("[tsdc] applySpeciesToRoll error:", err);
   }
 
-  try { applyAtbModsToRoll(actor, roll, ctx); } catch (_) {}
+  try { applyAtbModsToRoll(actor, speciesProbe, ctx); } catch (_) {}
   
   const speciesDelta = Math.round(Number(speciesProbe.total || base) - base);
   const speciesDiceAdv = Number(speciesProbe.diceAdvances || 0);
@@ -213,12 +214,16 @@ export function makeRollTotal(actor, baseTotal, ctx = {}) {
     total: finalTotal
   };
 
-  return {
+  // ← construye el “out”, aplica Ailments, y luego devuelve
+  const out = {
     total: finalTotal,
-    diceAdvances: speciesDiceAdv, // si otros módulos también dan avances, pueden empujarlos vía ctx/hook en el futuro
+    diceAdvances: speciesDiceAdv,
     notes,
     breakdown
   };
+  // IMPORTANTE: pasa tags ya normalizados (no los de entrada)
+  applyAilmentsToRoll(actor, out, { phase, tag, tags });
+  return out;
 }
 
 /* =========================
@@ -315,4 +320,26 @@ export function resolveHPSystem({ damage, part }) {
     destroyed,
     notes: [`Daño=${damage} (RD=${rd}) → ${net} aplicado; HP ${part?.hp} → ${hp}`]
   };
+}
+
+function applyAilmentsToRoll(actor, roll, ctx) {
+  try {
+    const active = (Ail && typeof Ail.getActive === "function") ? Ail.getActive(actor) : {};
+    if (!active) return;
+
+    // DERRIBADO: -2 a T.D. y (nota) rivales con avance de dado
+    if (active["DERRIBADO"]) {
+      if (ctx?.phase === "defense") {
+        roll.total = Number(roll.total || 0) - 2;
+        roll.breakdown = roll.breakdown || { parts: [], tags: [], source: [] };
+        roll.breakdown.parts.push({ label: "Derribado", value: -2, note: "-2 T.D." });
+        roll.breakdown.source.push({ kind: "ailment", value: -2, notes: ["DERRIBADO"] });
+      }
+      // Si quieres también encender una “señal” para ventaja de rivales,
+      // puedes añadir una nota/tag aquí y leerla en tu lógica de ventaja.
+      // p.ej.: roll.notes = [...(roll.notes||[]), "oponentes: avance de dado contra ti"];
+    }
+
+    // Aquí podrías mapear otros Ailments → penalizadores o tags
+  } catch(e) { console.error("Ailment roll mod failed", e); }
 }

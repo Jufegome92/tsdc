@@ -6,8 +6,32 @@ import { ACTIONS } from "../features/actions/catalog.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
 import { APTITUDES } from "../features/aptitudes/data.js";
+import { actorKnownManeuvers, actorKnownRelicPowers } from "../features/known.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+
+function populatePlannerSelects(html, actor) {
+  // Maniobras
+  const mSel = html.find('select[name="maneuverKey"]');
+  if (mSel.length) {
+    mSel.empty().append(`<option value="">— Elegir —</option>`);
+    for (const key of actorKnownManeuvers(actor)) {
+      const label = MANEUVERS[key]?.label ?? key;
+      mSel.append(`<option value="${key}">${label}</option>`);
+    }
+  }
+
+  // Reliquias
+  const rSel = html.find('select[name="relicKey"]');
+  if (rSel.length) {
+    rSel.empty().append(`<option value="">— Elegir —</option>`);
+    for (const key of actorKnownRelicPowers(actor)) {
+      const label = RELIC_POWERS[key]?.label ?? key;
+      rSel.append(`<option value="${key}">${label}</option>`);
+    }
+  }
+}
+
 
 /* ========= Listas para el diálogo ========= */
 function listBasicOptions() {
@@ -15,17 +39,21 @@ function listBasicOptions() {
   return ids.map(id => ({ id, name: ACTIONS[id]?.name ?? (id==="hide" ? "Ocultación" : id) }));
 }
 function listManeuverOptions(actor) {
-  const tree = actor?.system?.progression?.maneuvers ?? {};
-  return Object.entries(tree)
-    .filter(([,n]) => Number(n?.rank || 0) > 0)
-    .map(([key, n]) => ({ key, name: `${MANEUVERS[key]?.label ?? key} (N${n.rank})` }));
+  const rankMap = actor?.system?.progression?.maneuvers ?? {};
+  return actorKnownManeuvers(actor).map(key => {
+    const rank = Number(rankMap[key]?.rank || 0);
+    const name = MANEUVERS[key]?.label ?? key;
+    return { key, name: rank ? `${name} (N${rank})` : name };
+  });
 }
 
 function listRelicOptions(actor) {
-  const tree = actor?.system?.progression?.relics ?? {};
-  return Object.entries(tree)
-    .filter(([,n]) => Number(n?.rank || 0) > 0)
-    .map(([key, n]) => ({ key, name: `${RELIC_POWERS[key]?.label ?? key} (N${n.rank})` }));
+  const rankMap = actor?.system?.progression?.relics ?? {};
+  return actorKnownRelicPowers(actor).map(key => {
+    const rank = Number(rankMap[key]?.rank || 0);
+    const name = RELIC_POWERS[key]?.label ?? key;
+    return { key, name: rank ? `${name} (N${rank})` : name };
+  });
 }
 
 function listAptitudesOptions(actor) {

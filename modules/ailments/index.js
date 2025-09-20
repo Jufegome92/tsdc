@@ -81,7 +81,11 @@ export async function addAilment(actor, id, opts={}) {
 
   // Mensaje al chat
   const extra =
-    def.severable && sev ? ` • Severidad: <b>${sev.toUpperCase()}</b>` : "";
+    (sev ? ` <span class="muted">(Severidad: ${sev.toUpperCase()})</span>` : "") +
+   (Array.isArray(def.effectsText) && def.effectsText.length
+     ? `<div class="muted" style="margin-top:4px;">${def.effectsText.map(t => `• ${t}`).join("<br>")}</div>`
+     : ""
+   );
   const durationText =
     dur?.type === "rounds" ? ` (${remainingRounds} ronda${remainingRounds===1?"":"s"})`
     : dur?.type === "untilTreated" ? " (hasta ser tratado)"

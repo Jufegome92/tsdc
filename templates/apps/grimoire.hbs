@@ -13,10 +13,10 @@
 
     <span style="flex:1;"></span>
     <nav class="g-tabs" style="display:flex; gap:6px;">
-      <button type="button" data-action="switch-tab" data-tab="basic"     {{#if (eq activeTab "basic")}}class="active"{{/if}}>Básicas</button>
-      <button type="button" data-action="switch-tab" data-tab="maneuvers" {{#if (eq activeTab "maneuvers")}}class="active"{{/if}}>Maniobras</button>
-      <button type="button" data-action="switch-tab" data-tab="relics"    {{#if (eq activeTab "relics")}}class="active"{{/if}}>Reliquias</button>
-      <button type="button" data-action="switch-tab" data-tab="aptitudes" {{#if (eq activeTab "aptitudes")}}class="active"{{/if}}>Aptitudes</button>
+      <button type="button" data-action="switch-tab" data-tab="basic"    class="{{#if (eq activeTab "basic")}}active{{/if}}">Básicas</button>
+      <button type="button" data-action="switch-tab" data-tab="maneuvers" class="{{#if (eq activeTab "maneuvers")}}active{{/if}}">Maniobras</button>
+      <button type="button" data-action="switch-tab" data-tab="relics"    class="{{#if (eq activeTab "relics")}}active{{/if}}">Reliquias</button>
+      <button type="button" data-action="switch-tab" data-tab="aptitudes" class="{{#if (eq activeTab "aptitudes")}}active{{/if}}">Aptitudes</button>
     </nav>
     <button type="button" data-action="close">Cerrar</button>
   </header>
