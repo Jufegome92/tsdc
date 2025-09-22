@@ -7,6 +7,8 @@ import { MANEUVERS } from "../features/maneuvers/data.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
 import { APTITUDES } from "../features/aptitudes/data.js";
 import { actorKnownManeuvers, actorKnownRelicPowers } from "../features/known.js";
+import { MONSTER_ABILITIES } from "../features/abilities/data.js";
+import { arePartsFunctional, describePartsStatus } from "../features/inventory/index.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -56,6 +58,24 @@ function listRelicOptions(actor) {
   });
 }
 
+function listMonsterAbilityOptions(actor) {
+  const abilities = Array.isArray(actor?.system?.abilities) ? actor.system.abilities : [];
+  return abilities
+    .map(ab => {
+      const key = ab.itemKey ?? ab.key;
+      if (!key) return null;
+      const base = MONSTER_ABILITIES[key] ?? {};
+      const name = ab.label ?? base.label ?? key;
+      const requiresParts = ab.requiresParts || base.requiresParts || [];
+      const partsOk = arePartsFunctional(actor, requiresParts);
+      const disabled = ab.enabled === false || !partsOk;
+      const reason = !partsOk ? (describePartsStatus(actor, requiresParts) || "Parte dañada")
+                    : (ab.enabled === false ? "Habilidad deshabilitada" : "");
+      return { key, name, disabled, reason };
+    })
+    .filter(Boolean);
+}
+
 function listAptitudesOptions(actor) {
   const tree = actor?.system?.progression?.aptitudes ?? {};
   return Object.entries(tree)
@@ -74,6 +94,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
       "plan-basic": AtbPlanDialog.onPlanBasic,
       "plan-maneuver": AtbPlanDialog.onPlanManeuver,
       "plan-relic": AtbPlanDialog.onPlanRelic,
+      "plan-monster": AtbPlanDialog.onPlanMonsterAbility,
       "plan-spec": AtbPlanDialog.onPlanSpec,
       "plan-aptitude": AtbPlanDialog.onPlanAptitude,
     }
@@ -123,6 +144,15 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
     ui.notifications.info(`Plan: Reliquia ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
   }
+  static async onPlanMonsterAbility() {
+    const app = this;
+    const key = app.element.querySelector('select[name="monsterAbilityKey"]')?.value || "";
+    if (!key) return ui.notifications.warn("Elige una habilidad.");
+    const tick = app._readTick();
+    await ATB_API.enqueueMonsterAbilityForSelected?.(key, tick);
+    window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
+    ui.notifications.info(`Plan: Habilidad ${key} ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
+  }
   static async onPlanAptitude() {
     const app = this;
     const key = app.element.querySelector('select[name="aptitudeKey"]')?.value || "";
@@ -154,6 +184,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
       basicOptions: listBasicOptions(),
       maneuverOptions: listManeuverOptions(a),
       relicOptions: listRelicOptions(a),
+      monsterAbilityOptions: listMonsterAbilityOptions(a),
       aptitudesOptions: listAptitudesOptions(a)
     };
   }

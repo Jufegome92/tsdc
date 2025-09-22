@@ -1,7 +1,7 @@
 // modules/rolls/dispatcher.js
 import { resolveEvolution } from "../features/advantage/index.js";
 import { buildAttackFormula, buildImpactFormula, buildDefenseFormula, buildResistanceFormula } from "./formulas.js";
-import { getEquippedWeaponKey } from "../features/inventory/index.js";
+import { getEquippedWeaponKey, resolveWeaponByKey, isNaturalWeaponDisabled, describeNaturalDisable } from "../features/inventory/index.js";
 import { detectImpactCrit, computeBreakPower } from "../features/combat/critical.js";
 import { makeRollTotal } from "./engine.js";
 import { emitModInspector } from "./inspector.js";
@@ -100,9 +100,30 @@ export async function rollAttack(actor, {
     if (k) key = k;
   }
 
+  let naturalInfo = key ? resolveWeaponByKey(actor, key) : null;
+  if ((!key || !naturalInfo) && actor.type === "creature") {
+    const naturals = actor.getFlag("tsdc", "naturalWeapons") ?? [];
+    for (const rec of naturals) {
+      if (!isNaturalWeaponDisabled(actor, rec)) {
+        key = rec.key;
+        naturalInfo = resolveWeaponByKey(actor, key);
+        break;
+      }
+    }
+  }
+
   const { formula } = buildAttackFormula(actor, { isManeuver, key, attrKey, bonus, penalty });
   const path  = isManeuver ? `system.progression.maneuvers.${key}.rank` : `system.progression.weapons.${key}.rank`;
   const rank  = Number(foundry.utils.getProperty(actor, path) || 0);
+
+  if (!naturalInfo && key) {
+    naturalInfo = resolveWeaponByKey(actor, key);
+  }
+  if (naturalInfo?.source === "natural" && isNaturalWeaponDisabled(actor, naturalInfo.record)) {
+    const reason = naturalInfo.disabledReason || describeNaturalDisable(actor, naturalInfo.record) || "parte dañada";
+    ui.notifications?.warn(`No puedes usar ${naturalInfo.record?.label ?? "esa arma"}: ${reason}.`);
+    return null;
+  }
 
   if (opposed) _tsdcSetOpposedContext(true);
   let evo;
@@ -127,14 +148,22 @@ export async function rollAttack(actor, {
     }
     // Garantiza otherRoll cuando hubo dos tiradas (execution/learning)
     if (!evo.otherRoll && evo.resultRoll && (evo.usedPolicy === "execution" || evo.usedPolicy === "learning")) {
-      // Si no tenemos referencia al otro dado, fuerza una segunda tirada para estimarlo
-      // (Esto es muy raro si aplicaste el Parche 1; queda como “airbag”)
       const tmp = new Roll(formula); await tmp.evaluate();
-      evo.otherRoll = (tmp.total === evo.resultRoll.total) ? tmp : tmp; // placeholder seguro
+      evo.otherRoll = (tmp.total === evo.resultRoll.total) ? tmp : tmp;
     }
   }
   const { resultRoll, otherRoll, usedPolicy } = evo || {};
   if (!resultRoll || typeof resultRoll.total !== "number") return null;
+
+  // re-evaluar si la tirada terminó resolviendo un arma natural
+  if (!naturalInfo && key) {
+    naturalInfo = resolveWeaponByKey(actor, key);
+  }
+  if (naturalInfo?.source === "natural" && isNaturalWeaponDisabled(actor, naturalInfo.record)) {
+    const reason = naturalInfo.disabledReason || describeNaturalDisable(actor, naturalInfo.record) || "parte dañada";
+    ui.notifications?.warn(`No puedes usar ${naturalInfo.record?.label ?? "esa arma"}: ${reason}.`);
+    return null;
+  }
 
   const attackKind = context.attackKind ?? inferAttackKind(actor, { isManeuver, weaponKey: key });
   const tags = makeTagsFor({ ...context, phase: "attack", attackKind });
@@ -186,6 +215,13 @@ export async function rollImpact(actor, {
   whisperBreakToGM = true,
   context = {}
 } = {}) {
+  const naturalInfo = key ? resolveWeaponByKey(actor, key) : null;
+  if (naturalInfo?.source === "natural" && isNaturalWeaponDisabled(actor, naturalInfo.record)) {
+    const reason = naturalInfo.disabledReason || describeNaturalDisable(actor, naturalInfo.record) || "parte dañada";
+    ui.notifications?.warn(`No puedes usar ${naturalInfo.record?.label ?? "esa arma"}: ${reason}.`);
+    return null;
+  }
+
   const { formula } = buildImpactFormula(actor, { key, die, grade, attrKey, bonus });
   const r = new Roll(formula);
   await r.evaluate();

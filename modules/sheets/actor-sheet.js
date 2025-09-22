@@ -215,9 +215,18 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
 
     // Inventario (slots)
     const eq = Inv.getEquipped(this.actor);
-    const optFor = (slot) => Inv.listForSlot(this.actor, slot).map(it => ({
-      id: it.id, label: Inv.itemLabel(it), selected: eq[slot] === it.id
-    }));
+    const optFor = (slot) => Inv.listForSlot(this.actor, slot).map(it => {
+      const disabled = !!it.disabled;
+      const reason = it.disabledReason || "";
+      const label = `${Inv.itemLabel(it)}${disabled ? " [parte dañada]" : ""}`;
+      return {
+        id: it.id,
+        label,
+        selected: eq[slot] === it.id,
+        disabled,
+        disabledReason: reason
+      };
+    });
     context.inventory = {
       options: {
         mainHand: optFor("mainHand"),
@@ -234,10 +243,27 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         pendant2: optFor("pendant2")
       },
       naturalAux: Inv.getNaturalWeapons(this.actor)
-        .map(rec => Inv.getNaturalWeaponItem(this.actor, rec.key))
-        .filter(item => item && item.occupiesSlot === false)
-        .map(item => ({ id: item.id, label: Inv.itemLabel(item), key: item.key }))
+        .map(rec => Inv.resolveWeaponByKey(this.actor, rec.key))
+        .filter(sel => sel && sel.item && sel.item.occupiesSlot === false)
+        .map(sel => ({
+          id: `natural:${sel.key}`,
+          label: `${Inv.itemLabel(sel.item)}${sel.disabled ? " [parte dañada]" : ""}`,
+          key: sel.key,
+          disabled: !!sel.disabled,
+          disabledReason: sel.disabledReason || ""
+        }))
     };
+
+    const monsterTraits = Array.isArray(this.actor.system?.traits?.monster)
+      ? this.actor.system.traits.monster.map(t => ({
+          key: t.key ?? t.label ?? "trait",
+          label: t.label ?? t.key ?? "Rasgo",
+          note: t.note ?? t.description ?? t.notes ?? "",
+          category: t.cat ?? t.category ?? "general"
+        }))
+      : [];
+    context.monsterTraits = monsterTraits;
+    context.isGM = game.user?.isGM ?? false;
 
     // Defaults de tirada persistidos en el actor
     const rollDefaults = this.actor.system?.ui?.rollDefaults ?? {};
@@ -276,6 +302,22 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
 
 
     context.states = { stamina, fatigue, wear, wearMax };
+
+    const healthParts = this.actor.system?.health?.parts ?? {};
+    context.healthParts = Object.entries(healthParts).map(([key, data]) => {
+      const value = Number(data?.value ?? 0);
+      const max = Number(data?.max ?? value);
+      return {
+        key,
+        label: Inv.bodyPartLabel?.(key) ?? key,
+        value,
+        max,
+        potency: Number(data?.potency ?? 0),
+        material: data?.material ?? "—",
+        category: data?.category ?? "",
+        disabled: value <= 0
+      };
+    });
 
 
     console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!context.inventory });
@@ -543,6 +585,15 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     const wKey = selection?.key ?? null;
     const isManeuver = !!el.querySelector('input[name="atkIsManeuver"]')?.checked;
 
+    if (!selection) {
+      ui.notifications?.warn("Selecciona un arma válida antes de atacar.");
+      return;
+    }
+    if (selection.disabled) {
+      ui.notifications?.warn(selection.disabledReason || "No puedes usar esa arma mientras la parte esté dañada.");
+      return;
+    }
+
     let attrKey = String(el.querySelector('select[name="atkAttr"]')?.value || "");
     if (!attrKey) {
       if (selection?.record) {
@@ -567,6 +618,14 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       ? Inv.resolveWeaponSelection(this.actor, selId)
       : Inv.getEquippedWeaponChoice(this.actor, "main");
     const key = selection?.key ?? null;
+    if (!selection) {
+      ui.notifications?.warn("Selecciona un arma válida para calcular el impacto.");
+      return;
+    }
+    if (selection.disabled) {
+      ui.notifications?.warn(selection.disabledReason || "No puedes usar esa arma mientras la parte esté dañada.");
+      return;
+    }
     let die = "d6";
     let grade = 1;
     let attrKey = "agility";

@@ -26,12 +26,12 @@
     "boots":   { "materialKey": "garras",    "category": "medium" }
   },
   "attacks": [
-    { "type": "natural", "label": "Mordisco", "weaponKey": "colmillos", "damageDie": "d6", "grade": 1, "traits": ["corte","perforante"] },
-    { "type": "natural", "label": "Zarpazo",  "weaponKey": "garras",    "damageDie": "d6", "grade": 1, "traits": ["corte","rasgante"] }
+    { "type": "natural", "label": "Mordisco", "weaponKey": "colmillos", "damageDie": "d6", "grade": 1, "traits": ["perforante"], "requiresParts": ["head"] },
+    { "type": "natural", "label": "Zarpazo",  "weaponKey": "garras",    "damageDie": "d6", "grade": 1, "traits": ["corte"], "requiresParts": ["bracers"] }
   ],
   "abilities": [
-    { "itemKey": "aliento_gelido", "enabled": false },
-    { "itemKey": "aullar_para_aliados", "enabled": true }
+    { "itemKey": "aliento_gelido", "enabled": true, "requiresParts": ["head"] },
+    { "itemKey": "aullar_para_aliados", "enabled": true, "requiresParts": ["head"] }
   ],
   "ailments": [
   ],

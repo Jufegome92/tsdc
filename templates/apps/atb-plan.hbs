@@ -53,6 +53,22 @@
       </div>
     </section>
 
+    {{#if monsterAbilityOptions.length}}
+    <section class="t-card">
+      <h3>Habilidad de criatura</h3>
+      <div class="t-row" style="gap:10px; align-items:center;">
+        <select name="monsterAbilityKey" style="min-width:260px;">
+          <option value="">— Elegir —</option>
+          {{#each monsterAbilityOptions as |o|}}
+            <option value="{{o.key}}" {{#if o.disabled}}disabled{{/if}} {{#if o.reason}}title="{{o.reason}}"{{/if}}>{{o.name}}{{#if o.disabled}} — {{o.reason}}{{/if}}</option>
+          {{/each}}
+        </select>
+        <span style="flex:1;"></span>
+        <button type="button" data-action="plan-monster">Encolar habilidad</button>
+      </div>
+    </section>
+    {{/if}}
+
     <section class="t-card">
       <h3>Aptitud</h3>
       <div class="t-row" style="gap:10px; align-items:center;">

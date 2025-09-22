@@ -1,7 +1,8 @@
 // modules/features/combat/critical.js
 // Detecta críticos en tiradas de IMPACTO y calcula "poder de rotura"
 
-import { computeCritPowerFromItem } from "../weapons/index.js";
+import { computeCritPowerFromItem, getPowerMultiplierByWeaponKey } from "../weapons/index.js";
+import { materialPotency } from "../materials/index.js";
 
 /** Devuelve info de crítico a partir de un Roll de IMPACTO.
  * Considera crítico si ALGÚN dado de impacto obtiene su cara máxima.
@@ -45,6 +46,20 @@ export function computeBreakPower(weaponItem, bonus = 0) {
   if ((!base || Number.isNaN(base)) && weaponItem?.powerPerRank != null) {
     const grade = Math.max(1, Number(weaponItem.grade ?? 1));
     base = Number(weaponItem.powerPerRank) * grade;
+  }
+  if (!base || Number.isNaN(base)) {
+    try {
+      const material = weaponItem?.material ?? null;
+      if (material) {
+        const quality = Number(weaponItem?.quality ?? 1);
+        const pot = materialPotency(material, quality);
+        const mult = getPowerMultiplierByWeaponKey(weaponItem?.key) ?? 1;
+        const grade = Math.max(1, Number(weaponItem?.grade ?? 1));
+        base = pot * mult * grade;
+      }
+    } catch (err) {
+      console.warn("TSDC | computeBreakPower fallback error", err);
+    }
   }
   return Math.max(0, Math.floor(base + Number(bonus || 0)));
 }

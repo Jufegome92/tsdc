@@ -1,6 +1,7 @@
 // modules/features/species/index.js
 import { getSpecies, listSpecies as _listSpecies } from "./data.js";
 import { buildSpeciesNaturalWeapons } from "./natural-weapons.js";
+import { buildHealthPartsFromAnatomy } from "../../monsters/factory.js";
 import { setTrackLevel } from "../../progression.js";
 
 /** Lista todas las especies (re-export de data.js) */
@@ -75,6 +76,14 @@ export async function applySpecies(actor, speciesKey) {
     if (Object.keys(equipPatch).length) await actor.update(equipPatch);
   } else {
     await actor.unsetFlag("tsdc", "naturalWeapons");
+  }
+
+  if (!actor.system?.health?.parts || !Object.keys(actor.system.health.parts).length) {
+    const anatomy = actor.system?.anatomy ?? {};
+    const healthParts = buildHealthPartsFromAnatomy(anatomy, { level: actor.system?.level ?? 1 });
+    if (Object.keys(healthParts).length) {
+      patch["system.health.parts"] = healthParts;
+    }
   }
 
   await actor.update(patch);

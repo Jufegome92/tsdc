@@ -1,6 +1,6 @@
 import { rollAttack } from "../rolls/dispatcher.js";
 import { buildPerceptionPackage, packageToRollContext, describePackage, estimateCoverFromPoint } from "../perception/index.js";
-import { getEquippedWeaponKey } from "../features/inventory/index.js";
+import { getEquippedWeaponKey, arePartsFunctional, describePartsStatus } from "../features/inventory/index.js";
 import { weaponRangeM } from "../combat/range.js";
 import { metersBetweenTokenAndToken, metersBetweenPointAndToken, pickCanvasPoint, tokensInRadius } from "../combat/targeting.js";
 import { validateAttackRangeAndVision } from "../rolls/validators.js"; // ya te valida mono-objetivo
@@ -44,6 +44,13 @@ export async function performFeature({ actor, feature, meta = {} }) {
   const actorToken = actor?.getActiveTokens?.(true)?.[0]
     ?? canvas?.tokens?.placeables?.find?.(t => t?.actor?.id === actor.id);
   if (!actorToken) return ui.notifications?.warn("Actor sin token activo.");
+
+  const partsReq = Array.isArray(feature?.requiresParts) ? feature.requiresParts : [];
+  if (partsReq.length && !arePartsFunctional(actor, partsReq)) {
+    const reason = describePartsStatus(actor, partsReq) || "Parte dañada";
+    ui.notifications?.warn(`No puedes usar ${feature.label ?? "esta habilidad"}: ${reason}.`);
+    return;
+  }
 
   const wKey   = meta.weaponKey ?? getEquippedWeaponKey(actor, "main");
   const rangeM = Number.isFinite(feature?.range) ? Number(feature.range) : weaponRangeM(actor, wKey);

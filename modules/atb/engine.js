@@ -1,12 +1,15 @@
 // modules/atb/engine.js
 // Bucle ATB con CT=I+E+R. Planeación por tick y avance manual por el GM.
 
-import { listSimpleActions, makeSpecializationAction } from "./actions.js";
+import { listSimpleActions, makeSpecializationAction, makeAbilityAction } from "./actions.js";
 import { rotateModsOnSpawn, pruneOldCurrentTickMods } from "./mods.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
-import { makeAbilityAction } from "./actions.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
-import { APTITUDES } from "../features/aptitudes/data.js"
+import { APTITUDES } from "../features/aptitudes/data.js";
+import { getMonsterAbility } from "../features/abilities/data.js";
+import { arePartsFunctional, describePartsStatus } from "../features/inventory/index.js";
+
+const { deepClone } = foundry.utils;
 
 const FLAG_SCOPE = "tsdc";
 const FLAG_KEY   = "atb";
@@ -105,6 +108,40 @@ export async function enqueueRelicPower(combatantId, key, targetTick = null) {
   await writeState(state);
 }
 
+export async function enqueueMonsterAbility(combatantId, key, targetTick = null) {
+  const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
+  const ct = c.combatants.get(combatantId);
+  if (!canPlanForCombatant(ct)) return ui.notifications?.warn("No puedes planear para ese combatiente.");
+
+  const actor = ct?.actor;
+  const abilities = Array.isArray(actor?.system?.abilities) ? actor.system.abilities : [];
+  const ability = abilities.find(ab => (ab.itemKey || ab.key) === key) || getMonsterAbility(key);
+  if (!ability) {
+    ui.notifications?.warn(`Habilidad desconocida: ${key}`);
+    return;
+  }
+  if (ability.enabled === false) {
+    ui.notifications?.warn(`La habilidad ${ability.label ?? key} está deshabilitada.`);
+    return;
+  }
+  if (ability.requiresParts && !arePartsFunctional(actor, ability.requiresParts)) {
+    const reason = describePartsStatus(actor, ability.requiresParts) || "Parte dañada";
+    ui.notifications?.warn(`No puedes usar ${ability.label ?? key}: ${reason}.`);
+    return;
+  }
+
+  const state = await readState();
+  const t = (targetTick == null) ? Number(state.planningTick || state.tick || 0) : Number(targetTick);
+  ensureActorState(state, combatantId).queue.push({
+    kind: "monsterAbility",
+    key,
+    targetTick: t,
+    qorder: ++state.qOrderCounter,
+    ability: deepClone(ability)
+  });
+  await writeState(state);
+}
+
 export async function enqueueAptitude(combatantId, key, targetTick = null) {
   const c = getCombat(); if (!c) return ui.notifications?.warn("No hay combate.");
   const ct = c.combatants.get(combatantId);
@@ -157,6 +194,23 @@ export async function enqueueRelicForSelected(key, targetTick = null) {
   }
 }
 
+export async function enqueueMonsterAbilityForSelected(key, targetTick = null) {
+  const c = getCombat(); if (!c) return;
+  const sel = canvas.tokens?.controlled ?? [];
+  if (!sel.length) {
+    const a = game.user?.character ?? null;
+    if (a) {
+      const ct = c.combatants.find(x => x.actor?.id === a.id);
+      if (ct) return enqueueMonsterAbility(ct.id, key, targetTick);
+    }
+    return ui.notifications?.warn("No hay token seleccionado ni personaje asignado.");
+  }
+  for (const tk of sel) {
+    const ct = c.combatants.find(x => x.tokenId === tk.id);
+    if (ct) await enqueueMonsterAbility(ct.id, key, targetTick);
+  }
+}
+
 export async function enqueueAptitudeForSelected(key, targetTick = null) {
   const c = getCombat(); if (!c) return;
   const sel = canvas.tokens?.controlled ?? [];
@@ -192,6 +246,11 @@ function resolveQueued(desc) {
   if (desc.kind === "aptitude") {
     const a = APTITUDES?.[desc.key];
     return a ? makeAbilityAction(a, { key: desc.key, clazz: "aptitude" }) : null;
+  }
+  if (desc.kind === "monsterAbility") {
+    const ability = desc.ability || getMonsterAbility(desc.key);
+    if (!ability) return null;
+    return makeAbilityAction(ability, { key: ability.key ?? desc.key, clazz: ability.clazz ?? "monster" });
   }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
@@ -313,6 +372,11 @@ async function stepOnceInternal() {
     if (!defReal && aKey.startsWith("aptitude:")) {
       const k = aKey.split(":")[1];
       const a = APTITUDES[k]; if (a) defReal = makeAbilityAction(a, { key: k, clazz: "aptitude" });
+    }
+    if (!defReal && aKey.startsWith("monster:")) {
+      const k = aKey.split(":")[1];
+      const ability = ct.actor?.system?.abilities?.find?.(ab => (ab.itemKey || ab.key) === k) || getMonsterAbility(k);
+      if (ability) defReal = makeAbilityAction(ability, { key: k, clazz: ability.clazz ?? "monster" });
     }
 
     if (!defReal && aKey.startsWith("spec:")) {
@@ -468,6 +532,6 @@ export const ATB_API = {
   enqueueSimple, enqueueSpecialization,
   enqueueSimpleForSelected, enqueueSpecForSelected,
   enqueueSimpleForActor, enqueueSpecForActor,
-  enqueueManeuverForSelected, enqueueRelicForSelected, enqueueAptitudeForSelected,
-  enqueueManeuver, enqueueRelicPower, enqueueAptitude
+  enqueueManeuverForSelected, enqueueRelicForSelected, enqueueAptitudeForSelected, enqueueMonsterAbilityForSelected,
+  enqueueManeuver, enqueueRelicPower, enqueueAptitude, enqueueMonsterAbility
 };

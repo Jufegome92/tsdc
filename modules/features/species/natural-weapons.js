@@ -9,6 +9,51 @@ const DMG = {
   corrosion: "corrosion"
 };
 
+const PART_LABELS = {
+  head: "cabeza",
+  chest: "torso",
+  bracers: "brazos",
+  legs: "piernas",
+  boots: "pies"
+};
+
+function normalizePartKey(key) {
+  if (!key) return null;
+  const k = String(key).trim().toLowerCase();
+  if (PART_LABELS[k]) return k;
+  if (/(cabeza|head|cr\u00e1neo|craneo|skull|mand\u00edbula|jaw)/.test(k)) return "head";
+  if (/(torso|chest|tronco|abdomen|cuerpo)/.test(k)) return "chest";
+  if (/(brazo|arm|ala|wing|garra|claw|man|hand|pu\u00f1o|punch|fist)/.test(k)) return "bracers";
+  if (/(pierna|leg|pata|hoof|cola|tail|muslo)/.test(k)) return "legs";
+  if (/(pie|foot|paw|tal\u00f3n|talon|pezu\u00f1a|pezu\u00f1)/.test(k)) return "boots";
+  return null;
+}
+
+function normalizeParts(parts) {
+  if (!parts) return [];
+  const arr = Array.isArray(parts) ? parts : [parts];
+  return Array.from(new Set(arr.map(normalizePartKey).filter(Boolean)));
+}
+
+function inferPartsFromDef(def) {
+  const explicit = normalizeParts(def.requiresParts || def.requiresPart || def.requiredParts);
+  if (explicit.length) return explicit;
+
+  const text = `${def.key ?? ""} ${def.label ?? ""}`.toLowerCase();
+  const assign = String(def.assign ?? "").toLowerCase();
+
+  if (/mord|bite|colm|fang|jaw|tromp|snout|pico|beak|aliento|breath|lengua|tongue/.test(text)) return ["head"];
+  if (/garr|claw|manot|hand|punch|fist|hammer|golpe/.test(text)) return ["bracers"];
+  if (/ala|wing/.test(text)) return ["bracers"];
+  if (/cola|tail|espinazo/.test(text)) return ["chest"];
+  if (/pata|kick|patada|hoof|leg|pezu\u00f1|talon/.test(text)) return ["legs"];
+  if (/espin|spike|p\u00faa|aguij|sting/.test(text)) return [assign === "off" ? "bracers" : "chest"];
+
+  if (assign === "off") return ["bracers"];
+  if (assign === "main") return ["bracers"];
+  return [];
+}
+
 function naturalQualityFromLevel(level = 1) {
   const lvl = Math.max(1, Number(level || 1));
   return Math.max(1, Math.ceil(lvl / 3));
@@ -18,6 +63,7 @@ export function buildNaturalWeaponRecord(def, { level = 1 } = {}) {
   if (!def) return null;
   const quality = naturalQualityFromLevel(level);
   const baseGrade = Number(def.grade ?? 1);
+  const requiresParts = inferPartsFromDef(def);
   return {
     key: def.key,
     label: def.label,
@@ -38,7 +84,8 @@ export function buildNaturalWeaponRecord(def, { level = 1 } = {}) {
     material: def.materialKey || def.material || null,
     quality,
     grade: Math.max(1, baseGrade),
-    source: def.species ?? null
+    source: def.species ?? null,
+    requiresParts
   };
 }
 

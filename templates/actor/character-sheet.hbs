@@ -100,10 +100,51 @@
         </div>
 
         {{!-- Placeholder de layout libre --}}
+      {{#if isGM}}
         <div class="t-card t-col">
-          <h3 style="margin:0 0 6px 0;">Extra</h3>
-          <div class="muted">Espacio para widgets futuros.</div>
+          <h3 style="margin:0 0 6px 0;">Rasgos del Monstruo</h3>
+          {{#if monsterTraits.length}}
+            <ul class="t-col" style="margin:0; padding-left:16px; gap:4px;">
+              {{#each monsterTraits}}
+                <li style="list-style:disc inside;">
+                  <strong>{{this.label}}</strong>
+                  {{#if this.note}}
+                    <span class="muted">— {{this.note}}</span>
+                  {{/if}}
+                </li>
+              {{/each}}
+            </ul>
+          {{else}}
+            <div class="muted">Sin rasgos registrados.</div>
+          {{/if}}
         </div>
+      {{/if}}
+
+      {{#if healthParts.length}}
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Partes Anatómicas</h3>
+          <table class="t-table">
+            <thead>
+              <tr>
+                <th>Parte</th>
+                <th>Durabilidad</th>
+                <th>Potencia</th>
+                <th>Material</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each healthParts}}
+                <tr class="{{#if this.disabled}}muted{{/if}}">
+                  <td>{{this.label}}</td>
+                  <td>{{this.value}} / {{this.max}}</td>
+                  <td>{{this.potency}}</td>
+                  <td>{{this.material}}</td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        </div>
+      {{/if}}
 
       </div> {{!-- /t-grid 3 --}}
 
@@ -126,21 +167,21 @@
               {{#if inventory.options.mainHand.length}}
                 <optgroup label="Mano principal">
                   {{#each inventory.options.mainHand}}
-                    <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                    <option value="{{this.id}}" {{#if this.selected}}selected{{/if}} {{#if this.disabled}}disabled title="{{this.disabledReason}}"{{else}}{{#if this.disabledReason}}title="{{this.disabledReason}}"{{/if}}{{/if}}>{{this.label}}</option>
                   {{/each}}
                 </optgroup>
               {{/if}}
               {{#if inventory.options.offHand.length}}
                 <optgroup label="Mano secundaria">
                   {{#each inventory.options.offHand}}
-                    <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                    <option value="{{this.id}}" {{#if this.selected}}selected{{/if}} {{#if this.disabled}}disabled title="{{this.disabledReason}}"{{else}}{{#if this.disabledReason}}title="{{this.disabledReason}}"{{/if}}{{/if}}>{{this.label}}</option>
                   {{/each}}
                 </optgroup>
               {{/if}}
               {{#if inventory.naturalAux.length}}
                 <optgroup label="Armas naturales">
                   {{#each inventory.naturalAux}}
-                    <option value="{{this.id}}">{{this.label}}</option>
+                    <option value="{{this.id}}" {{#if this.disabled}}disabled title="{{this.disabledReason}}"{{else}}{{#if this.disabledReason}}title="{{this.disabledReason}}"{{/if}}{{/if}}>{{this.label}}</option>
                   {{/each}}
                 </optgroup>
               {{/if}}
@@ -196,14 +237,14 @@
               {{#if inventory.options.offHand.length}}
                 <optgroup label="Mano secundaria">
                   {{#each inventory.options.offHand}}
-                    <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                    <option value="{{this.id}}" {{#if this.selected}}selected{{/if}} {{#if this.disabled}}disabled title="{{this.disabledReason}}"{{else}}{{#if this.disabledReason}}title="{{this.disabledReason}}"{{/if}}{{/if}}>{{this.label}}</option>
                   {{/each}}
                 </optgroup>
               {{/if}}
               {{#if inventory.naturalAux.length}}
                 <optgroup label="Armas naturales">
                   {{#each inventory.naturalAux}}
-                    <option value="{{this.id}}">{{this.label}}</option>
+                    <option value="{{this.id}}" {{#if this.disabled}}disabled title="{{this.disabledReason}}"{{else}}{{#if this.disabledReason}}title="{{this.disabledReason}}"{{/if}}{{/if}}>{{this.label}}</option>
                   {{/each}}
                 </optgroup>
               {{/if}}

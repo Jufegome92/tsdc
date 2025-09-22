@@ -61,7 +61,8 @@ function makeNaturalItem(actor, record) {
     quality: Number(record.quality ?? 1),
     grade: Number(record.grade ?? Math.max(1, rank || 1)),
     rank: Number.isFinite(rank) ? rank : 1,
-    level: Number.isFinite(level) ? level : 1
+    level: Number.isFinite(level) ? level : 1,
+    requiresParts: Array.isArray(record.requiresParts) ? [...record.requiresParts] : []
   };
 }
 
@@ -71,6 +72,50 @@ function assignMatchesSlot(assign, slot) {
   if (normalized === "off") return slot === "offHand";
   if (normalized === "main") return slot === "mainHand";
   return slot === "mainHand";
+}
+
+const PART_LABELS = {
+  head: "cabeza",
+  chest: "torso",
+  bracers: "brazos",
+  legs: "piernas",
+  boots: "pies"
+};
+
+export function bodyPartLabel(part) {
+  return PART_LABELS[part] || part;
+}
+
+function isBodyPartBroken(actor, partKey) {
+  if (!partKey) return false;
+  const value = Number(gp(actor, `system.health.parts.${partKey}.value`, null));
+  if (!Number.isFinite(value)) return false;
+  return value <= 0;
+}
+
+export function arePartsFunctional(actor, parts) {
+  if (!parts) return true;
+  const list = Array.isArray(parts) ? parts : [parts];
+  if (!list.length) return true;
+  return !list.some(part => isBodyPartBroken(actor, part));
+}
+
+export function describePartsStatus(actor, parts) {
+  if (!parts) return "";
+  const list = Array.isArray(parts) ? parts : [parts];
+  const impaired = list.filter(part => isBodyPartBroken(actor, part)).map(bodyPartLabel);
+  if (!impaired.length) return "";
+  return `Partes lesionadas: ${impaired.join(", ")}`;
+}
+
+function isNaturalWeaponDisabled(actor, record) {
+  if (!record || !Array.isArray(record.requiresParts) || !record.requiresParts.length) return false;
+  return !arePartsFunctional(actor, record.requiresParts);
+}
+
+function describeNaturalDisable(actor, record) {
+  if (!record || !Array.isArray(record.requiresParts)) return "";
+  return describePartsStatus(actor, record.requiresParts);
 }
 
 /** Genera un id simple para items del bag */
@@ -167,6 +212,10 @@ export async function equip(actor, slot, itemId) {
       ui.notifications?.warn("Esa arma natural no es compatible con la mano seleccionada.");
       return null;
     }
+    if (isNaturalWeaponDisabled(actor, record)) {
+      ui.notifications?.warn("Esa arma natural no puede usarse porque la parte está inutilizada.");
+      return null;
+    }
     eq[slot] = itemId;
     await actor.update({ "system.inventory.equipped": eq });
     return { slot, id: itemId };
@@ -224,12 +273,17 @@ export function getEquippedWeaponKey(actor, which="main") {
 export function listForSlot(actor, slot) {
   const out = [];
   for (const it of getBag(actor)) {
-    if (isCompatibleForSlot(it, slot)) out.push(it);
+    if (isCompatibleForSlot(it, slot)) {
+      out.push({ ...it, disabled: false, disabledReason: "" });
+    }
   }
   if (slot === "mainHand" || slot === "offHand") {
     for (const rec of getNaturalRecords(actor)) {
       const natItem = makeNaturalItem(actor, rec);
       if (!natItem || !isCompatibleForSlot(natItem, slot)) continue;
+      const disabled = isNaturalWeaponDisabled(actor, rec);
+      natItem.disabled = disabled;
+      natItem.disabledReason = disabled ? describeNaturalDisable(actor, rec) : "";
       out.push(natItem);
     }
   }
@@ -268,6 +322,8 @@ export function getNaturalWeaponItem(actor, key) {
   return makeNaturalItem(actor, naturalRecordByKey(actor, key));
 }
 
+export { isNaturalWeaponDisabled, describeNaturalDisable };
+
 export function resolveWeaponSelection(actor, id, slot = null) {
   if (!id) return null;
   if (isNaturalId(id)) {
@@ -278,12 +334,14 @@ export function resolveWeaponSelection(actor, id, slot = null) {
     if (!item) return null;
     const effectiveSlot = slot ?? (item.occupiesSlot === false ? "aux" : "mainHand");
     if (effectiveSlot !== "aux" && !isCompatibleForSlot(item, effectiveSlot)) return null;
-    return { source: "natural", key: item.key, item, record, slot: effectiveSlot };
+    const disabled = isNaturalWeaponDisabled(actor, record);
+    const disabledReason = disabled ? describeNaturalDisable(actor, record) : "";
+    return { source: "natural", key: item.key, item, record, slot: effectiveSlot, disabled, disabledReason };
   }
   const bagItem = getItemById(actor, id);
   if (!bagItem) return null;
   if (slot && (slot === "mainHand" || slot === "offHand") && !isCompatibleForSlot(bagItem, slot)) return null;
-  return { source: "inventory", key: bagItem.key ?? null, item: bagItem, record: null, slot: slot ?? null };
+  return { source: "inventory", key: bagItem.key ?? null, item: bagItem, record: null, slot: slot ?? null, disabled: false, disabledReason: "" };
 }
 
 export function resolveWeaponByKey(actor, key) {
@@ -291,10 +349,12 @@ export function resolveWeaponByKey(actor, key) {
   const record = naturalRecordByKey(actor, key);
   if (record) {
     const item = makeNaturalItem(actor, record);
-    return { source: "natural", key: item.key, item, record };
+    const disabled = isNaturalWeaponDisabled(actor, record);
+    const disabledReason = disabled ? describeNaturalDisable(actor, record) : "";
+    return { source: "natural", key: item.key, item, record, disabled, disabledReason };
   }
   const bagItem = getBag(actor).find(it => String(it.key ?? "").toLowerCase() === String(key).toLowerCase());
-  if (bagItem) return { source: "inventory", key: bagItem.key ?? key, item: bagItem, record: null };
+  if (bagItem) return { source: "inventory", key: bagItem.key ?? key, item: bagItem, record: null, disabled: false, disabledReason: "" };
   return null;
 }
 

@@ -9,7 +9,7 @@ import { validateMovePath } from "../rolls/validators.js";
 import { tryReactOpportunity, openReactionWindow,performOpportunityAttack } from "./reactions.js";
 import { promptOpportunityDialog } from "./rx-dialog.js";
 import { triggerFumbleReactions } from "../atb/reactions.js";
-import { getEquippedWeaponKey } from "../features/inventory/index.js";
+import { getEquippedWeaponKey, resolveWeaponByKey, isNaturalWeaponDisabled, describeNaturalDisable } from "../features/inventory/index.js";
 import { weaponRangeM } from "../combat/range.js";
 import { validateAttackRangeAndVision } from "../rolls/validators.js";
 import { shouldPromptHere } from "./rx-dialog.js";
@@ -331,7 +331,14 @@ export const AttackAction = makeDef({
       return ui.notifications?.warn("Cobertura total: el objetivo es inalcanzable desde aquí.");
     }
 
-    const atkRes = await rollAttack(actor, { flavor: "ATB • Ataque", mode: "ask", context: ctx, opposed: true });
+    const weaponInfo = wKey ? resolveWeaponByKey(actor, wKey) : null;
+    if (weaponInfo?.source === "natural" && isNaturalWeaponDisabled(actor, weaponInfo.record)) {
+      const reason = weaponInfo.disabledReason || describeNaturalDisable(actor, weaponInfo.record) || "Parte dañada";
+      ui.notifications?.warn(`No puedes usar ${weaponInfo.record?.label ?? "esa arma"}: ${reason}.`);
+      return;
+    }
+
+    const atkRes = await rollAttack(actor, { key: wKey ?? undefined, flavor: "ATB • Ataque", mode: "ask", context: ctx, opposed: true });
 
     await runDefenseFlow({
       attackerActor: actor,

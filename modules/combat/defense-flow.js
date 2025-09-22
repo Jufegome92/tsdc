@@ -7,6 +7,8 @@ import { weaponRangeM } from "../combat/range.js";
 import { validateAttackRangeAndVision } from "../rolls/validators.js";
 
 import { rollAttack, rollDefense, rollImpact } from "../rolls/dispatcher.js";
+import { addAilment } from "../ailments/index.js";
+import { isNaturalWeaponDisabled } from "../features/inventory/index.js";
 import { addProgress } from "../progression.js";
 import { computeBlockingAt } from "../features/armors/index.js";
 import { buildImpactFormula } from "../rolls/formulas.js";
@@ -79,16 +81,19 @@ async function resolveWeaponContext({ actor, preferredKey = null }) {
       key: preferredLow || sys.catalogKey || sys.key || item.name || item.id,
       catalogKey: normalizeCatalogKey(sys.catalogKey || sys.key || item.name || preferredLow),
       item,
-      natural: null
+      natural: null,
+      disabled: false
     };
   }
 
   if (natural) {
+    const disabled = isNaturalWeaponDisabled(actor, natural);
     return {
       key: natural.key || natural.id || natural.weaponKey || preferredKey,
       catalogKey: normalizeCatalogKey(natural.catalogKey || natural.weaponKey),
       item: null,
-      natural
+      natural,
+      disabled
     };
   }
 
@@ -96,8 +101,70 @@ async function resolveWeaponContext({ actor, preferredKey = null }) {
     key: preferredKey,
     catalogKey: normalizeCatalogKey(preferredKey),
     item: null,
-    natural: null
+    natural: null,
+    disabled: false
   };
+}
+
+function inferDamageCategory(weapon, attackCtx) {
+  const tags = new Set();
+  const traits = weapon?.traits ?? weapon?.system?.traits ?? [];
+  for (const t of Array.isArray(traits) ? traits : []) {
+    tags.add(String(t).toLowerCase());
+  }
+  const extraTags = attackCtx?.extraTags ?? [];
+  for (const t of extraTags) tags.add(String(t).toLowerCase());
+
+  const element = weapon?.element || attackCtx?.element || extraTags.find(t => t.startsWith("element:"))?.split(":")[1];
+  if (element) {
+    const el = String(element).toLowerCase();
+    if (["fire","fuego"].includes(el)) return "fire";
+    if (["wind","air","viento"].includes(el)) return "air";
+    if (["earth","tierra"].includes(el)) return "earth";
+    if (["water","agua","ice","hielo"].includes(el)) return "water";
+    if (["light","luz"].includes(el)) return "light";
+    if (["dark","oscuridad"].includes(el)) return "dark";
+  }
+
+  if ([...tags].some(t => t.includes("perfor"))) return "pierce";
+  if ([...tags].some(t => t.includes("cort") || t.includes("slash"))) return "slash";
+  if ([...tags].some(t => t.includes("contund") || t.includes("impact"))) return "blunt";
+
+  return null;
+}
+
+function ailmentsForDamage(category) {
+  switch (category) {
+    case "slash":
+      return ["DESANGRADO"];
+    case "pierce":
+      return ["INFECCION_TRAUMATICA", "DESANGRADO"];
+    case "blunt":
+      return ["FRACTURADO"];
+    case "fire":
+      return ["QUEMADURA_TAUMATICA_FUEGO"];
+    case "air":
+      return ["LACERACION_DE_PRESION_VIENTO"];
+    case "earth":
+      return ["APLASTAMIENTO_TAUMATICO_TIERRA"];
+    case "water":
+      return ["CONGELACION_TAUMATICA_AGUA"];
+    case "light":
+      return ["SOBRECARGA_NERVIOSA_LUZ"];
+    case "dark":
+      return ["DEVORACION_SENSORIAL_OSCURIDAD"];
+    default:
+      return [];
+  }
+}
+
+function computeWoundSeverity(impact, block) {
+  if (impact <= 0) return null;
+  const ratio = block <= 0 ? Infinity : impact / Math.max(1, block);
+  if (ratio >= 3) return "critico";
+  if (ratio >= 2) return "grave";
+  if (ratio >= 1) return "leve";
+  return null;
 }
 
 function buildWeaponItemForImpact({ actor, weaponCtx, atkKey }) {
@@ -115,6 +182,7 @@ function buildWeaponItemForImpact({ actor, weaponCtx, atkKey }) {
   }
 
   if (weaponCtx.natural) {
+    if (isNaturalWeaponDisabled(actor, weaponCtx.natural)) return null;
     const record = weaponCtx.natural;
     const level = Number(foundry.utils.getProperty(actor, `system.progression.weapons.${atkKey}.level`) || actor.system?.level || 1);
     const rank = Number(foundry.utils.getProperty(actor, `system.progression.weapons.${atkKey}.rank`) || 0);
@@ -345,16 +413,49 @@ export async function runDefenseFlow({
  }
 
   // 5) Impacto vs Bloqueo
-  const { impact, block } = await resolveImpactVsBlock({
+  const { impact, block, weapon, weaponCtx } = await resolveImpactVsBlock({
     attackerActor, attackerToken, targetToken,
     attackCtx, attackResult, hitLocation
   });
 
   const net = Math.max(0, Number(impact||0) - Number(block||0));
+  const isCreatureVsCharacter = attackerActor?.type === "creature" && targetToken?.actor?.type === "character";
   const locNice = ({
     head: "cabeza", chest: "torso", bracers: "brazos",
     legs: "piernas", boots: "pies"
   })[hitLocation] || hitLocation;
+
+  if (isCreatureVsCharacter) {
+    const severity = computeWoundSeverity(Number(impact||0), Number(block||0));
+    const ratioText = `Impacto ${impact} vs Bloqueo ${block}`;
+    if (!severity) {
+      await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>${ratioText}</b> → sin herida.`, attackerActor);
+      return;
+    }
+    const damageCategory = inferDamageCategory(weapon, attackCtx || {});
+    const ailmentIds = ailmentsForDamage(damageCategory);
+    const categoryLabelMap = {
+      slash: "cortante",
+      pierce: "perforante",
+      blunt: "contundente",
+      fire: "fuego",
+      air: "viento",
+      earth: "tierra",
+      water: "agua",
+      light: "luz",
+      dark: "oscuridad"
+    };
+    const catLabel = damageCategory ? (categoryLabelMap[damageCategory] || damageCategory) : null;
+    if (ailmentIds.length) {
+      for (const id of ailmentIds) {
+        await addAilment(targetToken.actor, id, { severity });
+      }
+      await CHAT(`💥 ${attackerActor.name} causa una <b>herida ${severity}</b>${catLabel ? ` (${catLabel})` : ""} a ${targetToken.name} (${ratioText}).`, attackerActor);
+    } else {
+      await CHAT(`💥 ${attackerActor.name} causa una <b>herida ${severity}</b> a ${targetToken.name} (${ratioText}).`, attackerActor);
+    }
+    return;
+  }
 
   if (net <= 0) {
     await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Sin daño</b>.`, attackerActor);
@@ -455,15 +556,22 @@ async function resolveImpactVsBlock({ attackerActor, attackerToken, targetToken,
   }
 
   // Intentar fórmula “real” a partir de meta
+  let weaponItemPayload = null;
+  let weaponCtx = null;
   if (impact == null) {
     const meta = attackResult?.evo?.meta || {};
     const isManeuver = !!meta.isManeuver;
     const preferredKey = isManeuver ? (meta.weaponKey || null) : (meta.key || null);
-    const weaponCtx = await resolveWeaponContext({ actor: attackerActor, preferredKey });
+    weaponCtx = await resolveWeaponContext({ actor: attackerActor, preferredKey });
     const progressionKeyRaw = preferredKey || weaponCtx.key || weaponCtx.catalogKey || "";
     const progressionKey = progressionKeyRaw ? String(progressionKeyRaw).toLowerCase() : null;
-    let weaponItemPayload = buildWeaponItemForImpact({ actor: attackerActor, weaponCtx, atkKey: progressionKey });
+    weaponItemPayload = buildWeaponItemForImpact({ actor: attackerActor, weaponCtx, atkKey: progressionKey });
     let rollKey = progressionKey || weaponCtx.catalogKey || weaponCtx.key;
+
+    if (weaponCtx.disabled) {
+      weaponItemPayload = null;
+      rollKey = null;
+    }
 
     try {
       // Si por alguna razón no vino key, intenta arma equipada
@@ -498,6 +606,7 @@ async function resolveImpactVsBlock({ attackerActor, attackerToken, targetToken,
         impactMsg?.roll?.total ??
         null;
       if (impactRaw != null) impact = Number(impactRaw);
+      weaponCtx.weaponItemPayload = weaponItemPayload;
     } catch (e) {
       console.warn("TSDC | build/roll impact error, using estimateImpact fallback:", e);
     }
@@ -524,7 +633,14 @@ async function resolveImpactVsBlock({ attackerActor, attackerToken, targetToken,
     block = await estimateBlock({ defender: targetToken.actor, defenderToken: targetToken, hitLocation, attackResult });
   }
 
-  return { impact, block };
+  const weaponMeta = (() => {
+    if (typeof weaponItemPayload !== "undefined" && weaponItemPayload) return weaponItemPayload;
+    if (weaponCtx?.natural) return weaponCtx.natural;
+    if (weaponCtx?.item) return weaponCtx.item;
+    return null;
+  })();
+
+  return { impact, block, weapon: weaponMeta, weaponCtx };
 }
 
 async function estimateImpact({ attackerActor, attackerToken, targetToken, attackCtx, attackResult, hitLocation }) {
@@ -598,7 +714,7 @@ function zoneHealthPath(actor, hitLocation) {
   if (actor?.system?.health?.parts) {
     if (s.includes("head") || s.includes("cabeza"))   return "health.parts.head.value";
     if (s.includes("arm")  || s.includes("brazo")
-      || s.includes("bracer") || s.includes("bracers")) return "health.parts.arms.value";
+      || s.includes("bracer") || s.includes("bracers")) return "health.parts.bracers.value";
     if (s.includes("leg")  || s.includes("pierna")
       || s.includes("boot") || s.includes("boots")
       || s.includes("pie")  || s.includes("pies"))      return "health.parts.legs.value";

@@ -2,6 +2,8 @@
 import { getBlueprintByKey } from "./loader.js";
 import { normalizeAttributes } from "../features/attributes/index.js";
 import { levelToRank } from "../progression.js";
+import { materialDurability, materialPotency } from "../features/materials/index.js";
+import { getMonsterAbility } from "../features/abilities/data.js";
 
 const RESISTANCE_KEYS = [
   "poison", "infection", "affliction", "curse", "alteration",
@@ -17,12 +19,80 @@ function defaultQualityFromLevel(level) {
   return Math.max(1, Math.ceil(lvl / 3));
 }
 
+function normalizeParts(parts) {
+  if (!parts) return [];
+  const arr = Array.isArray(parts) ? parts : [parts];
+  return Array.from(new Set(arr.map(p => String(p || "").trim().toLowerCase()).filter(Boolean)));
+}
+
+function inferPartsFromAttack(atk) {
+  const text = `${atk?.weaponKey ?? ""} ${atk?.label ?? ""}`.toLowerCase();
+  if (/mord|bite|colm|fang|jaw|pico|beak|aliento|breath|tromp/.test(text)) return ["head"];
+  if (/garr|claw|manot|hand|punch|fist/.test(text)) return ["bracers"];
+  if (/ala|wing/.test(text)) return ["bracers"];
+  if (/cola|tail/.test(text)) return ["chest"];
+  if (/pata|kick|patada|hoof|leg|pezu\u00f1|talon/.test(text)) return ["legs"];
+  if (/espin|spike|p\u00faa|aguij|sting/.test(text)) return ["chest"];
+  return [];
+}
+
+function inferPartsFromAbility(ability) {
+  const text = `${ability?.label ?? ability?.itemKey ?? ""}`.toLowerCase();
+  if (/aliento|grito|rug|aull|canto|voz|mord|bite|colm/.test(text)) return ["head"];
+  if (/golpe|pu\u00f1|garra|brazo|cola/.test(text)) return ["bracers"];
+  if (/salto|patada|pata/.test(text)) return ["legs"];
+  return [];
+}
+
+function safeMaterialDurability(materialKey, quality, fallback = 10) {
+  try {
+    const val = materialDurability(materialKey, quality);
+    return Number.isFinite(val) && val > 0 ? Number(val) : fallback;
+  } catch (err) {
+    console.warn("TSDC | materialDurability fallback", materialKey, quality, err);
+    return fallback;
+  }
+}
+
+function safeMaterialPotency(materialKey, quality, fallback = 0) {
+  try {
+    const val = materialPotency(materialKey, quality);
+    return Number.isFinite(val) ? Number(val) : fallback;
+  } catch (err) {
+    console.warn("TSDC | materialPotency fallback", materialKey, quality, err);
+    return fallback;
+  }
+}
+
+export function buildHealthPartsFromAnatomy(anatomy = {}, { level = 1 } = {}) {
+  const result = {};
+  const parts = Object.entries(anatomy);
+  const qualityFallback = defaultQualityFromLevel(level);
+  for (const [key, node] of parts) {
+    const materialKey = node?.materialKey ?? node?.material ?? null;
+    const quality = Number(node?.quality ?? qualityFallback);
+    const durability = safeMaterialDurability(materialKey, quality, 12);
+    const potency = safeMaterialPotency(materialKey, quality, 0);
+    result[key] = {
+      label: key,
+      material: materialKey,
+      category: node?.category ?? null,
+      quality,
+      max: durability,
+      value: durability,
+      potency
+    };
+  }
+  return result;
+}
+
 function buildNaturalWeaponRecords(blueprint, actorPatchLevel) {
   const level = toNumber(blueprint?.level, actorPatchLevel ?? 1);
   const qualityFallback = defaultQualityFromLevel(level);
 
   return (blueprint?.attacks ?? []).map((atk, idx) => {
     const key = String(atk.weaponKey || atk.key || `attack_${idx}`).toLowerCase();
+    const inferredParts = inferPartsFromAttack(atk);
     const record = {
       id: key,
       key,
@@ -33,8 +103,11 @@ function buildNaturalWeaponRecords(blueprint, actorPatchLevel) {
       traits: Array.isArray(atk.traits) ? [...new Set(atk.traits)] : [],
       material: atk.materialKey || atk.material || (atk.weaponKey ?? null),
       quality: toNumber(atk.quality, qualityFallback),
-      family: atk.family || atk.weaponFamily || null
+      family: atk.family || atk.weaponFamily || null,
+      requiresParts: normalizeParts(atk.requiresParts || atk.requiresPart || atk.requires) || []
     };
+
+    if (!record.requiresParts.length && inferredParts.length) record.requiresParts = inferredParts;
 
     if (atk.powerPerRank != null) record.powerPerRank = Number(atk.powerPerRank);
     if (atk.durabilityPerRank != null) record.durabilityPerRank = Number(atk.durabilityPerRank);
@@ -215,11 +288,14 @@ export async function applyMonsterBlueprint(actor, blueprintOrKey, options = {})
   const attr = normalizeAttributes(blueprint.attributes || {});
   const tags = Array.isArray(blueprint.tags) ? [...blueprint.tags] : [];
   const naturalWeapons = buildNaturalWeaponRecords(blueprint, toNumber(blueprint.level, actor.system?.level ?? 1));
+  const anatomy = deepClone(blueprint.anatomy || {});
+  const level = toNumber(blueprint.level, actor.system?.level ?? 1);
+  const healthParts = buildHealthPartsFromAnatomy(anatomy, { level });
 
   const patch = {
-    "system.level": toNumber(blueprint.level, actor.system?.level ?? 1),
+    "system.level": level,
     "system.attributes": attr,
-    "system.anatomy": deepClone(blueprint.anatomy || {}),
+    "system.anatomy": anatomy,
     "system.loot": deepClone(blueprint.loot || {}),
     "system.creature": {
       key: blueprint.key,
@@ -259,11 +335,44 @@ export async function applyMonsterBlueprint(actor, blueprintOrKey, options = {})
     patch.name = blueprint.label || blueprint.key || actor.name;
   }
 
-  if (blueprint.abilities) {
-    patch["system.abilities"] = deepClone(blueprint.abilities);
+  if (Array.isArray(blueprint.abilities)) {
+    const abilities = blueprint.abilities.map(entry => {
+      const key = entry.itemKey || entry.key;
+      const def = deepClone(getMonsterAbility(key) || {});
+      const merged = {
+        ...def,
+        ...entry,
+        key,
+        itemKey: key,
+        label: entry.label || def.label || key,
+        enabled: entry.enabled !== false,
+        requiresParts: normalizeParts(entry.requiresParts || def.requiresParts || inferPartsFromAbility(def || entry))
+      };
+      return merged;
+    });
+    patch["system.abilities"] = abilities;
   }
   if (blueprint.ailments) {
     patch["system.ailments"] = deepClone(blueprint.ailments);
+  }
+
+  if (Object.keys(healthParts).length) {
+    const existingParts = actor.system?.health?.parts ?? {};
+    const merged = {};
+    const keys = new Set([...Object.keys(healthParts), ...Object.keys(existingParts)]);
+    for (const key of keys) {
+      const base = healthParts[key] ?? {};
+      const current = existingParts[key] ?? {};
+      const max = Number(base.max ?? current.max ?? base.value ?? current.value ?? 0);
+      const value = current.value != null ? Math.min(Number(current.value), max || Number(current.value)) : (base.value ?? max);
+      merged[key] = {
+        ...base,
+        ...current,
+        max,
+        value: Number.isFinite(value) ? value : max
+      };
+    }
+    patch["system.health.parts"] = merged;
   }
 
   Object.assign(patch, buildProgressionPatch(blueprint));
