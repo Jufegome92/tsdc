@@ -316,3 +316,10 @@ body.system-tsdc .dialog .dialog-buttons {
 
 #tsdc-vision-panel .tabs-content .tab { display:none !important; }
 #tsdc-vision-panel .tabs-content .tab.active { display:flex !important; }
+
+.tsdc.wizard .t-col { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+.tsdc.wizard .muted { color: var(--color-text-light-5); font-size: 12px; }
+.tsdc.wizard .t-grid { display:grid; gap:6px; }
+.tsdc.wizard .t-cols-2 { grid-template-columns: 1fr 1fr; }
+.tsdc .t-fieldset { border:1px solid var(--color-border); padding:8px; border-radius:6px; margin-bottom:10px; }
+.tsdc .t-fieldset legend { padding: 0 6px; opacity:.8; }

@@ -3,8 +3,75 @@
 
 import { getWeapon } from "../weapons/index.js";
 
+const NAT_PREFIX = "natural:";
+
 /** Acceso seguro a rutas */
 function gp(o, path, d=null) { return foundry.utils.getProperty(o, path) ?? d; }
+
+function getNaturalRecords(actor) {
+  const arr = actor?.getFlag?.("tsdc", "naturalWeapons");
+  return Array.isArray(arr) ? arr : [];
+}
+
+function naturalId(key) {
+  return `${NAT_PREFIX}${String(key ?? "")}`;
+}
+
+function isNaturalId(id) {
+  return typeof id === "string" && id.startsWith(NAT_PREFIX);
+}
+
+function parseNaturalId(id) {
+  return isNaturalId(id) ? id.slice(NAT_PREFIX.length) : null;
+}
+
+function naturalRecordByKey(actor, key) {
+  if (!key) return null;
+  const low = String(key).toLowerCase();
+  return getNaturalRecords(actor).find(rec => String(rec.key ?? "").toLowerCase() === low) ?? null;
+}
+
+function makeNaturalItem(actor, record) {
+  if (!record) return null;
+  const key = record.key;
+  const id = naturalId(key);
+  const rankPath = `system.progression.weapons.${key}.rank`;
+  const levelPath = `system.progression.weapons.${key}.level`;
+  const rank = Number(gp(actor, rankPath, 1));
+  const level = Number(gp(actor, levelPath, 1));
+  return {
+    id,
+    type: "natural",
+    key,
+    label: record.label ?? key,
+    assign: record.assign ?? "main",
+    allowsConcurrent: !!record.allowsConcurrent,
+    occupiesSlot: record.occupiesSlot !== false,
+    damageDie: record.damageDie ?? "d6",
+    attackAttr: record.attackAttr ?? "agility",
+    impactAttr: record.impactAttr ?? record.attackAttr ?? "agility",
+    reachMeters: record.reachMeters ?? null,
+    reachSpecial: record.reachSpecial ?? null,
+    tags: Array.isArray(record.tags) ? [...record.tags] : [],
+    effectId: record.effectId ?? null,
+    noAttack: !!record.noAttack,
+    powerPerRank: record.powerPerRank ?? null,
+    durabilityPerRank: record.durabilityPerRank ?? null,
+    material: record.material ?? null,
+    quality: Number(record.quality ?? 1),
+    grade: Number(record.grade ?? Math.max(1, rank || 1)),
+    rank: Number.isFinite(rank) ? rank : 1,
+    level: Number.isFinite(level) ? level : 1
+  };
+}
+
+function assignMatchesSlot(assign, slot) {
+  const normalized = String(assign || "main").toLowerCase();
+  if (normalized === "either") return slot === "mainHand" || slot === "offHand";
+  if (normalized === "off") return slot === "offHand";
+  if (normalized === "main") return slot === "mainHand";
+  return slot === "mainHand";
+}
 
 /** Genera un id simple para items del bag */
 function genId() {
@@ -53,6 +120,10 @@ function isCompatibleForSlot(item, slot) {
   switch (slot) {
     case "mainHand":
     case "offHand":
+      if (item.type === "natural") {
+        if (item.occupiesSlot === false) return false;
+        return assignMatchesSlot(item.assign, slot);
+      }
       return item.type === "weapon";
     case "shield":
       return item.type === "shield";
@@ -76,8 +147,6 @@ function isCompatibleForSlot(item, slot) {
 
 /** Equipa itemId en slot; valida compatibilidad */
 export async function equip(actor, slot, itemId) {
-  const idx = bagIndex(actor);
-  const item = idx.get(itemId) ?? null;
   const eq = getEquipped(actor);
 
   if (itemId === null) {
@@ -85,6 +154,26 @@ export async function equip(actor, slot, itemId) {
     await actor.update({ "system.inventory.equipped": eq });
     return { slot, id: null };
   }
+
+  if (isNaturalId(itemId)) {
+    const key = parseNaturalId(itemId);
+    const record = naturalRecordByKey(actor, key);
+    if (!record) {
+      ui.notifications?.warn("No se reconoce el arma natural seleccionada.");
+      return null;
+    }
+    const natItem = makeNaturalItem(actor, record);
+    if (!isCompatibleForSlot(natItem, slot)) {
+      ui.notifications?.warn("Esa arma natural no es compatible con la mano seleccionada.");
+      return null;
+    }
+    eq[slot] = itemId;
+    await actor.update({ "system.inventory.equipped": eq });
+    return { slot, id: itemId };
+  }
+
+  const idx = bagIndex(actor);
+  const item = idx.get(itemId) ?? null;
 
   if (!item) {
     ui.notifications?.warn("No existe el item en la mochila.");
@@ -115,6 +204,10 @@ export function getEquippedItem(actor, slot) {
   const eq = getEquipped(actor);
   const id = eq[slot] ?? null;
   if (!id) return null;
+  if (isNaturalId(id)) {
+    const record = naturalRecordByKey(actor, parseNaturalId(id));
+    return makeNaturalItem(actor, record);
+  }
   return bagIndex(actor).get(id) ?? null;
 }
 
@@ -122,14 +215,25 @@ export function getEquippedItem(actor, slot) {
 export function getEquippedWeaponKey(actor, which="main") {
   const slot = which === "off" ? "offHand" : "mainHand";
   const it = getEquippedItem(actor, slot);
-  if (!it || it.type !== "weapon") return null;
-  return it.key ?? null;
+  if (!it) return null;
+  if (it.type === "natural" || it.type === "weapon") return it.key ?? null;
+  return null;
 }
 
 /** Helpers de listado para la UI */
 export function listForSlot(actor, slot) {
-  const bag = getBag(actor);
-  return bag.filter(it => isCompatibleForSlot(it, slot));
+  const out = [];
+  for (const it of getBag(actor)) {
+    if (isCompatibleForSlot(it, slot)) out.push(it);
+  }
+  if (slot === "mainHand" || slot === "offHand") {
+    for (const rec of getNaturalRecords(actor)) {
+      const natItem = makeNaturalItem(actor, rec);
+      if (!natItem || !isCompatibleForSlot(natItem, slot)) continue;
+      out.push(natItem);
+    }
+  }
+  return out;
 }
 
 export function listWeaponsInBag(actor) {
@@ -140,6 +244,7 @@ export function listWeaponsInBag(actor) {
 export function itemLabel(it) {
   if (!it) return "";
   if (it.name) return it.name;
+  if (it.type === "natural") return `${it.label ?? it.key ?? "Arma natural"} (Natural)`;
   if (it.type === "weapon" && it.key) {
     return getWeapon(it.key)?.label ?? it.key;
   }
@@ -149,4 +254,58 @@ export function itemLabel(it) {
 export function getItemById(actor, id) {
   const bag = actor.system?.inventory?.bag ?? [];
   return bag.find(it => it.id === id) ?? null;
+}
+
+export function getNaturalWeapons(actor) {
+  return getNaturalRecords(actor);
+}
+
+export function getNaturalWeaponRecord(actor, key) {
+  return naturalRecordByKey(actor, key);
+}
+
+export function getNaturalWeaponItem(actor, key) {
+  return makeNaturalItem(actor, naturalRecordByKey(actor, key));
+}
+
+export function resolveWeaponSelection(actor, id, slot = null) {
+  if (!id) return null;
+  if (isNaturalId(id)) {
+    const key = parseNaturalId(id);
+    const record = naturalRecordByKey(actor, key);
+    if (!record) return null;
+    const item = makeNaturalItem(actor, record);
+    if (!item) return null;
+    const effectiveSlot = slot ?? (item.occupiesSlot === false ? "aux" : "mainHand");
+    if (effectiveSlot !== "aux" && !isCompatibleForSlot(item, effectiveSlot)) return null;
+    return { source: "natural", key: item.key, item, record, slot: effectiveSlot };
+  }
+  const bagItem = getItemById(actor, id);
+  if (!bagItem) return null;
+  if (slot && (slot === "mainHand" || slot === "offHand") && !isCompatibleForSlot(bagItem, slot)) return null;
+  return { source: "inventory", key: bagItem.key ?? null, item: bagItem, record: null, slot: slot ?? null };
+}
+
+export function resolveWeaponByKey(actor, key) {
+  if (!key) return null;
+  const record = naturalRecordByKey(actor, key);
+  if (record) {
+    const item = makeNaturalItem(actor, record);
+    return { source: "natural", key: item.key, item, record };
+  }
+  const bagItem = getBag(actor).find(it => String(it.key ?? "").toLowerCase() === String(key).toLowerCase());
+  if (bagItem) return { source: "inventory", key: bagItem.key ?? key, item: bagItem, record: null };
+  return null;
+}
+
+export function getEquippedWeaponChoice(actor, which = "main") {
+  const slot = which === "off" ? "offHand" : "mainHand";
+  const eq = getEquipped(actor);
+  const id = eq[slot] ?? null;
+  if (!id) return null;
+  return resolveWeaponSelection(actor, id, slot);
+}
+
+export function isNaturalSelection(id) {
+  return isNaturalId(id);
 }

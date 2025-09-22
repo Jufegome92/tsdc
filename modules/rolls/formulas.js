@@ -38,17 +38,9 @@ export function buildAttackFormula(actor, { isManeuver=false, key, attrKey, bonu
  * (rango de competencia con el arma x dado del arma) + (atributo * grado del arma + bonificador)
  * p.ej. rango=2; arma d6 grado 2; agilidad 3 => 2d6 + (3*2) + bonus = 2d6 + 6 + bonus
  */
-export async function buildImpactFormula(actor, { key, die=null, grade=null, attrKey=null, bonus=0 } = {}) {
+export function buildImpactFormula(actor, { key, die=null, grade=null, attrKey=null, bonus=0 } = {}) {
   // 1) Definición de arma desde catálogo (clave en minúsculas)
-  let def = key ? getWeaponDef(String(key).toLowerCase()) : null;
-  // Si no es arma conocida, intenta “katana” equipada cuando te llegue en el future
-  if (!def) {
-    try {
-      const { getEquippedWeaponKey } = await import("../features/inventory/index.js");
-      const ek = getEquippedWeaponKey(actor, "main");
-      def = ek ? getWeaponDef(String(ek).toLowerCase()) : null;
-    } catch(_) {}
-  }
+  const def = key ? getWeaponDef(String(key).toLowerCase()) : null;
 
   // 2) Atributo a usar: parámetro → arma.attackAttr → "agility"
   const usedAttrKey = String(attrKey || def?.attackAttr || "agility");

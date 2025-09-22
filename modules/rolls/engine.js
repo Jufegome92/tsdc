@@ -22,7 +22,8 @@ const ORIGINS = /** @type {const} */ ([
   "object",          // objeto/artefacto/consumible
   "specialization",  // especialización / habilidad de especialización
   "equipment",       // pieza de equipo (armas/armaduras)
-  "shield"           // excepción: escudo suma aparte del equipment
+  "shield",          // excepción: escudo suma aparte del equipment
+  "state"
 ]);
 
 function bucketFor(mod) {
@@ -105,16 +106,30 @@ function aggregateModifiers(ctx, extraCandidates = []) {
     const chosen = pickWinnerByMagnitude(list);
     const dropped = list.filter(x => x !== chosen);
 
-    const val = chosen ? Number(chosen.value || 0) : 0;
+    const val = chosen ? Number(chosen.value ?? chosen.amount ?? 0) : 0;
     modsTotal += val;
 
     buckets.push({
       bucket,
       chosen: chosen
-        ? { id: chosen.id ?? null, label: chosen.label ?? bucket, value: val, itemId: chosen.itemId ?? null }
+        ? {
+            id: chosen.id ?? null,
+            label: chosen.label ?? bucket,
+            value: val,
+            amount: val,
+            itemId: chosen.itemId ?? null,
+            reason: chosen.reason ?? null,
+            tags: chosen.tags ?? null
+          }
         : null,
       dropped: dropped.map(d => ({
-        id: d.id ?? null, label: d.label ?? bucket, value: Number(d.value || 0), itemId: d.itemId ?? null
+        id: d.id ?? null,
+        label: d.label ?? bucket,
+        value: Number(d.value ?? d.amount ?? 0),
+        amount: Number(d.value ?? d.amount ?? 0),
+        itemId: d.itemId ?? null,
+        reason: d.reason ?? null,
+        tags: d.tags ?? null
       }))
     });
   }

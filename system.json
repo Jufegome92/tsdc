@@ -45,6 +45,10 @@
         "creature": {}
         }
     },
+    "packs": [
+    { "name": "tsdc-monsters", "label": "TSDC • Monstruos", "path": "packs/tsdc-monsters.db", "type": "Actor", "system": "tsdc" },
+    { "name": "tsdc-monster-items", "label": "TSDC • Habilidades de Monstruos", "path": "packs/tsdc-monster-items.db", "type": "Item", "system": "tsdc" }
+    ],
     "url": "https://github.com/Jufegome92/transcendence",
     "manifest": "https://raw.githubusercontent.com/Jufegome92/tsdc/main/system.json",
     "download": "https://github.com/Jufegome92/tsdc/archive/refs/tags/v0.0.22.zip",

@@ -56,6 +56,9 @@ export function defenseCompetenceLevel(actor, catKey) {
 export function computeBlockingAt(actor, location) {
   const piece = getEquippedItem(actor, location);
   if (!piece || piece.type !== "armor") {
+    // Fallback: armadura natural de criatura (según plantilla)
+    const nat = computeCreatureNaturalBlock(actor, location);
+    if (nat) return nat;
     return { value: 0, reason: "Sin pieza equipada", breakdown: { BC:0, BM:0, CD:0, CO:0 } };
   }
   const catKey = String(piece.category ?? "").toLowerCase();
@@ -71,6 +74,60 @@ export function computeBlockingAt(actor, location) {
 
   const value = BC + BM + CD + CO;
   return { value, breakdown: { BC, BM, CD, CO }, reason: null, piece };
+}
+
+/** ===== Armadura natural de criatura (fallback por localización) ===== */
+function computeCreatureNaturalBlock(actor, location) {
+  const sys = actor?.system || {};
+  // 1) Leer fuente de datos configurable por criatura
+  //    Puedes definir en la plantilla:
+  //    system.creature.armor.<loc> = { materialKey, category? }
+  //    o alternativamente system.anatomy.<loc> = { materialKey, category? }
+  const loc = String(location||"").toLowerCase();
+  const node =
+    sys?.creature?.armor?.[loc] ??
+    sys?.anatomy?.[loc] ?? null;
+
+  const lvl = Number(sys.level ?? sys.creature?.level ?? 1);
+  const qFactor = Math.max(1, Math.floor(lvl/3));  // usado para escalar durabilidad y como CO (cap a 3)
+  const CO = Math.min(3, qFactor);
+
+  // 2) Material y categoría
+  let matKey = String(node?.materialKey || "").toLowerCase();
+  let catKey = String(node?.category || "").toLowerCase(); // "light"|"medium"|"heavy"
+  if (!catKey) {
+    // Mapeo por defecto a partir del material
+    const m = {
+      // ligeras
+      pelaje: "light", plumaje: "light",
+      cuero: "light",
+      // intermedias
+      escamas: "medium", huesos: "medium", garras: "medium", cuernos: "medium", colmillos: "medium",
+      // pesadas
+      caparazon: "heavy", caparazón: "heavy"
+    };
+    catKey = m[matKey] || "light";
+  }
+
+  // 3) Durabilidad efectiva (base de material escalada por nivel/3)
+  //    Usamos la durabilidad base del material con quality=1 y la escalamos por qFactor,
+  //    tal como pediste: durabilidad_parte * (nivel/3, min 1)
+  let baseDur = 0;
+  try { baseDur = Number(materialDurability(matKey, 1) || 0); } catch (_) {}
+  const durability = Math.max(0, Math.floor(baseDur * qFactor));
+
+  // 4) Componentes del bloqueo
+  const cat = ARMOR_CATS[catKey] || ARMOR_CATS.light;
+  const BC = Number(cat.bc || 0);
+  const BM = Math.floor(durability / 5);       // redondeo hacia abajo
+  const CD = defenseCompetenceLevel(actor, catKey);
+
+  const value = Math.max(0, BC + BM + CD + CO);
+  return {
+    value,
+    reason: "Armadura natural",
+    breakdown: { BC, BM, CD, CO, category: catKey, material: matKey, durability, lvl }
+  };
 }
 
 /** Bono de escudo a la Defensa (NO al bloqueo) */

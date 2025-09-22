@@ -10,6 +10,7 @@ import { setTrackLevel } from "./progression.js";
 import { SPECIES_NATURAL_WEAPONS } from "./features/species/natural-weapons.js";
 import * as Ail from "./ailments/index.js";
 import { openCharacterWizard } from "./wizard/character-wizard.js";
+import { openCreatureWizard } from "./wizard/creature-wizard.js";
 import { applyBackgroundStartingCompetences } from "./features/affinities/index.js";
 //import "./combat/loop.js";
 //import { beginNewInitiativeDay } from "./combat/initiative.js";
@@ -23,30 +24,56 @@ import { actionMove } from "./atb/actions.js";
 import * as Reactions from "./atb/reactions.js";
 import * as Grants from "./features/grants.js";
 import * as Known from "./features/known.js";
+import * as Monsters from "./monsters/factory.js";
 
 const _guardWizardOpen = new Set();
 
 /** Intenta abrir el wizard cuando se abre una hoja de actor */
 async function maybeOpenWizardForSheet(sheet) {
   const actor = sheet?.actor;
-  if (!actor || actor.type !== "character") return;
-
-  // Si ya está bloqueada la identidad, no abras wizard
-  if (actor.system?.identity?.locked) return;
+  if (!actor) return;
 
   // Evita reentradas
   if (_guardWizardOpen.has(actor.id)) return;
+  if (actor.getFlag("tsdc", "wizardOpen")) return;
   _guardWizardOpen.add(actor.id);
 
   try {
-    // Cierra la hoja que Foundry intentó abrir
-    await sheet.close({ force: true });
-    // Abre el wizard (al finalizar, el propio wizard reabre la hoja)
-    await openCharacterWizard(actor);
+    const createdAt = actor._source?._stats?.createdTime || 0;
+    // Sólo al crear el actor (ventana de 60s)
+    if (Date.now() - createdAt > 60_000) return;
+
+    // CHARACTER (igual que antes)
+    if (actor.type === "character") {
+      if (actor.system?.identity?.locked) return;
+      await sheet.close({ force: true });              // 👈 cerrar primero
+      setTimeout(() => openCharacterWizard(actor), 0); // 👈 abrir wizard
+      return;
+    }
+
+    // CREATURE
+    if (actor.type === "creature") {
+      if (actor.flags?.tsdc?.built) return;
+      await actor.setFlag("tsdc", "wizardOpen", true);
+      await sheet.close({ force: true });
+      try {
+        // Ejecuta el wizard en este mismo turno de event loop
+        await openCreatureWizard(actor);
+      } finally {
+        if (actor?.id && game.actors?.get(actor.id)) {
+          try {
+            await actor.unsetFlag("tsdc", "wizardOpen");
+          } catch (err) {
+            console.warn("TSDC | no se pudo limpiar wizardOpen en criatura", err);
+          }
+        }
+      }
+      return;
+    }
   } catch (err) {
     console.error("TSDC | maybeOpenWizardForSheet failed", err);
   } finally {
-    _guardWizardOpen.delete(actor.id);
+    _guardWizardOpen.delete(actor?.id);
   }
 }
 
@@ -137,7 +164,7 @@ Hooks.once("ready", () => {
     registerAtbUI,
     registerAtbTrackerButton,
     registerAtbAutoOpen
-  ]; 
+  ];
   for (const fn of regs) {
     try { fn?.(); }
     catch (e) { console.error(`TSDC | ready: ${fn?.name || "fn"} failed`, e); }
@@ -150,6 +177,7 @@ Hooks.once("ready", () => {
   } catch {}
   registerStealthDetection();
   game.transcendence = game.transcendence || {};
+  game.transcendence.monsters = Monsters;
   game.transcendence.grants = Grants; 
   game.transcendence.known = Known;
   game.transcendence.actions   = { move: actionMove };

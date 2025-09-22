@@ -41,6 +41,10 @@ export function detectImpactCrit(roll) {
  * @returns {number}           Poder de rotura ya redondeado (int)
  */
 export function computeBreakPower(weaponItem, bonus = 0) {
-  const base = computeCritPowerFromItem(weaponItem);
+  let base = computeCritPowerFromItem(weaponItem);
+  if ((!base || Number.isNaN(base)) && weaponItem?.powerPerRank != null) {
+    const grade = Math.max(1, Number(weaponItem.grade ?? 1));
+    base = Number(weaponItem.powerPerRank) * grade;
+  }
   return Math.max(0, Math.floor(base + Number(bonus || 0)));
 }

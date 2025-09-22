@@ -216,3 +216,62 @@ export async function setSeverity(actor, id, severity) {
   });
   return true;
 }
+
+/** ===== Modificadores contextuales para tiradas ===== */
+const AILMENT_MODIFIERS = {
+  DERRIBADO: [
+    { phases: ["defense"], value: -2, label: "Derribado" }
+  ],
+  DESEQUILIBRADO: [
+    { phases: ["defense"], value: -2, label: "Desequilibrado" }
+  ],
+  ATERRORIZADO: [
+    { phases: ["attack", "defense"], value: -2, label: "Aterrorizado" }
+  ],
+  IMPEDIDO: [
+    { phases: ["attack", "defense", "save"], value: -2, label: "Impedido" }
+  ],
+  ATURDIDO: [
+    { phases: ["defense", "save"], value: -2, label: "Aturdido" }
+  ],
+  SOBRECARGADO: [
+    { phases: ["defense", "save"], value: -2, label: "Sobrecargado" }
+  ],
+  ASFIXIADO: [
+    { phases: ["defense", "save"], value: -1, label: "Asfixiado" }
+  ],
+  CEGADO: [
+    { phases: ["attack", "defense"], value: -5, label: "Cegado" }
+  ]
+};
+
+if (globalThis?.Hooks && !globalThis.__tsdcAilmentModsHooked) {
+  globalThis.__tsdcAilmentModsHooked = true;
+  Hooks.on("tsdc:collectModifiers", (ctx, push) => {
+    try {
+      const actor = ctx?.actor;
+      if (!actor || typeof push !== "function") return;
+
+      const active = listActive(actor);
+      if (!Array.isArray(active) || !active.length) return;
+
+      for (const ailment of active) {
+        const mods = AILMENT_MODIFIERS[ailment.id];
+        if (!mods) continue;
+        for (const mod of mods) {
+          if (mod.phases && !mod.phases.includes(ctx.phase)) continue;
+          push({
+            id: `ailment:${ailment.id.toLowerCase()}`,
+            label: mod.label,
+            value: Number(mod.value || 0),
+            amount: Number(mod.value || 0),
+            sourceType: "state",
+            when: { phases: mod.phases }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("TSDC | error agregando modificadores de agravios", err);
+    }
+  });
+}

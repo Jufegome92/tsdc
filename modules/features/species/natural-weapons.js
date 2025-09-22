@@ -9,6 +9,52 @@ const DMG = {
   corrosion: "corrosion"
 };
 
+function naturalQualityFromLevel(level = 1) {
+  const lvl = Math.max(1, Number(level || 1));
+  return Math.max(1, Math.ceil(lvl / 3));
+}
+
+export function buildNaturalWeaponRecord(def, { level = 1 } = {}) {
+  if (!def) return null;
+  const quality = naturalQualityFromLevel(level);
+  const baseGrade = Number(def.grade ?? 1);
+  return {
+    key: def.key,
+    label: def.label,
+    assign: def.assign ?? "main",
+    allowsConcurrent: !!def.allowsConcurrent,
+    occupiesSlot: def.allowsConcurrent ? false : true,
+    type: "natural",
+    damageDie: def.damageDie ?? "d6",
+    attackAttr: def.attackAttr ?? "agility",
+    impactAttr: def.impactAttr ?? def.attackAttr ?? "agility",
+    reachMeters: def.reachMeters ?? null,
+    reachSpecial: def.reachSpecial ?? null,
+    tags: Array.isArray(def.tags) ? [...def.tags] : [],
+    effectId: def.effectId ?? null,
+    noAttack: !!def.noAttack,
+    durabilityPerRank: def.durabilityPerRank ?? null,
+    powerPerRank: def.powerPerRank ?? null,
+    material: def.materialKey || def.material || null,
+    quality,
+    grade: Math.max(1, baseGrade),
+    source: def.species ?? null
+  };
+}
+
+export function buildSpeciesNaturalWeapons(speciesKey, { level = 1 } = {}) {
+  const pack = SPECIES_NATURAL_WEAPONS[speciesKey];
+  if (!pack) return [];
+  const keys = [...(pack.fixed ?? [])];
+  const result = [];
+  for (const key of keys) {
+    const def = NATURAL_WEAPON_DEFS[key];
+    const record = buildNaturalWeaponRecord(def, { level });
+    if (record) result.push(record);
+  }
+  return result;
+}
+
 export const NATURAL_WEAPON_DEFS = {
   // =======================
   // NAGHII
@@ -222,6 +268,7 @@ export const NATURAL_WEAPON_DEFS = {
     species: "loxod",
     label: "Trompa (Loxod)",
     assign: "main",
+    allowsConcurrent: true,
     dmgType: DMG.contundente,
     attackAttr: "tenacity",
     impactAttr: "tenacity",
@@ -466,6 +513,7 @@ export const NATURAL_WEAPON_DEFS = {
     species: "bufoni",
     label: "Lengua Prensil (Bufoni)",
     assign: "main",
+    allowsConcurrent: true,
     dmgType: DMG.contundente,
     attackAttr: "agility",
     impactAttr: "agility",
@@ -538,6 +586,7 @@ export const NATURAL_WEAPON_DEFS = {
     species: "erin",
     label: "Púas (Erin)",
     assign: "main",
+    allowsConcurrent: true,
     dmgType: DMG.perforante,
     attackAttr: "tenacity",
     impactAttr: "tenacity",

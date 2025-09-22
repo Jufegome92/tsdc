@@ -4,6 +4,7 @@ import { resolveEvolution } from "../features/advantage/index.js";
 import { BACKGROUNDS, getBackground, setBackground, getThresholdForSpec } from "../features/affinities/index.js";
 import * as Inv from "../features/inventory/index.js";
 import { getWeapon as getWeaponDef } from "../features/weapons/index.js";
+import { getNaturalWeaponDef } from "../features/species/natural-weapons.js";
 import { computeArmorBonusFromEquipped } from "../features/defense/index.js";
 import { trackThreshold } from "../progression.js";
 import { WEAPONS } from "../features/weapons/data.js";
@@ -168,8 +169,13 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     };
 
     const weaponKeys = Object.keys(prog.weapons ?? {});
-    const weapons = weaponKeys.sort((a,b) => (WEAPONS[a]?.label ?? a).localeCompare(WEAPONS[b]?.label ?? b, "es"))
-                              .map(k => row("weapons", k, WEAPONS[k]?.label ?? k, "+nivel al Ataque • +rango dados al Impacto"));
+    const weapons = weaponKeys
+      .sort((a,b) => {
+        const labelA = WEAPONS[a]?.label ?? getNaturalWeaponDef(a)?.label ?? a;
+        const labelB = WEAPONS[b]?.label ?? getNaturalWeaponDef(b)?.label ?? b;
+        return labelA.localeCompare(labelB, "es");
+      })
+      .map(k => row("weapons", k, WEAPONS[k]?.label ?? getNaturalWeaponDef(k)?.label ?? k, "+nivel al Ataque • +rango dados al Impacto"));
 
     const maneuverKeys = Object.keys(prog.maneuvers ?? {});
     const maneuvers = maneuverKeys.sort((a,b) => a.localeCompare(b, "es"))
@@ -226,7 +232,11 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         amulet:   optFor("amulet"),
         pendant1: optFor("pendant1"),
         pendant2: optFor("pendant2")
-      }
+      },
+      naturalAux: Inv.getNaturalWeapons(this.actor)
+        .map(rec => Inv.getNaturalWeaponItem(this.actor, rec.key))
+        .filter(item => item && item.occupiesSlot === false)
+        .map(item => ({ id: item.id, label: Inv.itemLabel(item), key: item.key }))
     };
 
     // Defaults de tirada persistidos en el actor
@@ -527,14 +537,20 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
   async #onAtkRoll() {
     const el = this.element;
     const selId = String(el.querySelector('select[name="atkWeapon"]')?.value || "");
-    const selItem = selId ? Inv.getItemById?.(this.actor, selId) : Inv.getEquippedItem(this.actor, "mainHand");
-    const wKey = selItem?.key || null;
+    const selection = selId
+      ? Inv.resolveWeaponSelection(this.actor, selId)
+      : Inv.getEquippedWeaponChoice(this.actor, "main");
+    const wKey = selection?.key ?? null;
     const isManeuver = !!el.querySelector('input[name="atkIsManeuver"]')?.checked;
 
     let attrKey = String(el.querySelector('select[name="atkAttr"]')?.value || "");
     if (!attrKey) {
-      const def = wKey ? getWeaponDef(wKey) : null;
-      attrKey = def?.attackAttr || "agility";
+      if (selection?.record) {
+        attrKey = selection.record.attackAttr ?? "agility";
+      } else {
+        const def = wKey ? (getWeaponDef(wKey) || getNaturalWeaponDef(wKey)) : null;
+        attrKey = def?.attackAttr || "agility";
+      }
     }
 
     const bonus   = Number(el.querySelector('input[name="atkBonus"]')?.value || 0);
@@ -547,16 +563,30 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
   async #onImpRoll() {
     const el = this.element;
     const selId = String(el.querySelector('select[name="impWeapon"]')?.value || "");
-    const mainItem = selId ? Inv.getItemById?.(this.actor, selId) : Inv.getEquippedItem(this.actor, "mainHand");
-    const key = mainItem?.key || null;
-    const def = key ? getWeaponDef(key) : null;
-    const die   = def?.damageDie || "d6";
-    const grade = Number(mainItem?.grade ?? def?.grade ?? 1);
-    const attrKey = def?.attackAttr || "agility";
+    const selection = selId
+      ? Inv.resolveWeaponSelection(this.actor, selId)
+      : Inv.getEquippedWeaponChoice(this.actor, "main");
+    const key = selection?.key ?? null;
+    let die = "d6";
+    let grade = 1;
+    let attrKey = "agility";
+    let weaponItem = selection?.item ?? null;
+
+    if (selection?.record) {
+      die = selection.record.damageDie ?? selection.item?.damageDie ?? "d6";
+      grade = Number(selection.item?.grade ?? 1);
+      attrKey = selection.record.impactAttr ?? selection.record.attackAttr ?? "agility";
+    } else {
+      const def = key ? getWeaponDef(key) : null;
+      die   = def?.damageDie || die;
+      grade = Number(selection?.item?.grade ?? def?.grade ?? grade);
+      attrKey = def?.attackAttr || attrKey;
+    }
+
     const bonus   = Number(el.querySelector('input[name="impBonus"]')?.value || 0);
 
     const { rollImpact } = await import("../rolls/dispatcher.js");
-    await rollImpact(this.actor, { key, die, grade, attrKey, bonus, weaponItem: mainItem ?? null });
+    await rollImpact(this.actor, { key, die, grade, attrKey, bonus, weaponItem: weaponItem ?? null });
   }
 
   async #onDefRoll() {

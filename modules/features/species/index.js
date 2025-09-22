@@ -1,5 +1,6 @@
 // modules/features/species/index.js
 import { getSpecies, listSpecies as _listSpecies } from "./data.js";
+import { buildSpeciesNaturalWeapons } from "./natural-weapons.js";
 import { setTrackLevel } from "../../progression.js";
 
 /** Lista todas las especies (re-export de data.js) */
@@ -57,6 +58,23 @@ export async function applySpecies(actor, speciesKey) {
     await actor.update({ "system.progression.skills.vigor.rank": Number(def.vigorStart.rank||0) });
     // Guarda categoría si no existe (en tu catálogo Vigor es física)
     await actor.update({ "system.progression.skills.vigor.category": "physical" });
+  }
+
+  const naturals = buildSpeciesNaturalWeapons(def.key, { level: actor.system?.level ?? 1 });
+  if (naturals.length) {
+    await actor.setFlag("tsdc", "naturalWeapons", naturals);
+    for (const rec of naturals) {
+      await setTrackLevel(actor, "weapons", rec.key, 1);
+      await actor.update({ [`system.progression.weapons.${rec.key}.category`]: "natural" });
+    }
+    const primary = naturals.find(rec => rec.occupiesSlot !== false && (rec.assign ?? "main") !== "off");
+    const offhand = naturals.find(rec => rec.occupiesSlot !== false && (rec.assign ?? "main") === "off");
+    const equipPatch = {};
+    if (primary) equipPatch["system.inventory.equipped.mainHand"] = `natural:${primary.key}`;
+    if (offhand) equipPatch["system.inventory.equipped.offHand"] = `natural:${offhand.key}`;
+    if (Object.keys(equipPatch).length) await actor.update(equipPatch);
+  } else {
+    await actor.unsetFlag("tsdc", "naturalWeapons");
   }
 
   await actor.update(patch);

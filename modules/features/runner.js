@@ -5,9 +5,26 @@ import { weaponRangeM } from "../combat/range.js";
 import { metersBetweenTokenAndToken, metersBetweenPointAndToken, pickCanvasPoint, tokensInRadius } from "../combat/targeting.js";
 import { validateAttackRangeAndVision } from "../rolls/validators.js"; // ya te valida mono-objetivo
 import { runDefenseFlow } from "../combat/defense-flow.js";
+import { listManeuvers } from "../features/maneuvers/index.js";
 
 function coverToCtx(cover) {
   return cover === "light" ? "partial" : cover === "medium" ? "heavy" : cover === "total" ? "total" : "none";
+}
+
+function resolveManeuverCatalogKey(feature, meta = {}) {
+  // 1) Si ya viene explícita, usarla
+  if (meta.featureKey) return String(meta.featureKey).toLowerCase();
+  if (meta.key)        return String(meta.key).toLowerCase();
+  // 2) Intentar por label contra el catálogo
+  try {
+    const byLabel = listManeuvers().find(m => String(m.label||"").toLowerCase() === String(feature?.label||"").toLowerCase());
+    if (byLabel?.key) return String(byLabel.key).toLowerCase();
+  } catch (_) {}
+  // 3) Último recurso: si el feature ya trae key/catalogKey
+  if (feature?.key)        return String(feature.key).toLowerCase();
+  if (feature?.catalogKey) return String(feature.catalogKey).toLowerCase();
+  // 4) Nada: devolver null (mejor que id)
+  return null;
 }
 
 function emitResistancePrompt({ actor, victimToken, feature }) {
@@ -92,15 +109,29 @@ export async function performFeature({ actor, feature, meta = {} }) {
 
      // Validación de rango/visión habitual (ya la tienes):
      const pkg = await buildPerceptionPackage({ actorToken, targetToken });
-     const ctx = packageToRollContext(pkg);
+     const ctx = Object.assign(
+        packageToRollContext(pkg),
+        {
+          // etiquetas útiles (ya las usas en otras ramas)
+          extraTags: ["feature", feature.clazz, feature.descriptor, feature.element].filter(Boolean),
+          // MUY IMPORTANTE: hints para que Impacto use el atributo correcto
+          hints: {
+            attackAttr: feature.attackAttr,   // p.ej. "agility"
+            impactAttr: feature.impactAttr    // p.ej. "agility"
+          },
+          // MUY IMPORTANTE: pasar la definición de la maniobra para efectos
+          maneuverDef: feature
+        }
+      );
      if (pkg.attack_mod_from_cover === "unreachable") {
        return ui.notifications?.warn("Cobertura total: inalcanzable desde aquí.");
      }
 
      // CLAVE de la maniobra y bandera isManeuver
-     const fKey = meta?.featureKey || feature?.id || meta?.key; // p.ej. "barrido"
+     const fKey = resolveManeuverCatalogKey(feature, meta); // siempre intenta "barrido"
      const atkRes = await rollAttack(actor, {
        key: fKey,
+       weaponKey: wKey,
        isManeuver: true,
        flavor: `${(meta?.clazz || feature?.clazz || "maneuver").toUpperCase()} • ${feature.label}`,
        mode: "ask",

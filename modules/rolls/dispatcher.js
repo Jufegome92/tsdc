@@ -175,8 +175,8 @@ export async function rollAttack(actor, {
 /** ─────────── IMPACTO ─────────── */
 export async function rollImpact(actor, {
   key,
-  die = "d6",
-  grade = 1,
+  die = null,
+  grade = null,
   attrKey,
   bonus = 0,
   flavor,

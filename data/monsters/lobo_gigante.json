@@ -1,0 +1,45 @@
+{
+  "key": "lobo_gigante",
+  "version": 1,
+  "label": "Lobo Gigante",
+  "tags": ["bestia", "bosque", "depredador"],
+  "level": 5,
+  "size": "mediano",
+  "nature": "mortal",             
+  "category": "common",          
+  "attributes": {
+    "fuerza": 3, "agilidad": 3, "tenacidad": 2,
+    "intelecto": 1, "sabiduria": 2, "astucia": 2,
+    "presencia": 1, "compostura": 2, "encanto": 0
+  },
+  "progression": {
+    "attack": { "level": 2 },
+    "defense": { "level": 2 },
+    "resistance": { "level": 1 },
+    "armor": { "light": { "level": 2 }, "medium": { "level": 1 }, "heavy": { "level": 0 } }
+  },
+  "anatomy": {
+    "head":    { "materialKey": "huesos",    "category": "medium" },
+    "chest":   { "materialKey": "pelaje",    "category": "light"  },
+    "bracers": { "materialKey": "pelaje",    "category": "light"  },
+    "legs":    { "materialKey": "pelaje",    "category": "light"  },
+    "boots":   { "materialKey": "garras",    "category": "medium" }
+  },
+  "attacks": [
+    { "type": "natural", "label": "Mordisco", "weaponKey": "colmillos", "damageDie": "d6", "grade": 1, "traits": ["corte","perforante"] },
+    { "type": "natural", "label": "Zarpazo",  "weaponKey": "garras",    "damageDie": "d6", "grade": 1, "traits": ["corte","rasgante"] }
+  ],
+  "abilities": [
+    { "itemKey": "aliento_gelido", "enabled": false },
+    { "itemKey": "aullar_para_aliados", "enabled": true }
+  ],
+  "ailments": [
+  ],
+  "loot": {
+    "drops": [
+      { "materialKey": "pelaje", "q": 2 },
+      { "materialKey": "huesos", "q": 1 }
+    ]
+  },
+  "flags": { "tsdc": { "monsterKey": "lobo_gigante" } }
+}

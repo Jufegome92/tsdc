@@ -21,6 +21,121 @@ const CHAT = (html, actor=null) => ChatMessage.create({
  * Utilidades
  * ====================================================== */
 
+function qualityFromLevel(level) {
+  const lvl = Math.max(1, Number(level || 1));
+  return Math.max(1, Math.ceil(lvl / 3));
+}
+
+async function resolveWeaponContext({ actor, preferredKey = null }) {
+  const { getEquippedWeaponKey, getEquippedWeapon } = await import("../features/inventory/index.js");
+  const { WEAPONS } = await import("../features/weapons/data.js");
+
+  const normalizeCatalogKey = (k) => {
+    if (!k) return null;
+    const key = String(k).toLowerCase();
+    return WEAPONS[key] ? key : null;
+  };
+
+  const naturals = actor?.getFlag?.("tsdc", "naturalWeapons");
+  const allNatural = Array.isArray(naturals) ? naturals : [];
+
+  const findNatural = (key) => {
+    if (!key) return null;
+    const low = String(key).toLowerCase();
+    return allNatural.find(n => String(n.id ?? n.key ?? n.weaponKey ?? "").toLowerCase() === low)
+        || allNatural.find(n => String(n.label ?? "").toLowerCase() === low);
+  };
+
+  const findInventoryItem = (key) => {
+    if (!actor?.items) return null;
+    const low = String(key ?? "").toLowerCase();
+    return actor.items.get(key)
+        || actor.items.find(i => String(i.id ?? "").toLowerCase() === low)
+        || actor.items.find(i => String(i.system?.catalogKey ?? i.system?.key ?? "").toLowerCase() === low)
+        || actor.items.find(i => String(i.name ?? "").toLowerCase() === low)
+        || null;
+  };
+
+  const preferredLow = preferredKey ? String(preferredKey).toLowerCase() : null;
+  let item = preferredKey ? findInventoryItem(preferredKey) : null;
+  let natural = (!item && preferredKey) ? findNatural(preferredKey) : null;
+
+  if (!item && !natural) {
+    const equippedKey = getEquippedWeaponKey?.(actor, "main") || getEquippedWeaponKey?.(actor, "off");
+    if (equippedKey && !preferredKey) {
+      item = findInventoryItem(equippedKey);
+      if (!item) natural = findNatural(equippedKey);
+    }
+  }
+
+  if (!item && !natural) {
+    const equipped = await getEquippedWeapon?.(actor, "main") || await getEquippedWeapon?.(actor, "off");
+    if (equipped) item = equipped;
+  }
+
+  if (item) {
+    const sys = item.system ?? {};
+    return {
+      key: preferredLow || sys.catalogKey || sys.key || item.name || item.id,
+      catalogKey: normalizeCatalogKey(sys.catalogKey || sys.key || item.name || preferredLow),
+      item,
+      natural: null
+    };
+  }
+
+  if (natural) {
+    return {
+      key: natural.key || natural.id || natural.weaponKey || preferredKey,
+      catalogKey: normalizeCatalogKey(natural.catalogKey || natural.weaponKey),
+      item: null,
+      natural
+    };
+  }
+
+  return {
+    key: preferredKey,
+    catalogKey: normalizeCatalogKey(preferredKey),
+    item: null,
+    natural: null
+  };
+}
+
+function buildWeaponItemForImpact({ actor, weaponCtx, atkKey }) {
+  if (!weaponCtx) return null;
+
+  if (weaponCtx.item) {
+    const sys = weaponCtx.item.system ?? {};
+    return {
+      key: weaponCtx.catalogKey || sys.catalogKey || sys.key || atkKey,
+      family: sys.family || sys.weaponFamily || null,
+      material: sys.material || sys.materialKey || null,
+      quality: Number(sys.quality ?? sys.materialQuality ?? 1),
+      grade: Number(sys.grade ?? 1)
+    };
+  }
+
+  if (weaponCtx.natural) {
+    const record = weaponCtx.natural;
+    const level = Number(foundry.utils.getProperty(actor, `system.progression.weapons.${atkKey}.level`) || actor.system?.level || 1);
+    const rank = Number(foundry.utils.getProperty(actor, `system.progression.weapons.${atkKey}.rank`) || 0);
+    const quality = Math.max(Number(record.quality || 0), qualityFromLevel(level));
+    const grade = Number(record.grade || 0) || Math.max(1, rank || 1);
+    return {
+      key: record.key || atkKey,
+      family: record.family || null,
+      material: record.material || record.key || null,
+      quality,
+      grade,
+      damageDie: record.damageDie || "d6",
+      attackAttr: record.attackAttr || "agility",
+      impactAttr: record.impactAttr || record.attackAttr || "agility",
+      powerPerRank: record.powerPerRank ?? null
+    };
+  }
+
+  return null;
+}
+
 function randomHitLocation() {
   // Torso y piernas un poco más probables, pero incluye cabeza/brazos/pies.
   const table = [
@@ -209,15 +324,25 @@ export async function runDefenseFlow({
   }
 
   // 4.1) Efectos sobre "golpe" (no dependen de daño neto)
-  if (attackResult?.evo?.meta?.isManeuver && attackCtx?.maneuverDef?.effects) {
-    await applyManeuverEffects({
-      attacker: attackerActor,
-      defender: targetToken.actor,
-      maneuverDef: attackCtx.maneuverDef,
-      attackTotal: atkTotal,
-      trigger: "on_hit"
-    });
-  }
+  if (attackResult?.evo?.meta?.isManeuver) {
+   let mdef = attackCtx?.maneuverDef;
+   if (!mdef?.effects?.length) {
+     try {
+       const { MANEUVERS } = await import("../features/maneuvers/data.js");
+       const mkey = String(attackResult?.evo?.meta?.key || "").toLowerCase();
+       mdef = MANEUVERS?.[mkey] || mdef;
+     } catch (_) {}
+   }
+   if (mdef?.effects?.length) {
+     await applyManeuverEffects({
+       attacker: attackerActor,
+       defender: targetToken.actor,
+       maneuverDef: mdef,
+       attackTotal: atkTotal,
+       trigger: "on_hit"
+     });
+   }
+ }
 
   // 5) Impacto vs Bloqueo
   const { impact, block } = await resolveImpactVsBlock({
@@ -241,15 +366,6 @@ export async function runDefenseFlow({
   // 6) Aplicar daño (por zona si tienes, o general)
   await applyDamageOrWound({ defenderToken: targetToken, amount: net, hitLocation: hitLocation });
 
-  // 7) NUEVO: efectos de maniobra (derribado, empujar, etc.)
- if (attackResult?.evo?.meta?.isManeuver && attackCtx?.maneuverDef?.effects) {
-   await applyManeuverEffects({
-     attacker: attackerActor,
-     defender: targetToken.actor,
-     maneuverDef: attackCtx.maneuverDef,
-     attackTotal: atkTotal
-   });
- }
 }
 
 /* ======================================================
@@ -340,25 +456,42 @@ async function resolveImpactVsBlock({ attackerActor, attackerToken, targetToken,
 
   // Intentar fórmula “real” a partir de meta
   if (impact == null) {
-    // Deja que buildImpactFormula resuelva dado/grade/atributo según el arma
     const meta = attackResult?.evo?.meta || {};
     const isManeuver = !!meta.isManeuver;
-    // Si es maniobra, el "key" es la maniobra — necesitamos la KEY del arma
-    let atkKey = isManeuver ? (meta.weaponKey || null) : (meta.key || null);
+    const preferredKey = isManeuver ? (meta.weaponKey || null) : (meta.key || null);
+    const weaponCtx = await resolveWeaponContext({ actor: attackerActor, preferredKey });
+    const progressionKeyRaw = preferredKey || weaponCtx.key || weaponCtx.catalogKey || "";
+    const progressionKey = progressionKeyRaw ? String(progressionKeyRaw).toLowerCase() : null;
+    let weaponItemPayload = buildWeaponItemForImpact({ actor: attackerActor, weaponCtx, atkKey: progressionKey });
+    let rollKey = progressionKey || weaponCtx.catalogKey || weaponCtx.key;
 
     try {
       // Si por alguna razón no vino key, intenta arma equipada
-      if (!atkKey) {
+      if (!rollKey) {
         const { getEquippedWeaponKey } = await import("../features/inventory/index.js");
-        atkKey = getEquippedWeaponKey(attackerActor, "main");
+        // Primero main, si falla intenta off
+        const fallbackKey = getEquippedWeaponKey(attackerActor, "main")
+              || getEquippedWeaponKey(attackerActor, "off");
+        if (fallbackKey) {
+          rollKey = String(fallbackKey).toLowerCase();
+          const fallbackCtx = await resolveWeaponContext({ actor: attackerActor, preferredKey: fallbackKey });
+          weaponItemPayload = weaponItemPayload || buildWeaponItemForImpact({ actor: attackerActor, weaponCtx: fallbackCtx, atkKey: rollKey });
+        }
       }
+      rollKey = rollKey ? String(rollKey).toLowerCase() : null;
       const hintedAttr =
         attackCtx?.hints?.impactAttr ||
         attackCtx?.hints?.attackAttr || // en maniobras/abilities a veces viene aquí
         null;
 
-      const impactDef = buildImpactFormula(attackerActor, { key: atkKey, die: meta.impactDie ?? null, grade: meta.impactGrade ?? null, attrKey: hintedAttr });
-      const impactMsg = await rollImpact(attackerActor, impactDef);
+      // Deja que rollImpact construya la fórmula internamente
+      const impactMsg = await rollImpact(attackerActor, {
+        key: rollKey,
+        die:   meta.impactDie   ?? weaponItemPayload?.damageDie ?? undefined,
+        grade: meta.impactGrade ?? weaponItemPayload?.grade ?? undefined,
+        attrKey: hintedAttr ?? weaponItemPayload?.impactAttr ?? weaponItemPayload?.attackAttr,
+        weaponItem: weaponItemPayload
+      });
       const impactRaw =
         impactMsg?.resultRoll?.total ??
         impactMsg?.total ??
@@ -376,7 +509,16 @@ async function resolveImpactVsBlock({ attackerActor, attackerToken, targetToken,
   }
 
   // 2) Bloqueo por localización (real → fallback)
-  let block = Number(await computeBlockingAt(targetToken.actor, hitLocation)) || null;
+  const blockInfo = computeBlockingAt(targetToken.actor, hitLocation);
+  let block = null;
+
+  if (blockInfo && typeof blockInfo === "object") {
+    block = Number(blockInfo.value);
+  } else if (blockInfo != null) {
+    block = Number(blockInfo);
+  }
+
+  if (!Number.isFinite(block)) block = null;
 
   if (block == null) {
     block = await estimateBlock({ defender: targetToken.actor, defenderToken: targetToken, hitLocation, attackResult });

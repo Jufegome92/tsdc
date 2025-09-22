@@ -137,6 +137,13 @@
                   {{/each}}
                 </optgroup>
               {{/if}}
+              {{#if inventory.naturalAux.length}}
+                <optgroup label="Armas naturales">
+                  {{#each inventory.naturalAux}}
+                    <option value="{{this.id}}">{{this.label}}</option>
+                  {{/each}}
+                </optgroup>
+              {{/if}}
             </select>
           </div>
           <div class="t-field" style="width:120px;">
@@ -190,6 +197,13 @@
                 <optgroup label="Mano secundaria">
                   {{#each inventory.options.offHand}}
                     <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                  {{/each}}
+                </optgroup>
+              {{/if}}
+              {{#if inventory.naturalAux.length}}
+                <optgroup label="Armas naturales">
+                  {{#each inventory.naturalAux}}
+                    <option value="{{this.id}}">{{this.label}}</option>
                   {{/each}}
                 </optgroup>
               {{/if}}
