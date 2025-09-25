@@ -14,7 +14,13 @@ async function _ensurePath(actor, path, seed) {
 // Inicializa progresión de una maniobra si no existe
 async function _ensureManeuverProgress(actor, key) {
   const path = `system.progression.maneuvers.${key}`;
-  return _ensurePath(actor, path, { rank: 0, progress: 0, createdAt: _nowISO() });
+  return _ensurePath(actor, path, { rank: 1, progress: 0, createdAt: _nowISO() });
+}
+
+// Inicializa progresión de un poder de reliquia si no existe
+async function _ensureRelicProgress(actor, key) {
+  const path = `system.progression.relics.${key}`;
+  return _ensurePath(actor, path, { rank: 1, progress: 0, createdAt: _nowISO() });
 }
 
 export async function grantManeuver(actor, key, { source="loot", silent=false } = {}) {
@@ -44,6 +50,8 @@ export async function grantRelicPower(actor, key, { source="relic", silent=false
 
   const knownPath = `system.features.known.relicPowers.${key}`;
   await _ensurePath(actor, knownPath, { enabled: true, createdAt: _nowISO(), source });
+
+  await _ensureRelicProgress(actor, key);
 
   if (!silent) ui.notifications.info(`${actor.name} sintoniza el poder: ${def.label}`);
   return true;

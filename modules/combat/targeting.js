@@ -26,9 +26,22 @@ export async function pickCanvasPoint({ snap=true, hint="Haz click para elegir e
       const pos = ev.data.getLocalPosition(canvas.stage);
       let x = pos.x, y = pos.y;
       if (snap) {
-        const s = canvas.grid.getSnappedPosition(x, y, 1);
-        const c = canvas.grid.getCenter(s.x, s.y);
-        x = c[0]; y = c[1];
+        const grid = canvas.grid;
+        const snapPointFn = typeof grid?.getSnappedPoint === "function" ? grid.getSnappedPoint.bind(grid) : null;
+        const centerPointFn = typeof grid?.getCenterPoint === "function" ? grid.getCenterPoint.bind(grid) : null;
+
+        if (snapPointFn && centerPointFn) {
+          const snapped = snapPointFn({ x, y });
+          const center = centerPointFn(snapped ?? { x, y });
+          x = center?.x ?? snapped?.x ?? x;
+          y = center?.y ?? snapped?.y ?? y;
+        } else {
+          // Compatibilidad con Foundry < v12
+          const s = grid.getSnappedPosition(x, y, 1);
+          const c = grid.getCenter(s.x, s.y);
+          x = Array.isArray(c) ? c[0] : (c?.x ?? x);
+          y = Array.isArray(c) ? c[1] : (c?.y ?? y);
+        }
       }
       canvas.stage.off("pointerdown", handler);
       resolve({ x, y });

@@ -88,11 +88,18 @@
       <div class="t-row" style="gap:10px; flex-wrap:wrap; align-items:center;">
         <label>Clave <input name="specKey" placeholder="p.ej. acrobacias" style="width:200px;"></label>
         <label>Cat.
-          <select name="specCat" style="width:140px;">
-            <option value="physical">Física</option>
-            <option value="mental">Mental</option>
-            <option value="knowledge">Saberes</option>
-            <option value="social">Social</option>
+          <select name="specCat" style="width:160px;">
+            {{#each specCategories as |cat|}}
+              <option value="{{cat.key}}" {{#if cat.isDefault}}selected{{/if}}>{{cat.label}}</option>
+            {{/each}}
+          </select>
+        </label>
+        <label>Esp.
+          <select name="specSelect" style="width:220px;">
+            <option value="">— Elegir —</option>
+            {{#each specOptionsInitial as |opt|}}
+              <option value="{{opt.key}}">{{opt.label}}</option>
+            {{/each}}
           </select>
         </label>
         <label>CT

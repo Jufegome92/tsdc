@@ -3,6 +3,7 @@ import { listSpecs, getAttributeForSpec, baseFromSpec, requiresEvolutionChoice, 
 import { resolveEvolution } from "../features/advantage/index.js";
 import { BACKGROUNDS, getBackground, setBackground, getThresholdForSpec } from "../features/affinities/index.js";
 import * as Inv from "../features/inventory/index.js";
+import { getWoundState } from "../health/wounds.js";
 import { getWeapon as getWeaponDef } from "../features/weapons/index.js";
 import { getNaturalWeaponDef } from "../features/species/natural-weapons.js";
 import { computeArmorBonusFromEquipped } from "../features/defense/index.js";
@@ -13,6 +14,8 @@ console.log("actor-sheet import base:", import.meta.url);
 
 // 👇 Hereda ActorSheetV2 + mixin de Handlebars
 const { HandlebarsApplicationMixin } = foundry.applications.api;
+
+const WOUND_ZONE_ORDER = ["head", "chest", "bracers", "legs", "boots"];
 
 export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applications.sheets.ActorSheetV2) {
   #activeTab = "main";
@@ -181,6 +184,10 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     const maneuvers = maneuverKeys.sort((a,b) => a.localeCompare(b, "es"))
                                   .map(k => row("maneuvers", k, k, "+nivel al Ataque (maniobra)"));
 
+    const relicKeys = Object.keys(prog.relics ?? {});
+    const relics = relicKeys.sort((a,b) => a.localeCompare(b, "es"))
+                           .map(k => row("relics", k, k, "+nivel al poder de reliquia"));
+
     const defense = [row("defense", "evasion", "Evasión", "+nivel a Defensa")];
 
     const armor = ["light","medium","heavy"].map(k => row("armor", k,
@@ -211,7 +218,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       return r;
     }).sort((a,b)=>a.label.localeCompare(b.label,"es"));
 
-    context.comps = { weapons, maneuvers, defense, armor, resists, skills };
+    context.comps = { weapons, maneuvers, relics, defense, armor, resists, skills };
 
     // Inventario (slots)
     const eq = Inv.getEquipped(this.actor);
@@ -253,6 +260,53 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
           disabledReason: sel.disabledReason || ""
         }))
     };
+
+    const slotLabels = {
+      mainHand: "Mano principal",
+      offHand: "Mano secundaria",
+      shield: "Escudo",
+      head: "Casco",
+      chest: "Peto",
+      bracers: "Brazales",
+      legs: "Pantalón",
+      boots: "Botas"
+    };
+
+    const summarizeEquip = (item) => {
+      if (!item) return { durability: "—", potency: "—" };
+      const durabilitySource = item?.durability ?? item?.system?.durability ?? null;
+      let durabilityText = "—";
+      if (durabilitySource && typeof durabilitySource === "object") {
+        const cur = Number(durabilitySource.value ?? durabilitySource.current ?? durabilitySource.remaining ?? NaN);
+        const max = Number(durabilitySource.max ?? durabilitySource.value ?? NaN);
+        if (Number.isFinite(cur) && Number.isFinite(max)) durabilityText = `${cur} / ${max}`;
+        else if (Number.isFinite(cur)) durabilityText = String(cur);
+      } else if (Number.isFinite(Number(durabilitySource))) {
+        durabilityText = String(Number(durabilitySource));
+      }
+      const potencySource = item?.potency ?? item?.system?.potency ?? item?.power ?? null;
+      let potencyText = "—";
+      if (potencySource && typeof potencySource === "object") {
+        const val = Number(potencySource.value ?? potencySource.current ?? NaN);
+        if (Number.isFinite(val)) potencyText = String(val);
+      } else if (Number.isFinite(Number(potencySource))) {
+        potencyText = String(Number(potencySource));
+      }
+      return { durability: durabilityText, potency: potencyText };
+    };
+
+    context.inventory.equippedSummary = Object.entries(slotLabels).map(([slot, label]) => {
+      const item = Inv.getEquippedItem(this.actor, slot);
+      if (!item) return null;
+      const { durability, potency } = summarizeEquip(item);
+      return {
+        slot,
+        slotLabel: label,
+        name: Inv.itemLabel(item),
+        durability,
+        potency
+      };
+    }).filter(Boolean);
 
     const monsterTraits = Array.isArray(this.actor.system?.traits?.monster)
       ? this.actor.system.traits.monster.map(t => ({
@@ -318,6 +372,39 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         disabled: value <= 0
       };
     });
+
+    const personalitySource = Array.isArray(this.actor.system?.personality?.traits)
+      ? [...this.actor.system.personality.traits]
+      : [];
+    while (personalitySource.length < 5) personalitySource.push("");
+    context.personalityTraits = personalitySource.slice(0, 5).map((value, idx) => ({
+      index: idx + 1,
+      value,
+      name: `system.personality.traits.${idx}`
+    }));
+
+    const woundsState = getWoundState(this.actor);
+    const woundZones = WOUND_ZONE_ORDER.map(key => {
+      const data = woundsState.zones?.[key] ?? { used: 0, max: 3, slots: [false, false, false], status: "ok" };
+      const slots = Array.isArray(data.slots) ? data.slots.slice(0, data.max ?? 3) : Array.from({ length: data.max ?? 3 }, (_, i) => i < data.used);
+      return {
+        key,
+        label: Inv.bodyPartLabel?.(key) ?? key,
+        used: Number(data.used ?? 0),
+        max: Number(data.max ?? 3),
+        slots,
+        status: data.status || (data.used >= data.max ? "disabled" : "ok")
+      };
+    }).filter(z => z.max > 0);
+    context.wounds = woundsState;
+    context.woundZones = woundZones;
+    const statusLabels = {
+      ok: "Sin lesiones críticas",
+      down: "Zona incapacitada",
+      critical: "Crítico",
+      dead: "Letal"
+    };
+    context.woundStatusLabel = statusLabels[woundsState.status] ?? woundsState.status ?? "";
 
 
     console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!context.inventory });

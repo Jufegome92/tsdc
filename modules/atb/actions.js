@@ -2,11 +2,11 @@
 // Acciones ATB según tu CT = I + E + R.
 // MANIOBRAS irán en otro módulo (no van aquí).
 
-import { rollAttack } from "../rolls/dispatcher.js";
+import { rollAttack, rollResistance } from "../rolls/dispatcher.js";
 import { pushPenaltyForCurrentTick, scheduleBonusForNextAction } from "./mods.js";
 import { buildPerceptionPackage, packageToRollContext, describePackage } from "../perception/index.js";
 import { validateMovePath } from "../rolls/validators.js";
-import { tryReactOpportunity, openReactionWindow,performOpportunityAttack } from "./reactions.js";
+import { tryReactOpportunity, openReactionWindow, performOpportunityAttack, canSpendWear, spendWear } from "./reactions.js";
 import { promptOpportunityDialog } from "./rx-dialog.js";
 import { triggerFumbleReactions } from "../atb/reactions.js";
 import { getEquippedWeaponKey, resolveWeaponByKey, isNaturalWeaponDisabled, describeNaturalDisable } from "../features/inventory/index.js";
@@ -16,8 +16,16 @@ import { shouldPromptHere } from "./rx-dialog.js";
 import { performFeature } from "../features/runner.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
 import { APTITUDES } from "../features/aptitudes/data.js";
+import { runAptitudeAction, runAptitudeReaction } from "../features/aptitudes/runtime.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
 import { runDefenseFlow } from "../combat/defense-flow.js";
+import { resolveEvolution } from "../features/advantage/index.js";
+import { baseFromSpec, requiresEvolutionChoice, getSpec, toCanonSpec } from "../features/specializations/index.js";
+import { makeRollTotal } from "../rolls/engine.js";
+import { emitModInspector } from "../rolls/inspector.js";
+import { listActive as listActiveAilments, resolveAilmentMechanics, removeAilment, hasMovementBlock } from "../ailments/index.js";
+import { CATALOG as AILMENT_CATALOG } from "../ailments/catalog.js";
+import { movementAllowance } from "../movement/index.js";
 
 const MELEE_RANGE_M = 1.0;
 
@@ -38,6 +46,45 @@ function sceneUnitsPerCell() {
   return Number(d?.distance ?? 1);
 }
 
+async function performAptitudeReaction({ reactorToken, aptitudeKey, provokerToken = null }) {
+  const actor = reactorToken?.actor;
+  if (!actor) return false;
+  const def = APTITUDES[aptitudeKey];
+  if (!def) {
+    ui.notifications?.warn(`Aptitud desconocida: ${aptitudeKey}`);
+    return false;
+  }
+
+  if (!canSpendWear(actor)) {
+    ui.notifications?.warn(`${reactorToken.name}: límite de Reacciones alcanzado (Desgaste).`);
+    return false;
+  }
+
+  const rank = getAbilityRank(actor, "aptitude", aptitudeKey);
+  if (rank <= 0) {
+    ui.notifications?.warn(`${reactorToken.name}: no conoces la aptitud (${aptitudeKey}).`);
+    return false;
+  }
+
+  try {
+    const targetName = provokerToken?.name ? ` contra <b>${provokerToken.name}</b>` : "";
+    const effect = def.effect ? `<div>${def.effect}</div>` : "";
+    const risk = def.risk ? `<div class="muted">Riesgo: ${def.risk}</div>` : "";
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ token: reactorToken }),
+      content: `<p><b>${reactorToken.name}</b> emplea la aptitud <i>${def.label ?? aptitudeKey}</i>${targetName}.</p>${effect}${risk}`
+    });
+  } catch (err) {
+    console.error("TSDC | performAptitudeReaction message failed", err);
+  }
+
+  const handled = await runAptitudeReaction({ actor, token: reactorToken, aptitudeKey, provokerToken, rank });
+  if (handled === false) return false;
+
+  await spendWear(actor, 1);
+  return true;
+}
+
 function getAbilityRank(actor, clazz, key) {
   const tree = (clazz==="maneuver") ? "maneuvers"
             : (clazz==="relic"||clazz==="relic_power") ? "relics"
@@ -46,6 +93,125 @@ function getAbilityRank(actor, clazz, key) {
   const known = !!node.known;
   const rank  = Number(node.rank || 0);
   return known && rank===0 ? 1 : rank; // “conocida” sin rank ⇒ trátala como N1
+}
+
+function normalizeSpecTag(str) {
+  return String(str ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function buildSpecializationTags({ canonKey, category, label }) {
+  const tags = [
+    `spec:${normalizeSpecTag(canonKey)}`
+  ];
+  if (category) {
+    const cat = normalizeSpecTag(category);
+    tags.push(`spec:category:${cat}`);
+    if (cat === "physical") {
+      tags.push("spec:physical", "fisica");
+    } else if (cat === "social") {
+      tags.push("spec:social", "social");
+    } else if (cat === "mental") {
+      tags.push("spec:mental", "mental");
+    } else if (cat === "knowledge") {
+      tags.push("spec:knowledge", "saber");
+    }
+  }
+  if (label) {
+    tags.push(`spec:label:${normalizeSpecTag(label)}`);
+  }
+  return Array.from(new Set(tags));
+}
+
+async function autoRollSpecialization({
+  actor,
+  specKey,
+  label = null,
+  category = null,
+  ctMod = 0,
+  flavorPrefix = "Especialización",
+  mode: forcedMode = null
+}) {
+  if (!actor || !specKey) return null;
+
+  const canonKey = toCanonSpec(specKey) ?? specKey;
+  const specDef = getSpec(canonKey) || {};
+  const specLabel = label || specDef.label || canonKey;
+  const rank = getSpecRank(actor, canonKey);
+  const attrs = actor.system?.attributes ?? {};
+  const baseValue = baseFromSpec(attrs, canonKey) || 0;
+  const defaults = actor.system?.ui?.rollDefaults?.spec ?? { bonus: 0, diff: 0, mode: "learning" };
+  const needsPolicy = requiresEvolutionChoice(canonKey);
+  let mode = forcedMode ?? (needsPolicy ? (defaults.mode || "learning") : "none");
+  if (!needsPolicy && mode === "ask") mode = "none";
+  const modifier = baseValue + Number(defaults.bonus ?? 0) - Number(defaults.diff ?? 0) + Number(ctMod || 0);
+  const formula = `1d10 + ${modifier}`;
+
+  const evo = await resolveEvolution({
+    type: "specialization",
+    mode,
+    formula,
+    rank,
+    flavor: `${flavorPrefix} • ${specLabel}`,
+    actor,
+    toChat: false,
+    meta: { key: canonKey, category }
+  });
+
+  const resultRoll = evo?.resultRoll ?? null;
+  if (!resultRoll) return null;
+  const otherRoll = evo?.otherRoll ?? null;
+  const usedPolicy = evo?.usedPolicy ?? mode;
+
+  const ctx = {
+    phase: "skill",
+    tag: "TE",
+    tags: buildSpecializationTags({ canonKey, category, label: specLabel }),
+    skill: specLabel,
+    rollType: "TE",
+    category
+  };
+
+  const patchedPrimary = makeRollTotal(actor, Number(resultRoll.total ?? 0), ctx);
+  const patchedOther = otherRoll ? makeRollTotal(actor, Number(otherRoll.total ?? 0), ctx) : null;
+
+  await emitModInspector(actor, { phase: "skill", tag: "TE" }, patchedPrimary.breakdown);
+
+  return {
+    canonKey,
+    specLabel,
+    rank,
+    usedPolicy,
+    resultRoll,
+    otherRoll,
+    patchedPrimary,
+    patchedOther,
+    ctx
+  };
+}
+
+function normalizeCtStruct(ct = {}) {
+  return {
+    I: Number(ct.I ?? ct.init ?? 0),
+    E: Number(ct.E ?? ct.exec ?? 0),
+    R: Number(ct.R ?? ct.rec ?? 0)
+  };
+}
+
+function collectEscapeableAilments(actor) {
+  if (!actor) return [];
+  return listActiveAilments(actor)
+    .map(state => {
+      const def = AILMENT_CATALOG[state.id];
+      const mechanics = resolveAilmentMechanics(def, state);
+      if (!mechanics?.escape) return null;
+      return { state, mechanics, def };
+    })
+    .filter(Boolean);
 }
 
 function cellsToUnits(cells) {
@@ -154,20 +320,25 @@ async function pickAttackTarget({ actorToken, storedId = null }) {
   const owners = ownerUsersOfActor(actorToken.actor);
   const ownerTargets = [...new Set(owners.flatMap(u => Array.from(u.targets ?? [])))]
     .filter(t => t?.actor && !t.document.hidden && t.id !== actorToken.id);
+  ownerTargets.sort((a,b) => distanceM(actorToken, a) - distanceM(actorToken, b));
 
   const askAlways = game.settings.get("tsdc","askTargetEveryExec");
   const { DialogV2 } = foundry.applications.api;
 
   // Si hay varios, ofrece selector
   if (ownerTargets.length > 1 || (askAlways && attackerChoiceHere(actorToken) && (ownerTargets.length > 0 || storedId))) {
-    const opts = ownerTargets.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
-    // fallback al storedId si no hay targets activos
     const stored = storedId ? canvas.tokens.get(storedId) : null;
-    const extra = (!ownerTargets.length && stored) ? `<option value="${stored.id}">${stored.name}</option>` : "";
+    const opts = ownerTargets.map(t => {
+      const selected = stored && stored.id === t.id ? " selected" : "";
+      return `<option value=\"${t.id}\"${selected}>${t.name}</option>`;
+    }).join("");
+    const extra = (stored && !ownerTargets.some(t => t.id === stored.id))
+      ? `<option value=\"${stored.id}\" selected>${stored.name}</option>`
+      : "";
     const chosenId = await DialogV2.prompt({
       window:{ title:"Elige objetivo" },
-      content:`<form><label>Objetivo <select name="t">${opts}${extra}</select></label></form>`,
-      ok:{ label:"Confirmar", callback: (_ev, btn) => btn.form.elements.t.value }
+      content:`<form><label>Objetivo <select name=\"t\">${opts}${extra}</select></label></form>`,
+      ok:{ label:"Confirmar", callback: (_ev, btn) => btn.form.elements.t.value || stored?.id || ownerTargets[0]?.id }
     });
     return canvas.tokens.get(chosenId) ?? null;
   }
@@ -200,6 +371,23 @@ function hostileAdjacents(t) {
  */
 export async function actionMove({ actorToken, dest, maxMeters = null }) {
   if (!actorToken || !dest) return false;
+
+  const moverActor = actorToken.actor;
+  if (moverActor && hasMovementBlock(moverActor)) {
+    ui.notifications?.warn("No puedes moverte mientras estés atrapado o inmovilizado.");
+    return false;
+  }
+
+  if (moverActor) {
+    const allowance = movementAllowance(moverActor);
+    if (allowance.blocked) {
+      ui.notifications?.warn("No puedes moverte mientras tus agravios lo impidan.");
+      return false;
+    }
+    if (Number.isFinite(allowance.meters)) {
+      maxMeters = Math.min(maxMeters ?? allowance.meters, allowance.meters);
+    }
+  }
 
   // 1) Adyacentes hostiles ANTES
   const beforeAdj = hostileAdjacents(actorToken).map(t => t.id);
@@ -241,9 +429,12 @@ export async function actionMove({ actorToken, dest, maxMeters = null }) {
   for (const id of leavingIds) {
     const reactor = canvas.tokens.get(id);
     if (!reactor) continue;
-    const consent = await promptOpportunityDialog({ reactorToken: reactor, provokerToken: actorToken, timeoutMs: 6500 });
-    if (consent) {
+    const reactionChoice = await promptOpportunityDialog({ reactorToken: reactor, provokerToken: actorToken, timeoutMs: 6500 });
+    if (!reactionChoice) continue;
+    if (reactionChoice.type === "ao") {
       await tryReactOpportunity({ reactorToken: reactor, provokerToken: actorToken });
+    } else if (reactionChoice.type === "aptitude" && reactionChoice.key) {
+      await performAptitudeReaction({ reactorToken: reactor, aptitudeKey: reactionChoice.key, provokerToken: actorToken });
     }
   }
 
@@ -305,11 +496,20 @@ export const AttackAction = makeDef({
       return;
     }
 
+    if (meta && targetToken) {
+      try { meta.targetTokenId = targetToken.id; } catch (_) {}
+    }
+
     // 2) reacción previa (si la quieren usar)
     await askPreAttackReaction(targetToken, actorToken);
 
     // 3) resto igual que ya tenías…
-    const wKey   = getEquippedWeaponKey(actor, "main");
+    // Exigir un arma equipada (mano principal u off) para evitar caídas a armas "por defecto"
+    const wKey   = getEquippedWeaponKey(actor, "main") || getEquippedWeaponKey(actor, "off");
+    if (!wKey) {
+      ui.notifications?.warn("No tienes un arma equipada. Equipa un arma (natural u objeto) para atacar.");
+      return;
+    }
     const rangeM = weaponRangeM(actor, wKey);
 
     const v = await validateAttackRangeAndVision({ attackerToken: actorToken, targetToken, weaponRangeM: rangeM });
@@ -338,7 +538,8 @@ export const AttackAction = makeDef({
       return;
     }
 
-    const atkRes = await rollAttack(actor, { key: wKey ?? undefined, flavor: "ATB • Ataque", mode: "ask", context: ctx, opposed: true });
+    // Pasar la clave explícita para respetar la selección y no hacer fallback
+    const atkRes = await rollAttack(actor, { key: wKey, flavor: "ATB • Ataque", mode: "ask", context: ctx, opposed: true });
 
     await runDefenseFlow({
       attackerActor: actor,
@@ -355,6 +556,153 @@ export const DropAction = makeDef({
   key: "drop", label: "Soltar", I: 0, E: 0, R: 0,
   perform: async ({ actor }) => {
     await ChatMessage.create({ content: `<i>${actor.name}</i> suelta un objeto. (CT 0)` });
+  }
+});
+
+export const EscapeAction = makeDef({
+  key: "escape", label: "Escapar", I: 1, E: 1, R: 0,
+  perform: async ({ actor, meta }) => {
+    if (!actor) return;
+    const candidates = collectEscapeableAilments(actor);
+    if (!candidates.length) {
+      ui.notifications?.warn("No tienes efectos que requieran una acción de escape.");
+      return;
+    }
+
+    let choice = null;
+    if (meta?.ailmentId) {
+      choice = candidates.find(c => c.state.id === meta.ailmentId) ?? null;
+    }
+    if (!choice) {
+      if (candidates.length === 1) {
+        choice = candidates[0];
+      } else {
+        const { DialogV2 } = foundry.applications.api;
+        const opts = candidates.map(c => {
+          const label = c.state.label || c.def?.label || c.state.id;
+          const sev = c.state.severity ? ` (Sev. ${c.state.severity.toUpperCase()})` : "";
+          return `<option value="${c.state.id}">${label}${sev}</option>`;
+        }).join("\n");
+        const picked = await DialogV2?.prompt({
+          window: { title: "Elegir agravio a superar" },
+          content: `<form><label>Agravio <select name="aid">${opts}</select></label></form>`,
+          ok: {
+            label: "Confirmar",
+            callback: (_ev, button) => button.form.elements.aid?.value || ""
+          }
+        });
+        if (!picked) {
+          ui.notifications?.info("Acción de escape cancelada.");
+          return;
+        }
+        choice = candidates.find(c => c.state.id === picked) ?? null;
+      }
+    }
+
+    if (!choice) {
+      ui.notifications?.warn("No se encontró el agravio seleccionado.");
+      return;
+    }
+
+    const escapeInfo = choice.mechanics.escape || {};
+    const options = Array.isArray(escapeInfo.options) ? escapeInfo.options : [];
+    let selectedOption = meta?.escapeOption ?? null;
+    if (!selectedOption) {
+      if (options.length === 1) {
+        selectedOption = options[0];
+      } else if (options.length > 1) {
+        const { DialogV2 } = foundry.applications.api;
+        const optHtml = options.map(o => `<option value="${o}">${o}</option>`).join("\n");
+        selectedOption = await DialogV2?.prompt({
+          window: { title: "Método de escape" },
+          content: `<form><label>Método <select name="opt">${optHtml}</select></label></form>`,
+          ok: {
+            label: "Confirmar",
+            callback: (_ev, button) => button.form.elements.opt?.value || ""
+          }
+        });
+        if (!selectedOption) {
+          ui.notifications?.info("Acción de escape cancelada.");
+          return;
+        }
+      }
+    }
+
+    const label = choice.state.label || choice.def?.label || choice.state.id;
+    let lastTotal = null;
+    const escapeTags = ["escape", `escape:${choice.state.id.toLowerCase()}`];
+
+    if (selectedOption && selectedOption.toLowerCase().startsWith("resistance:")) {
+      const type = selectedOption.split(":")[1];
+      const res = await rollResistance(actor, {
+        type,
+        flavor: `Escape • ${label}`,
+        context: { phase: "save", tags: escapeTags }
+      });
+      lastTotal = res?.total ?? null;
+    } else if (selectedOption && selectedOption.toLowerCase().startsWith("skill:")) {
+      const specKey = selectedOption.split(":")[1];
+      const rollData = await autoRollSpecialization({
+        actor,
+        specKey,
+        flavorPrefix: "Escape",
+        ctMod: 0,
+        mode: "ask"
+      });
+      if (!rollData) return;
+      const { resultRoll, otherRoll, usedPolicy, patchedPrimary, patchedOther, canonKey, specLabel, rank } = rollData;
+      const lowTotal = patchedOther ? Math.min(patchedPrimary.total, patchedOther.total) : patchedPrimary.total;
+      const highTotal = patchedOther ? Math.max(patchedPrimary.total, patchedOther.total) : patchedPrimary.total;
+      const flavor = `Escape • ${specLabel} — Total ajustado ${patchedPrimary.total}`;
+      await resultRoll.toMessage({
+        flavor,
+        flags: {
+          tsdc: {
+            version: 1,
+            actorId: actor.id ?? actor._id ?? null,
+            type: "specialization",
+            policy: usedPolicy,
+            rank,
+            meta: { key: canonKey, category: getSpec(canonKey)?.category ?? null },
+            totals: { low: lowTotal, high: highTotal }
+          }
+        }
+      });
+      lastTotal = patchedPrimary.total;
+
+      const blob = encodeURIComponent(JSON.stringify({
+        actorId: actor.id ?? actor._id ?? null,
+        key: canonKey,
+        rank,
+        policy: usedPolicy,
+        totalShown: patchedPrimary.total,
+        otherTotal: patchedOther?.total ?? null
+      }));
+      await ChatMessage.create({
+        whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id),
+        speaker: ChatMessage.getSpeaker({ actor }),
+        content: `
+          <div class="tsdc-eval">
+            <p><strong>Evaluar Escape</strong> — Solo GM</p>
+            <div class="t-row" style="gap:6px; flex-wrap:wrap;">
+              <button class="t-btn tsdc-eval-btn" data-kind="specialization" data-blob="${blob}">Abrir evaluación…</button>
+            </div>
+            <div class="muted">Total ajustado: <b>${patchedPrimary.total}</b>${patchedOther ? ` • Alterno: <b>${patchedOther.total}</b>` : ""}</div>
+          </div>
+        `
+      });
+    } else {
+      ui.notifications?.warn("No se reconoce el método de escape configurado. Lanza la tirada manualmente y retira el agravio si procede.");
+    }
+
+    const { DialogV2 } = foundry.applications.api;
+    const confirm = await DialogV2.confirm({
+      window: { title: "¿Liberarse?" },
+      content: `<p>Resultado: <b>${lastTotal ?? "?"}</b>. ¿Liberar a ${actor.name} de <b>${label}</b>?</p>`
+    });
+    if (confirm) {
+      await removeAilment(actor, choice.state.id);
+    }
   }
 });
 
@@ -377,11 +725,16 @@ export function makeSpecializationAction({ specKey, category, CT }) {
     label: `Especialización (${specKey}) • CT ${CT}`,
     I, E, R,
     perform: async ({ actor, combat, combatant, tick, startedThisTick }) => {
-      const rank = getSpecRank(actor, specKey);
+      const canonKey = toCanonSpec(specKey) ?? specKey;
+      const specDef = getSpec(canonKey) || {};
+      const specLabel = specDef.label || specKey;
+      const rank = getSpecRank(actor, canonKey);
 
       // Mensaje básico
+      const ctMod = (CT === 1) ? -2 : (CT === 3 ? +2 : 0);
+      const ctNote = ctMod ? ` <span class="muted">(ajuste a tirada: ${ctMod > 0 ? "+" : ""}${ctMod})</span>` : "";
       await ChatMessage.create({
-        content: `<b>${actor.name}</b> usa <i>${specKey}</i> [${String(category)}] con CT ${CT} (${I}+${E}+${R}).`
+        content: `<b>${actor.name}</b> usa <i>${specLabel}</i> [${String(category ?? "—").toLowerCase()}] con CT ${CT} (${I}+${E}+${R}).${ctNote}`
       });
 
       const cid = combatant?.id;
@@ -395,13 +748,13 @@ export function makeSpecializationAction({ specKey, category, CT }) {
           await pushPenaltyForCurrentTick(combat, cid, {
             value: -pen,
             types: ["TD", "TC", "TR"],
-            note: `CT1 ${specKey} (Física)`
+            note: `CT1 ${specLabel} (Física)`
           });
         } else if (CT === 3) {
           await scheduleBonusForNextAction(combat, cid, {
             value: +bono,
             types: ["all"],
-            note: `CT3 ${specKey} (Física)`
+            note: `CT3 ${specLabel} (Física)`
           });
         }
       } else if (category === "social") {
@@ -409,19 +762,72 @@ export function makeSpecializationAction({ specKey, category, CT }) {
           await pushPenaltyForCurrentTick(combat, cid, {
             value: -pen,
             types: ["TC", "TE"],
-            note: `CT1 ${specKey} (Social)`
+            note: `CT1 ${specLabel} (Social)`
           });
         } else if (CT === 3) {
           await scheduleBonusForNextAction(combat, cid, {
             value: +bono,
             types: ["TC", "TE"],
-            note: `CT3 ${specKey} (Social)`
+            note: `CT3 ${specLabel} (Social)`
           });
         }
       } else if (category === "mental" || category === "knowledge") {
         // Sin modificadores numéricos: el Narrador ajusta la cantidad/calidad de info según CT.
         await ChatMessage.create({ content: `ℹ️ ${actor.name} obtiene información proporcional a CT ${CT}.` });
       }
+
+      const rollData = await autoRollSpecialization({
+        actor,
+        specKey: canonKey,
+        label: specLabel,
+        category,
+        ctMod,
+        flavorPrefix: "Especialización",
+        mode: "ask"
+      });
+      if (!rollData) return;
+
+      const { resultRoll, otherRoll, usedPolicy, patchedPrimary, patchedOther } = rollData;
+      const lowTotal = patchedOther ? Math.min(patchedPrimary.total, patchedOther.total) : patchedPrimary.total;
+      const highTotal = patchedOther ? Math.max(patchedPrimary.total, patchedOther.total) : patchedPrimary.total;
+      const flavor = `Especialización • ${specLabel} (CT ${CT}) — Total ajustado ${patchedPrimary.total}`;
+
+      await resultRoll.toMessage({
+        flavor,
+        flags: {
+          tsdc: {
+            version: 1,
+            actorId: actor.id ?? actor._id ?? null,
+            type: "specialization",
+            policy: usedPolicy,
+            rank,
+            meta: { key: canonKey, category },
+            totals: { low: lowTotal, high: highTotal }
+          }
+        }
+      });
+
+      const blob = encodeURIComponent(JSON.stringify({
+        actorId: actor.id ?? actor._id ?? null,
+        key: canonKey,
+        rank,
+        policy: usedPolicy,
+        totalShown: patchedPrimary.total,
+        otherTotal: patchedOther?.total ?? null
+      }));
+      await ChatMessage.create({
+        whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id),
+        speaker: ChatMessage.getSpeaker({ actor }),
+        content: `
+          <div class="tsdc-eval">
+            <p><strong>Evaluar Especialización</strong> — Solo GM</p>
+            <div class="t-row" style="gap:6px; flex-wrap:wrap;">
+              <button class="t-btn tsdc-eval-btn" data-kind="specialization" data-blob="${blob}">Abrir evaluación…</button>
+            </div>
+            <div class="muted">Total ajustado: <b>${patchedPrimary.total}</b>${patchedOther ? ` • Alterno: <b>${patchedOther.total}</b>` : ""}</div>
+          </div>
+        `
+      });
     }
   });
 }
@@ -432,6 +838,7 @@ export function listSimpleActions() {
     MoveAction,
     AttackAction,
     InteractAction,
+    EscapeAction,
     DropAction,
     HideAction
   ];
@@ -691,32 +1098,71 @@ export function makeAbilityAction(ability, { key, clazz }) {
       if (!actorToken) return ui.notifications.warn("Sin token activo.");
 
       const rank = getAbilityRank(actor, clazz, key);
+      if (clazz === "aptitude" && rank <= 0) {
+        return ui.notifications.warn("No conoces esa aptitud.");
+      }
       const gating = {
         mode: rank<=1 ? "N1" : (rank===2 ? "N2" : "N3"),
         suppressEffect: rank <= 1,
         suppressDescriptorInCombos: rank <= 2
       };
 
-      const pick = await pickTargetOrCell({ actorToken, ability });
-      if (!pick) return ui.notifications.warn("Selecciona un objetivo o una celda.");
+      let pick = null;
+      if (ability.requiresPick === false) {
+        pick = { kind: "self", token: actorToken };
+      } else {
+        pick = await pickTargetOrCell({ actorToken, ability });
+        if (!pick) return ui.notifications.warn("Selecciona un objetivo o una celda.");
 
-      // Rango
-      const rangeM = Number(ability.range ?? 1);
-      const rCells = Number(ability.range ?? 0);
-      const inRange = pick.kind==="cell"
-        ? (cellsEveryOtherToPoint(actorToken, pick.point) <= rCells)
-        : (await validateAttackRangeAndVision({
-            attackerToken: actorToken,
-            targetToken: pick.token,
-            weaponRangeM: rCells * sceneUnitsPerCell()
-          })).ok;
-      if (!inRange) return ui.notifications.info("Fuera de rango.");
-      
-      await performFeature({ actor, feature: ability, meta: { ...(meta||{}), gating, pick, featureKey: key, clazz } });
+        const rCells = Number(ability.range ?? 0);
+        const inRange = pick.kind==="cell"
+          ? (cellsEveryOtherToPoint(actorToken, pick.point) <= rCells)
+          : (await validateAttackRangeAndVision({
+              attackerToken: actorToken,
+              targetToken: pick.token,
+              weaponRangeM: rCells * sceneUnitsPerCell()
+            })).ok;
+        if (!inRange) return ui.notifications.info("Fuera de rango.");
+      }
 
-      // Aquí solo dejamos un registro genérico.
-      const where = pick.kind==="cell" ? "celda seleccionada" : `a ${pick.token.name}`;
-      await ChatMessage.create({ content: `<b>${ability.label}</b> (${clazz}) [${gating.mode}] → ${where}` });
+      const baseMeta = { ...(meta||{}), gating, pick, featureKey: key, clazz };
+      if (clazz === "aptitude") baseMeta.aptitudeKey = key;
+
+      const performDefault = async (extraMeta = {}) => {
+        await performFeature({ actor, feature: ability, meta: { ...baseMeta, ...extraMeta } });
+      };
+
+      let handledByAptitude = false;
+      let skipLog = false;
+      if (clazz === "aptitude") {
+        const result = await runAptitudeAction({
+          actor,
+          token: actorToken,
+          aptitudeKey: key,
+          ability,
+          rank,
+          pick,
+          meta: baseMeta,
+          performDefault
+        });
+        if (result === false) return;
+        if (result && typeof result === "object") {
+          handledByAptitude = result.success === true || result.handled === true;
+          skipLog = !!result.suppressLog;
+        } else {
+          handledByAptitude = (result === true);
+        }
+        if (!handledByAptitude && result !== true) {
+          await performDefault();
+        }
+      } else {
+        await performDefault();
+      }
+
+      if (!(clazz === "aptitude" && (handledByAptitude || skipLog))) {
+        const where = pick.kind==="cell" ? "celda seleccionada" : `a ${pick.token.name}`;
+        await ChatMessage.create({ content: `<b>${ability.label}</b> (${clazz}) [${gating.mode}] → ${where}` });
+      }
       // TODO: aplicar efecto/plantilla/daño según ability.effect / element / save
     }
   };

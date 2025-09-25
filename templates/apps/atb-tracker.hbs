@@ -29,8 +29,8 @@
         <div class="tt-who">{{row.name}}</div>
         <div class="tt-line" style="--cols: {{../horizon}}">
           {{#each segments as |seg|}}
-            <div class="tt-seg phase-{{seg.phase}}" style="grid-column: {{seg.gridColumn}};">
-              <span class="tt-label">{{label}}</span>
+            <div class="tt-seg phase-{{seg.phase}} {{#if seg.active}}is-active{{/if}}" style="grid-column: {{seg.gridColumn}};">
+              <span class="tt-label">{{seg.label}}</span>
             </div>
           {{/each}}
         </div>

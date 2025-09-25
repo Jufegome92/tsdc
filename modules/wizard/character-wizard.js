@@ -1,5 +1,5 @@
 // modules/wizard/character-wizard.js
-import { listSpecies, getSpeciesByKey, rangesFromSpecies, applySpecies } from "../features/species/index.js";
+import { listSpecies, getSpeciesByKey, rangesFromSpecies, applySpecies, speciesHasWeaponVariants, getWeaponChoices } from "../features/species/index.js";
 import { BACKGROUNDS, setBackground, applyBackgroundStartingCompetences } from "../features/affinities/index.js";
 import { listSpecs, getCategoryForSpec } from "../features/specializations/index.js";
 import { recomputeSynapseBudget, ATTRS_BY_CATEGORY, applySynapseAllocations } from "../features/synapse/index.js";
@@ -43,7 +43,7 @@ if (!globalThis.__tsdcSpeciesHintsInstalled) {
   };
 
   // Aplica los rangos dentro del contenedor (el diálogo) donde ocurrió el cambio
-  const applyIntoRoot = (root, rawVal) => {
+  const applyIntoRoot = async (root, rawVal) => {
     if (!root?.querySelector) return;
     const def = resolveSpecies(rawVal);
     const r   = rangesFromSpecies(def);
@@ -60,6 +60,47 @@ if (!globalThis.__tsdcSpeciesHintsInstalled) {
     setHint(hI,   heightN, r?.heightCm);
     setHint(wI,   weightN, r?.weightKg);
     if (spLbl) spLbl.textContent = def?.label ?? "";
+
+    // Handle weapon variants
+    const weaponVariantsSection = root.querySelector('[data-weapon-variants]');
+    const weaponChoicesContainer = root.querySelector('[data-weapon-choices]');
+
+    if (weaponVariantsSection && weaponChoicesContainer && def?.key) {
+      try {
+        const hasVariants = await speciesHasWeaponVariants(def.key);
+
+        if (hasVariants) {
+          const weaponChoices = await getWeaponChoices(def.key);
+
+          // Show the section
+          weaponVariantsSection.style.display = '';
+
+          // Generate choice groups HTML
+          let choicesHTML = '';
+          weaponChoices.forEach((choiceGroup, groupIndex) => {
+            choicesHTML += `
+              <label class="t-col">
+                <span class="muted">Variante ${groupIndex + 1}</span>
+                <select name="weaponChoice${groupIndex}">
+                  ${choiceGroup.choices.map(choice => `
+                    <option value="${choice.key}">${choice.label}</option>
+                  `).join('')}
+                </select>
+              </label>
+            `;
+          });
+
+          weaponChoicesContainer.innerHTML = choicesHTML;
+        } else {
+          // Hide the section
+          weaponVariantsSection.style.display = 'none';
+          weaponChoicesContainer.innerHTML = '';
+        }
+      } catch (error) {
+        console.warn('TSDC | Error handling weapon variants:', error);
+        weaponVariantsSection.style.display = 'none';
+      }
+    }
   };
 
   // Obtiene el valor actual del select (resistente a skins)
@@ -75,7 +116,7 @@ if (!globalThis.__tsdcSpeciesHintsInstalled) {
     const sel = root?.querySelector?.('select[name="speciesKey"]');
     if (sel) {
       // pequeño defer por si el tema reemplaza el <select> al final del render
-      requestAnimationFrame(() => applyIntoRoot(root, getSelValue(sel)));
+      requestAnimationFrame(async () => await applyIntoRoot(root, getSelValue(sel)));
     }
   });
 
@@ -88,7 +129,7 @@ if (!globalThis.__tsdcSpeciesHintsInstalled) {
     if (!sel) return;
     const root = sel.closest?.('.application') || sel.closest?.('.dialog') || document;
     // microtick para que el skin sincronice .value
-    queueMicrotask(() => applyIntoRoot(root, getSelValue(sel)));
+    queueMicrotask(async () => await applyIntoRoot(root, getSelValue(sel)));
   };
   document.addEventListener("change", onAnyChange, true);
   document.addEventListener("input",  onAnyChange, true);
@@ -177,6 +218,12 @@ export async function openCharacterWizard(actor) {
         </select>
       </label>
 
+      <!-- Weapon Variants Section -->
+      <div data-weapon-variants style="display: none;">
+        <h4>Variantes de Armas Naturales</h4>
+        <div data-weapon-choices class="t-col" style="gap: 8px;"></div>
+      </div>
+
       <label class="t-col">
         <span class="muted">Historia</span>
         <textarea name="story" rows="3">${state.story ?? ""}</textarea>
@@ -198,6 +245,18 @@ export async function openCharacterWizard(actor) {
         o.weightKg = Number(o.weightKg) || 0;
         o.backgroundKey = String(o.backgroundKey || "");
         o.speciesKey    = String(o.speciesKey || "");
+
+        // Collect weapon choices
+        o.selectedWeaponChoices = [];
+        let choiceIndex = 0;
+        while (f.querySelector(`[name="weaponChoice${choiceIndex}"]`)) {
+          const choice = f.querySelector(`[name="weaponChoice${choiceIndex}"]`).value;
+          if (choice) {
+            o.selectedWeaponChoices.push(choice);
+          }
+          choiceIndex++;
+        }
+
         step1Data = o;
         return o;
       }
@@ -313,7 +372,9 @@ export async function openCharacterWizard(actor) {
 
   // Aplica especie + trasfondo + identidad LOCK
   const safeName = String(res1Data.characterName ?? actor.name ?? "Personaje");
-  await applySpecies(actor, res1Data.speciesKey);
+  await applySpecies(actor, res1Data.speciesKey, {
+    selectedWeaponChoices: res1Data.selectedWeaponChoices || []
+  });
   await setBackground(actor, res1Data.backgroundKey);
   await actor.update({
     "system.progression.skills.vigor.level": 1,

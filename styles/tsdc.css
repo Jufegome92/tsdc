@@ -160,6 +160,25 @@ body.system-tsdc .dialog .dialog-buttons button {
 body.system-tsdc .muted { color: var(--t-muted); }
 body.system-tsdc .accent { color: var(--t-accent-2); }
 
+.tsdc-wound-slots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.tsdc-wound-slot {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 3px;
+  background: rgba(255,255,255,0.06);
+}
+
+.tsdc-wound-slot.filled {
+  border-color: rgba(247,118,142,0.8);
+  background: rgba(247,118,142,0.6);
+}
+
 /* el contenedor raíz de la hoja debe ser flex/col y poder encogerse */
 body.system-tsdc .tsdc.sheet.actor .sheet-root { 
   display: flex;
@@ -323,3 +342,11 @@ body.system-tsdc .dialog .dialog-buttons {
 .tsdc.wizard .t-cols-2 { grid-template-columns: 1fr 1fr; }
 .tsdc .t-fieldset { border:1px solid var(--color-border); padding:8px; border-radius:6px; margin-bottom:10px; }
 .tsdc .t-fieldset legend { padding: 0 6px; opacity:.8; }
+
+body.system-tsdc #combat-tracker li.combatant .token-initiative {
+  display: none !important;
+}
+
+body.system-tsdc #combat-tracker li.combatant .combatant-controls {
+  margin-left: 0;
+}

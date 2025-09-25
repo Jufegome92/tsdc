@@ -64,15 +64,181 @@ function collectLearnedAptitudes(actor) {
     const known = !!node?.known || rank > 0;
     if (!known) continue;
     const a = APTITUDES[key]; if (!a) continue;
+
+    // Transformar la aptitud al formato de tarjeta
+    const transformedDef = transformAptitudeToCardFormat(a, key, rank);
+
     out.push({
       id: key,
       title: a.label ?? key,
       subtitle: `N${rank} · CT ${a.ct?.init||0}/${a.ct?.exec||1}/${a.ct?.rec||0}`,
       level: rank,
-      def: a
+      def: transformedDef
     });
   }
   return out;
+}
+
+// Función para transformar aptitudes al formato de tarjeta
+function transformAptitudeToCardFormat(aptitudeDef, key, rank) {
+  // Formatear área
+  let areaText = "—";
+  if (typeof aptitudeDef.area === 'number') {
+    if (aptitudeDef.area === 0) {
+      areaText = "Personal";
+    } else {
+      areaText = `${aptitudeDef.area} casilla${aptitudeDef.area !== 1 ? 's' : ''}`;
+    }
+  }
+
+  // Formatear rango
+  let rangeText = "—";
+  if (typeof aptitudeDef.range === 'number') {
+    if (aptitudeDef.range === 0) {
+      rangeText = "Personal";
+    } else {
+      rangeText = `${aptitudeDef.range}m`;
+    }
+  }
+
+  // Formatear descripción incluyendo riesgo
+  let fullDescription = aptitudeDef.effect || "Sin descripción disponible";
+  if (aptitudeDef.risk) {
+    fullDescription += `\n\n<strong>Riesgo:</strong> ${aptitudeDef.risk}`;
+  }
+
+  return {
+    name: aptitudeDef.label || key,
+    range: rangeText,
+    area: areaText,
+    ct: {
+      I: aptitudeDef.ct?.init || 0,
+      E: aptitudeDef.ct?.exec || 1,
+      R: aptitudeDef.ct?.rec || 0
+    },
+    requirements: aptitudeDef.requires ? [aptitudeDef.requires] : ["Ninguno"],
+    keywords: {
+      type: aptitudeDef.type || "utility",
+      clazz: aptitudeDef.clazz || "aptitude",
+      category: aptitudeDef.category || "active",
+      descriptors: aptitudeDef.descriptor ? [aptitudeDef.descriptor] : [],
+      elements: aptitudeDef.element ? [aptitudeDef.element] : []
+    },
+    description: fullDescription,
+    rolls: [] // Las aptitudes normalmente no tienen tiradas específicas definidas aquí
+  };
+}
+
+// Función para transformar maniobras al formato de tarjeta
+function transformManeuverToCardFormat(maneuverDef, key, rank) {
+  // Formatear área
+  let areaText = "—";
+  if (typeof maneuverDef.area === 'number') {
+    if (maneuverDef.area === 0) {
+      areaText = "Personal";
+    } else {
+      areaText = `${maneuverDef.area} casilla${maneuverDef.area !== 1 ? 's' : ''}`;
+      if (maneuverDef.areaShape) {
+        areaText += ` (${maneuverDef.areaShape})`;
+      }
+    }
+  }
+
+  // Formatear rango
+  let rangeText = "—";
+  if (typeof maneuverDef.range === 'number') {
+    if (maneuverDef.range === 0) {
+      rangeText = "Personal";
+    } else {
+      rangeText = `${maneuverDef.range}m`;
+    }
+  }
+
+  // Formatear descripción con niveles
+  let fullDescription = maneuverDef.effect || "Sin descripción disponible";
+  if (maneuverDef.levels && maneuverDef.levels.length > 0) {
+    fullDescription += "\n\n<strong>Niveles:</strong>\n";
+    maneuverDef.levels.forEach(level => {
+      fullDescription += `• ${level}\n`;
+    });
+  }
+
+  return {
+    name: maneuverDef.label || key,
+    range: rangeText,
+    area: areaText,
+    ct: {
+      I: maneuverDef.ct?.init || 0,
+      E: maneuverDef.ct?.exec || 1,
+      R: maneuverDef.ct?.rec || 0
+    },
+    requirements: maneuverDef.requires ? [maneuverDef.requires] : ["Ninguno"],
+    keywords: {
+      type: maneuverDef.type || "attack",
+      clazz: maneuverDef.clazz || "maneuver",
+      category: maneuverDef.category || "active",
+      descriptors: maneuverDef.descriptor ? [maneuverDef.descriptor] : [],
+      elements: maneuverDef.element ? [maneuverDef.element] : []
+    },
+    description: fullDescription,
+    rolls: [] // Las maniobras usan el sistema de TA/TI
+  };
+}
+
+// Función para transformar poderes de reliquia al formato de tarjeta
+function transformRelicPowerToCardFormat(relicDef, key, rank) {
+  // Formatear área
+  let areaText = "—";
+  if (typeof relicDef.area === 'number') {
+    if (relicDef.area === 0) {
+      areaText = "Personal";
+    } else {
+      areaText = `${relicDef.area} casilla${relicDef.area !== 1 ? 's' : ''}`;
+      if (relicDef.areaShape) {
+        areaText += ` (${relicDef.areaShape})`;
+      }
+    }
+  }
+
+  // Formatear rango
+  let rangeText = "—";
+  if (typeof relicDef.range === 'number') {
+    if (relicDef.range === 0) {
+      rangeText = "Personal";
+    } else {
+      rangeText = `${relicDef.range}m`;
+    }
+  }
+
+  // Formatear descripción con niveles
+  let fullDescription = relicDef.effect || "Sin descripción disponible";
+  if (relicDef.levels && relicDef.levels.length > 0) {
+    fullDescription += "\n\n<strong>Niveles:</strong>\n";
+    relicDef.levels.forEach(level => {
+      fullDescription += `• ${level}\n`;
+    });
+  }
+
+  return {
+    name: relicDef.label || key,
+    range: rangeText,
+    area: areaText,
+    ct: {
+      I: relicDef.ct?.init || 0,
+      E: relicDef.ct?.exec || 1,
+      R: relicDef.ct?.rec || 0
+    },
+    requirements: relicDef.requires ? [relicDef.requires] : ["Ninguno"],
+    keywords: {
+      type: relicDef.type || "utility",
+      clazz: relicDef.clazz || "relic_power",
+      category: relicDef.category || "active",
+      descriptors: relicDef.descriptor ? [relicDef.descriptor] : [],
+      elements: relicDef.element ? [relicDef.element] : []
+    },
+    description: fullDescription,
+    rolls: [] // Los poderes de reliquia usan el sistema de TA/TI
+  };
 }
 
 
@@ -107,6 +273,64 @@ function collectAptitudes(actor) {
       def
     });
   }
+  return out;
+}
+
+function collectNaturalWeapons(actor) {
+  const out = [];
+  const naturalWeapons = actor?.getFlag?.("tsdc", "naturalWeapons") || [];
+  const progressions = actor?.system?.progression?.weapons || {};
+
+  for (const weapon of naturalWeapons) {
+    const key = weapon.key;
+    const progression = progressions[key];
+    const rank = Number(progression?.rank || 0);
+    const level = Number(progression?.level || 1);
+
+    if (level <= 0) continue;
+
+    // Create attack action definition for natural weapon
+    const attackDef = {
+      id: `natural-${key}`,
+      name: `${weapon.label} (Ataque)`,
+      description: `Ataque con arma natural: ${weapon.label}`,
+      tags: weapon.tags || [],
+      ct: { I: 1, E: 1, R: 1 }, // Standard attack timing
+      isNaturalWeapon: true,
+      weaponKey: key,
+      weapon
+    };
+
+    // Add weapon stats to description
+    let statsText = "";
+    if (weapon.durability && typeof weapon.durability === 'object') {
+      statsText += `Durabilidad: ${weapon.durability.current}/${weapon.durability.max}`;
+    }
+    if (weapon.power) {
+      if (statsText) statsText += " • ";
+      statsText += `Potencia: ${weapon.power}`;
+    }
+    if (weapon.damageDie) {
+      if (statsText) statsText += " • ";
+      statsText += `Daño: ${weapon.damageDie}`;
+    }
+    if (weapon.tags && weapon.tags.length > 0) {
+      if (statsText) statsText += " • ";
+      statsText += `Etiquetas: ${weapon.tags.join(", ")}`;
+    }
+
+    if (statsText) {
+      attackDef.description += `\n\n${statsText}`;
+    }
+
+    out.push({
+      id: attackDef.id,
+      title: attackDef.name,
+      subtitle: `N${rank} • CT ${attackDef.ct.I}/${attackDef.ct.E}/${attackDef.ct.R}`,
+      def: attackDef
+    });
+  }
+
   return out;
 }
 
@@ -173,7 +397,7 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
         title: m?.label ?? key,
         subtitle: `N${rank} · CT ${m?.ct?.init||0}/${m?.ct?.exec||1}/${m?.ct?.rec||0}`,
         level: rank,
-        def: m
+        def: transformManeuverToCardFormat(m, key, rank)
       };
     }).filter(x => !q || String(x.title).toLowerCase().includes(q));
     const rs = actorKnownRelicPowers(actor).map(key => {
@@ -184,7 +408,7 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
         title: p?.label ?? key,
         subtitle: `N${rank} · CT ${p?.ct?.init||0}/${p?.ct?.exec||1}/${p?.ct?.rec||0}`,
         level: rank,
-        def: p
+        def: transformRelicPowerToCardFormat(p, key, rank)
       };
     }).filter(x => !q || String(x.title).toLowerCase().includes(q));
     const as = collectLearnedAptitudes(actor).filter(x => !q || String(x.title).toLowerCase().includes(q));
@@ -193,12 +417,18 @@ export class GrimoireApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const cardsRelics    = await Promise.all(rs.map(async x => ({ ...x, html: await toHtml(x.def) })));
     const cardsAptitudes = await Promise.all(as.map(async x => ({ ...x, html: await toHtml(x.def) })));
 
+    // Armas Naturales
+    const naturalWeapons = collectNaturalWeapons(actor)
+      .filter(x => !q || String(x.title).toLowerCase().includes(q))
+      .map(async x => ({ ...x, html: await toHtml(x.def) }));
+    const cardsNaturalWeapons = await Promise.all(naturalWeapons);
+
     return {
       actorName: actor?.name ?? "—",
       planningTick,
       query: q,
       activeTab: this._tab,
-      cardsBasic, cardsManeuvers, cardsRelics, cardsAptitudes
+      cardsBasic, cardsManeuvers, cardsRelics, cardsAptitudes, cardsNaturalWeapons
     };
   }
 

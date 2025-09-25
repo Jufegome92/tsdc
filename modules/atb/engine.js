@@ -8,6 +8,8 @@ import { RELIC_POWERS } from "../features/relics/data.js";
 import { APTITUDES } from "../features/aptitudes/data.js";
 import { getMonsterAbility } from "../features/abilities/data.js";
 import { arePartsFunctional, describePartsStatus } from "../features/inventory/index.js";
+import { listActive as listActiveAilments, resolveAilmentMechanics } from "../ailments/index.js";
+import { CATALOG as AILMENT_CATALOG } from "../ailments/catalog.js";
 
 const { deepClone } = foundry.utils;
 
@@ -22,9 +24,10 @@ function defaultState() {
     running: false,          // ya no se usa, se deja por compat
     tickMs: 1000,
     placementCounter: 0,
-    planningTick: 0,         // 👈 tick que están usando para PLANEAR
-    qOrderCounter: 0,        // 👈 orden estable de llegada a la cola
-    actors: {}               // [combatantId]: { queue:[desc], current:Card|null, mods:{} }
+    planningTick: 0,         // tick que están usando para planear
+    qOrderCounter: 0,        // orden estable de llegada a la cola
+    actors: {},              // [combatantId]: { queue:[desc], current:Card|null, mods:{} }
+    execHold: []
   };
 }
 
@@ -120,7 +123,8 @@ export async function enqueueMonsterAbility(combatantId, key, targetTick = null)
     ui.notifications?.warn(`Habilidad desconocida: ${key}`);
     return;
   }
-  if (ability.enabled === false) {
+  const manualDisabled = (ability.enabled === false) && (ability.flags?.tsdc?.manualDisabled === true);
+  if (manualDisabled) {
     ui.notifications?.warn(`La habilidad ${ability.label ?? key} está deshabilitada.`);
     return;
   }
@@ -230,10 +234,27 @@ export async function enqueueAptitudeForSelected(key, targetTick = null) {
 
 /* ===== Resolver descriptor → def ===== */
 
-function resolveQueued(desc) {
+function normalizeCtOverride(ct = {}) {
+  return {
+    I: Number(ct.I ?? ct.init ?? 0),
+    E: Number(ct.E ?? ct.exec ?? 0),
+    R: Number(ct.R ?? ct.rec ?? 0)
+  };
+}
+
+function resolveQueued(desc, { actor } = {}) {
   if (!desc) return null;
   if (desc.kind === "simple") { 
-     return listSimpleActions().find(d => d.key === desc.key) ?? null;
+     const base = listSimpleActions().find(d => d.key === desc.key);
+     if (!base) return null;
+     const clone = { ...base };
+     if (desc.key === "escape" && desc.meta?.ctOverride) {
+       const { I, E, R } = normalizeCtOverride(desc.meta.ctOverride);
+       clone.init_ticks = Math.max(0, I);
+       clone.exec_ticks = Math.max(0, E);
+       clone.rec_ticks  = Math.max(0, R);
+     }
+     return clone;
    }
   if (desc.kind === "maneuver") {
     const m = MANEUVERS?.[desc.key];
@@ -261,6 +282,35 @@ function resolveQueued(desc) {
   }
   return null;
 }
+
+function adjustActionCtForAilments(actor, def) {
+  if (!actor || !def) return def;
+  const active = listActiveAilments(actor);
+  if (!Array.isArray(active) || !active.length) return def;
+
+  let deltaInit = 0;
+  let deltaExec = 0;
+  let deltaRec  = 0;
+
+  for (const state of active) {
+    const catalogEntry = AILMENT_CATALOG[state.id];
+    const mechanics = resolveAilmentMechanics(catalogEntry, state);
+    const adjust = mechanics?.ctAdjust;
+    if (!adjust) continue;
+    deltaInit += Number(adjust.init ?? adjust.I ?? 0);
+    deltaExec += Number(adjust.exec ?? adjust.E ?? 0);
+    deltaRec  += Number(adjust.rec  ?? adjust.R ?? 0);
+  }
+
+  if (!deltaInit && !deltaExec && !deltaRec) return def;
+
+  return {
+    ...def,
+    init_ticks: Math.max(0, Number(def.init_ticks ?? 0) + deltaInit),
+    exec_ticks: Math.max(0, Number(def.exec_ticks ?? 0) + deltaExec),
+    rec_ticks:  Math.max(0, Number(def.rec_ticks  ?? 0) + deltaRec)
+  };
+}
 /* ===== Internals ===== */
 
 function spawnCard(state, combatantId, def, meta = null) {
@@ -271,6 +321,7 @@ function spawnCard(state, combatantId, def, meta = null) {
     I: def.init_ticks, E: def.exec_ticks, R: def.rec_ticks,
     placement_tick: state.tick,
     placement_order: state.placementCounter,
+    exec_order: Number(meta?.execOrder ?? state.placementCounter),
     phase: (def.init_ticks > 0) ? "init" : (def.exec_ticks > 0 ? "exec" : "rec"),
     ticks_left: (def.init_ticks > 0) ? def.init_ticks : (def.exec_ticks > 0 ? def.exec_ticks : def.rec_ticks),
     started_this_tick: (def.init_ticks === 0 && def.exec_ticks > 0),
@@ -280,126 +331,67 @@ function spawnCard(state, combatantId, def, meta = null) {
 function sortExec(list) {
   return list.sort((a,b) =>
     (a.placement_tick - b.placement_tick) ||
-    (a.placement_order - b.placement_order) ||
+    (a.exec_order - b.exec_order) ||
     ((a.started_this_tick ? 0 : -1) - (b.started_this_tick ? 0 : -1))
   );
 }
 
-/* ===== Un paso (= un tick) del bucle ===== */
+function sortExecDescriptors(list) {
+  return list.sort((a,b) =>
+    (Number(a.targetTick||0) - Number(b.targetTick||0)) ||
+    (Number(a.execOrder||0) - Number(b.execOrder||0))
+  );
+}
 
-async function stepOnceInternal() {
-  const combat = getCombat(); if (!combat) return;
-  const state  = await readState();
+async function performCardExec(state, combat, ci) {
+  const ct = combat.combatants.get(ci.actor);
+  const actor = ct?.actor;
+  if (!actor) return;
 
-  // Limpia penalizaciones de ticks previos
-  pruneOldCurrentTickMods(state);
+  const actorState = ensureActorState(state, ci.actor);
+  const meta = actorState?.current?.meta ?? {};
+  const actionKey = actorState?.current?.actionKey ?? "";
 
-  // 1) Arrancar acciones cuya "targetTick" ya alcanzó este tick
-  for (const ct of combat.combatants) {
-    const S = ensureActorState(state, ct.id);
-    if (S.current) continue;
-
-    // Orden estable por (targetTick, qorder)
-    S.queue.sort((a,b) => (Number(a.targetTick||0) - Number(b.targetTick||0)) || (Number(a.qorder||0) - Number(b.qorder||0)));
-
-    let idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
-    while (!S.current && idx >= 0) {
-      const desc = S.queue.splice(idx, 1)[0];
-      const def  = resolveQueued(desc);
-      if (!def) { idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick); continue; }
-
-      const CTsum = (def.init_ticks + def.exec_ticks + def.rec_ticks);
-      if (CTsum === 0) {
-        try {
-          await def.perform?.({
-            actor: ct.actor,
-            combat,
-            combatant: ct,
-            tick: state.tick,
-            startedThisTick: true,
-            meta: desc?.meta || {}           // ⟵ también para instantáneas
-          });
-        } catch (e) { console.error("ATB perform (instantáneo) error", e); }
-        idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
-        continue;
-      }
-
-      // Mueve bonos programados al arranque de acción
-      rotateModsOnSpawn(state, ct.id);
-      S.current = spawnCard(state, ct.id, def);
-    }
+  let defReal = listSimpleActions().find(d => d.key === actionKey) ?? null;
+  if (!defReal && actionKey.startsWith("maneuver:")) {
+    const k = actionKey.split(":")[1];
+    const m = MANEUVERS[k]; if (m) defReal = makeAbilityAction(m, { key: k, clazz: "maneuver" });
+  }
+  if (!defReal && actionKey.startsWith("relic:")) {
+    const k = actionKey.split(":")[1];
+    const p = RELIC_POWERS[k]; if (p) defReal = makeAbilityAction(p, { key: k, clazz: "relic" });
+  }
+  if (!defReal && actionKey.startsWith("aptitude:")) {
+    const k = actionKey.split(":")[1];
+    const a = APTITUDES[k]; if (a) defReal = makeAbilityAction(a, { key: k, clazz: "aptitude" });
+  }
+  if (!defReal && actionKey.startsWith("monster:")) {
+    const k = actionKey.split(":")[1];
+    const ability = ct.actor?.system?.abilities?.find?.(ab => (ab.itemKey || ab.key) === k) || getMonsterAbility(k);
+    if (ability) defReal = makeAbilityAction(ability, { key: k, clazz: ability.clazz ?? "monster" });
+  }
+  if (!defReal && actionKey.startsWith("spec:")) {
+    const parts = actionKey.split(":");
+    const metaCat = meta?.category ?? "physical";
+    const metaCt = Number(meta?.CT ?? parts[2] ?? 2);
+    defReal = makeSpecializationAction({ specKey: parts[1], category: metaCat, CT: metaCt });
   }
 
-  // 2) Ejecutan este tick (solo cuando COMIENZA EXEC)
-  const execNow = [];
-  const toPromote = [];
-  for (const ct of combat.combatants) {
-    const S  = ensureActorState(state, ct.id);
-    const ci = S.current;
-    if (!ci) continue;
-
-    if (ci.phase === "init" && ci.ticks_left === 0) {
-      ci.phase = "exec";
-      ci.started_this_tick = true;
-      ci.ticks_left = Math.max(0, ci.E);
-      toPromote.push(ci);
-      continue;   
-    }
-    if (ci.phase === "exec" && ci.started_this_tick) {
-      execNow.push(ci);
-    }
+  try {
+    await defReal?.perform?.({
+      actor,
+      combat,
+      combatant: ct,
+      tick: state.tick,
+      startedThisTick: true,
+      meta
+    });
+  } catch (e) {
+    console.error("ATB perform error", e);
   }
-  const execOrdered = sortExec(execNow.concat(toPromote));
+}
 
-  // 3) Perform EXEC (una sola vez al comenzar EXEC)
-  for (const ci of execOrdered) {
-    if (!ci.started_this_tick) continue;
-    const ct = combat.combatants.get(ci.actor);
-    const actor = ct?.actor;
-    if (!actor) continue;
-
-    // Buscar def real
-    let defReal = listSimpleActions().find(d => d.key === ensureActorState(state, ci.actor).current?.actionKey) ?? null;
-    const aKey = ensureActorState(state, ci.actor).current?.actionKey ?? "";
-    if (!defReal && aKey.startsWith("maneuver:")) {
-      const k = aKey.split(":")[1];
-      const m = MANEUVERS[k]; if (m) defReal = makeAbilityAction(m, { key: k, clazz: "maneuver" });
-    }
-    if (!defReal && aKey.startsWith("relic:")) {
-      const k = aKey.split(":")[1];
-      const p = RELIC_POWERS[k]; if (p) defReal = makeAbilityAction(p, { key: k, clazz: "relic" });
-    }
-    if (!defReal && aKey.startsWith("aptitude:")) {
-      const k = aKey.split(":")[1];
-      const a = APTITUDES[k]; if (a) defReal = makeAbilityAction(a, { key: k, clazz: "aptitude" });
-    }
-    if (!defReal && aKey.startsWith("monster:")) {
-      const k = aKey.split(":")[1];
-      const ability = ct.actor?.system?.abilities?.find?.(ab => (ab.itemKey || ab.key) === k) || getMonsterAbility(k);
-      if (ability) defReal = makeAbilityAction(ability, { key: k, clazz: ability.clazz ?? "monster" });
-    }
-
-    if (!defReal && aKey.startsWith("spec:")) {
-      const parts = ensureActorState(state, ci.actor).current.actionKey.split(":"); // spec:key:CT
-      defReal = makeSpecializationAction({ specKey: parts[1], category: "physical", CT: Number(parts[2]||2) });
-    }
-
-    const actorState = ensureActorState(state, ci.actor);
-    const meta = actorState?.current?.meta ?? {};
-
-    try {
-      await defReal?.perform?.({
-        actor,
-        combat,
-        combatant: ct,
-        tick: state.tick,
-        startedThisTick: true,
-        meta                              // ⟵ pasa meta al perform
-      });
-    } catch (e) { console.error("ATB perform error", e); }
-  }
-
-  // 4) Reducir contadores y transicionar
+async function finalizeTick(state, combat) {
   for (const ct of combat.combatants) {
     const S = ensureActorState(state, ct.id);
     const ci = S.current;
@@ -407,6 +399,18 @@ async function stepOnceInternal() {
 
     if (ci.phase === "init") {
       ci.ticks_left = Math.max(0, ci.ticks_left - 1);
+      if (ci.ticks_left === 0) {
+        if (ci.E > 0) {
+          ci.phase = "exec";
+          ci.started_this_tick = true;
+          ci.ticks_left = Math.max(0, ci.E);
+        } else if (ci.R > 0) {
+          ci.phase = "rec";
+          ci.ticks_left = ci.R;
+        } else {
+          S.current = null;
+        }
+      }
     } else if (ci.phase === "exec") {
       ci.ticks_left = Math.max(0, ci.ticks_left - 1);
       ci.started_this_tick = false;
@@ -424,10 +428,120 @@ async function stepOnceInternal() {
     }
   }
 
-  // 5) Avanza tick
+  state.execHold = [];
   state.tick += 1;
   await writeState(state);
   Hooks.callAll("tsdcAtbTick", { combat, tick: state.tick, state });
+}
+
+/* ===== Un paso (= un tick) del bucle ===== */
+
+async function stepOnceInternal() {
+  const combat = getCombat(); if (!combat) return;
+  const state  = await readState();
+  state.execHold = Array.isArray(state.execHold) ? state.execHold : [];
+
+  if (!state.execHold.length) {
+    pruneOldCurrentTickMods(state);
+
+    for (const ct of combat.combatants) {
+      const S = ensureActorState(state, ct.id);
+      if (S.current) continue;
+
+      S.queue.sort((a,b) => (Number(a.targetTick||0) - Number(b.targetTick||0)) || (Number(a.qorder||0) - Number(b.qorder||0)));
+
+      let idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
+      while (!S.current && idx >= 0) {
+        const desc = S.queue.splice(idx, 1)[0];
+        const rawDef  = resolveQueued(desc, { actor: ct.actor });
+        if (!rawDef) { idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick); continue; }
+
+        const def = adjustActionCtForAilments(ct.actor, rawDef);
+        const CTsum = (def.init_ticks + def.exec_ticks + def.rec_ticks);
+        if (CTsum === 0) {
+          try {
+            await def.perform?.({
+              actor: ct.actor,
+              combat,
+              combatant: ct,
+              tick: state.tick,
+              startedThisTick: true,
+              meta: desc?.meta || {}
+            });
+          } catch (e) { console.error("ATB perform (instantáneo) error", e); }
+          idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
+          continue;
+        }
+
+        rotateModsOnSpawn(state, ct.id);
+        const extraMeta = (desc?.kind === "spec")
+          ? { specKey: desc.specKey, category: desc.category, CT: desc.CT }
+          : {};
+        const metaPayload = {
+          ...(desc?.meta ?? {}),
+          ...extraMeta,
+          targetTick: Number(desc?.targetTick ?? state.tick),
+          execOrder: Number(desc?.qorder ?? state.qOrderCounter)
+        };
+        S.current = spawnCard(state, ct.id, def, metaPayload);
+      }
+    }
+
+    const execNow = [];
+    const toPromote = [];
+    for (const ct of combat.combatants) {
+      const S  = ensureActorState(state, ct.id);
+      const ci = S.current;
+      if (!ci) continue;
+
+      if (ci.phase === "init" && ci.ticks_left === 0) {
+        ci.phase = "exec";
+        ci.started_this_tick = true;
+        ci.ticks_left = Math.max(0, ci.E);
+        toPromote.push(ci);
+        continue;
+      }
+      if (ci.phase === "exec" && ci.started_this_tick) {
+        execNow.push(ci);
+      }
+    }
+
+    const execOrdered = sortExec(execNow.concat(toPromote));
+    const descriptors = execOrdered.map(ci => {
+      const S = ensureActorState(state, ci.actor);
+      const actionKey = S.current?.actionKey ?? "";
+      const meta = S.current?.meta ?? {};
+      return {
+        actor: ci.actor,
+        specKey: meta.specKey ?? (actionKey.startsWith("spec:") ? actionKey.split(":")[1] : null),
+        category: meta.category ?? (actionKey.startsWith("spec:") ? "physical" : null),
+        CT: Number(meta.CT ?? (actionKey.startsWith("spec:") ? actionKey.split(":")[2] : 2)),
+        targetTick: Number(meta.targetTick ?? state.tick),
+        execOrder: Number(meta.execOrder ?? S.current?.placement_order ?? 0)
+      };
+    });
+    state.execHold = sortExecDescriptors(descriptors);
+
+    if (!state.execHold.length) {
+      await finalizeTick(state, combat);
+      return;
+    }
+  }
+
+  const nextInfo = state.execHold.shift();
+  const actorState = nextInfo ? ensureActorState(state, nextInfo.actor) : null;
+  const card = actorState?.current ?? null;
+
+  if (card && card.phase === "exec" && card.started_this_tick) {
+    await performCardExec(state, combat, card);
+    card.started_this_tick = false;
+  }
+
+  if (state.execHold.length === 0) {
+    await finalizeTick(state, combat);
+  } else {
+    await writeState(state);
+  }
 }
 
 /* ===== Control (solo GM) ===== */

@@ -54,6 +54,38 @@
             </div>
           </div>
         </div>
+
+        {{#if woundZones.length}}
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Heridas por zona</h3>
+          {{#if woundStatusLabel}}<span class="muted">Estado general: {{woundStatusLabel}}</span>{{/if}}
+          <div class="t-col" style="gap:6px;">
+            {{#each woundZones}}
+              <div class="t-row" style="justify-content:space-between; gap:8px; align-items:center;">
+                <div style="min-width:110px;"><strong>{{this.label}}</strong></div>
+                <div class="tsdc-wound-slots">
+                  {{#each this.slots}}
+                    <span class="tsdc-wound-slot {{#if this}}filled{{/if}}"></span>
+                  {{/each}}
+                </div>
+                <span class="muted">{{this.used}} / {{this.max}}</span>
+              </div>
+            {{/each}}
+          </div>
+        </div>
+        {{/if}}
+      </div>
+
+      <div class="t-card t-col">
+        <h3 style="margin:0 0 6px 0;">Rasgos de personalidad</h3>
+        <div class="t-row" style="gap:12px; flex-wrap:wrap;">
+          {{#each personalityTraits}}
+            <div class="t-field" style="flex:1 1 180px; min-width:160px;">
+              <label>Rasgo {{this.index}}</label>
+              <input type="text" name="{{this.name}}" value="{{this.value}}" maxlength="60" />
+            </div>
+          {{/each}}
+        </div>
       </div>
 
       {{!-- Bloque de características + derivados + extra en grilla 3 columnas --}}
@@ -430,6 +462,25 @@
         {{/if}}
       </div>
 
+      {{!-- PODERES DE RELIQUIA --}}
+      <div class="t-card t-col">
+        <h3 style="margin:0;">Poderes de Reliquia</h3>
+        {{#if comps.relics.length}}
+          {{#each comps.relics}}
+            <div class="t-row" style="align-items:center; gap:8px;">
+              <strong style="min-width:160px;">{{this.label}}</strong>
+              <span class="muted">Nivel {{this.level}} • Rango {{this.rank}}</span>
+              <span class="muted">Progreso {{this.progress}} / {{this.threshold}}</span>
+              <span class="muted">Fallos {{this.fails}}</span>
+              <span class="t-right muted">{{this.bonusHint}}</span>
+              {{#if this.pct}}<div style="width:120px;height:6px;background:#eee;border-radius:4px;overflow:hidden;"><div style="height:100%;width:{{this.pct}}%;"></div></div>{{/if}}
+            </div>
+          {{/each}}
+        {{else}}
+          <span class="muted">Aún no has sintonizado poderes de reliquia.</span>
+        {{/if}}
+      </div>
+
       {{!-- DEFENSA --}}
       <div class="t-card t-col">
         <h3 style="margin:0;">Defensa</h3>
@@ -629,6 +680,32 @@
 
         <span class="muted">Consejo: equipa un arma en la mano principal para que las tiradas la tomen por defecto.</span>
       </div>
+
+      {{#if inventory.equippedSummary.length}}
+      <div class="t-card t-col">
+        <h3 style="margin:0 0 6px 0;">Estado del equipo equipado</h3>
+        <table class="t-table">
+          <thead>
+            <tr>
+              <th>Slot</th>
+              <th>Objeto</th>
+              <th>Durabilidad</th>
+              <th>Potencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each inventory.equippedSummary}}
+              <tr>
+                <td>{{this.slotLabel}}</td>
+                <td>{{this.name}}</td>
+                <td>{{this.durability}}</td>
+                <td>{{this.potency}}</td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+      {{/if}}
 
     </div> {{!-- /tab equipment --}}
 

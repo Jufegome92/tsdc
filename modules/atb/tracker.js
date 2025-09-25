@@ -3,6 +3,7 @@ import { listSimpleActions, makeSpecializationAction } from "./actions.js";
 import { openPlanDialogForSelection } from "./ui.js";
 import { ATB_API } from "./engine.js";
 import { MANEUVERS } from "../features/maneuvers/data.js";
+import { MONSTER_ABILITIES } from "../features/abilities/data.js";
 import { RELIC_POWERS } from "../features/relics/data.js";
 import { APTITUDES } from "../features/aptitudes/data.js";
 
@@ -25,6 +26,7 @@ const FLAG_KEY   = "atb";
     .tsdc-atb-tracker .tt-row  { display:grid; grid-template-columns:180px 1fr; align-items:center; gap:8px; margin:6px 0; }
     .tsdc-atb-tracker .tt-line { display:grid; grid-template-columns:repeat(var(--cols), 1fr); gap:3px; height:42px; position:relative; }
     .tsdc-atb-tracker .tt-seg  { border:1px solid #7a7a7a; border-radius:10px; display:grid; place-items:center; padding:0 8px; overflow:hidden; font-size:12px; }
+    .tsdc-atb-tracker .tt-seg.is-active { box-shadow:0 0 0 2px rgba(0, 199, 255, 0.6); border-color:#00c7ff; }
     .tsdc-atb-tracker .tt-label { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
     .tsdc-atb-tracker .phase-init { background:#c9d8ff; }
     .tsdc-atb-tracker .phase-exec { background:#ffd8b3; }
@@ -40,11 +42,58 @@ function getState() {
   return c.getFlag(FLAG_SCOPE, FLAG_KEY) ?? null;
 }
 
-function resolveQueued(desc) {
+function computeActiveActor(state) {
+  if (Array.isArray(state?.execHold) && state.execHold.length) {
+    return state.execHold[0]?.actor ?? null;
+  }
+  let candidate = null;
+  for (const [actorId, data] of Object.entries(state?.actors ?? {})) {
+    const queue = Array.isArray(data?.queue) ? data.queue : [];
+    for (const desc of queue) {
+      const tick = Number(desc?.targetTick ?? Number.MAX_SAFE_INTEGER);
+      if (Number(state?.tick ?? 0) < tick) continue;
+      const order = Number(desc?.qorder ?? Number.MAX_SAFE_INTEGER);
+      if (!candidate || tick < candidate.tick || (tick === candidate.tick && order < candidate.order)) {
+        candidate = { actor: actorId, tick, order };
+      }
+    }
+  }
+  if (candidate) return candidate.actor;
+
+  for (const [actorId, data] of Object.entries(state?.actors ?? {})) {
+    const queue = Array.isArray(data?.queue) ? data.queue : [];
+    for (const desc of queue) {
+      const tick = Number(desc?.targetTick ?? Number.MAX_SAFE_INTEGER);
+      const order = Number(desc?.qorder ?? Number.MAX_SAFE_INTEGER);
+      if (!candidate || tick < candidate.tick || (tick === candidate.tick && order < candidate.order)) {
+        candidate = { actor: actorId, tick, order };
+      }
+    }
+  }
+  return candidate?.actor ?? null;
+}
+
+function normalizeCtOverride(ct = {}) {
+  return {
+    I: Number(ct.I ?? ct.init ?? 0),
+    E: Number(ct.E ?? ct.exec ?? 0),
+    R: Number(ct.R ?? ct.rec ?? 0)
+  };
+}
+
+function resolveQueued(desc, { actor } = {}) {
   if (!desc) return null;
   if (desc.kind === "simple") { 
     const s = listSimpleActions().find(d => d.key === desc.key);
-    return s ? { key: s.key, label: s.label, init_ticks: s.init_ticks, exec_ticks: s.exec_ticks, rec_ticks: s.rec_ticks } : null;
+    if (!s) return null;
+    const clone = { key: s.key, label: s.label, init_ticks: s.init_ticks, exec_ticks: s.exec_ticks, rec_ticks: s.rec_ticks };
+    if (desc.key === "escape" && desc.meta?.ctOverride) {
+      const { I, E, R } = normalizeCtOverride(desc.meta.ctOverride);
+      clone.init_ticks = Math.max(0, I);
+      clone.exec_ticks = Math.max(0, E);
+      clone.rec_ticks  = Math.max(0, R);
+    }
+    return clone;
    }
   if (desc.kind === "maneuver") {
     const m = MANEUVERS?.[desc.key];
@@ -60,6 +109,12 @@ function resolveQueued(desc) {
     const a = APTITUDES?.[desc.key];
     if (!a) return null;
     return { key:`aptitude:${desc.key}`, label: a.label, init_ticks:a.ct?.init||0, exec_ticks:a.ct?.exec||1, rec_ticks:a.ct?.rec||0 };
+  }
+  if (desc.kind === "monsterAbility") {
+    const ab = desc?.ability || MONSTER_ABILITIES?.[desc.key];
+    if (!ab) return null;
+    const ct = ab.ct || {};
+    return { key:`monster:${ab.key||desc.key}`, label: ab.label || desc.key, init_ticks:ct.init||0, exec_ticks:ct.exec||1, rec_ticks:ct.rec||0 };
   }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
@@ -94,11 +149,13 @@ function labelFromKey(key) {
   return key ?? "?";
 }
 
-function buildRow(c, state, combatantId, horizon) {
+function buildRow(c, state, combatantId, horizon, activeActor) {
   const row = { name: c?.combatants?.get(combatantId)?.name ?? "—", segments: [] };
   const S = state?.actors?.[combatantId] ?? { queue: [], current: null };
 
   let pos = 0;
+  let activeMarked = false;
+  const isActive = activeActor && (combatantId === activeActor);
 
   // 1) Fase actual + fases remanentes de la acción en curso
   if (S.current) {
@@ -109,7 +166,8 @@ function buildRow(c, state, combatantId, horizon) {
     if (cur.ticks_left > 0) {
       const span = Math.min(cur.ticks_left, horizon - pos);
       if (span > 0) {
-        row.segments.push({ label, phase: cur.phase, gridColumn: `${pos + 1} / span ${span}` });
+        row.segments.push({ label, phase: cur.phase, gridColumn: `${pos + 1} / span ${span}`, active: isActive && !activeMarked });
+        if (isActive && !activeMarked) activeMarked = true;
         pos += span;
       }
     }
@@ -127,7 +185,8 @@ function buildRow(c, state, combatantId, horizon) {
       if (pos >= horizon) break;
       const span = Math.min(p.ticks, horizon - pos);
       if (span > 0) {
-        row.segments.push({ label, phase: p.phase, gridColumn: `${pos + 1} / span ${span}` });
+        row.segments.push({ label, phase: p.phase, gridColumn: `${pos + 1} / span ${span}`, active: isActive && !activeMarked });
+        if (isActive && !activeMarked) activeMarked = true;
         pos += span;
       }
     }
@@ -135,7 +194,7 @@ function buildRow(c, state, combatantId, horizon) {
 
   // 2) Cola futura del actor
   for (const desc of (S.queue ?? [])) {
-    const def = resolveQueued(desc);
+      const def = resolveQueued(desc, { actor: c.combatants.get(combatantId)?.actor ?? null });
     if (!def) continue;
     const label = def.label ?? def.key;
     const phases = [
@@ -148,7 +207,9 @@ function buildRow(c, state, combatantId, horizon) {
       if (pos >= horizon) break;
       const span = Math.min(p.ticks, horizon - pos);
       if (span > 0) {
-        row.segments.push({ label, phase: p.phase, gridColumn: `${pos + 1} / span ${span}` });
+        const active = isActive && !activeMarked;
+        row.segments.push({ label, phase: p.phase, gridColumn: `${pos + 1} / span ${span}`, active });
+        if (active) activeMarked = true;
         pos += span;
       }
     }
@@ -218,9 +279,10 @@ class ATBTrackerApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const cols = Array.from({ length: horizon }, (_, i) => i + 1);
 
     const rows = [];
+    const activeActor = computeActiveActor(state);
     if (c && c.combatants) {
       const list = c.combatants.contents ?? Array.from(c.combatants);
-      for (const comb of list) rows.push(buildRow(c, state, comb.id, horizon));
+      for (const comb of list) rows.push(buildRow(c, state, comb.id, horizon, activeActor));
     }
     if (!rows.length) {
       rows.push({ name: "—", segments: [{ label: "Libre", phase: "free", gridColumn: `1 / span ${horizon}` }] });

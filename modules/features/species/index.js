@@ -10,6 +10,18 @@ export function listSpecies() { return _listSpecies(); }
 /** Alias por claridad en el wizard */
 export function getSpeciesByKey(key) { return getSpecies(key); }
 
+/** Get weapon choices available for a species */
+export async function getWeaponChoices(speciesKey) {
+  const { getSpeciesWeaponChoices } = await import("./natural-weapons.js");
+  return getSpeciesWeaponChoices(speciesKey);
+}
+
+/** Check if species has weapon variants */
+export async function speciesHasWeaponVariants(speciesKey) {
+  const { hasWeaponVariants } = await import("./natural-weapons.js");
+  return hasWeaponVariants(speciesKey);
+}
+
 /** Convierte rangos del catálogo a hints en cm/kg/años para el wizard */
 export function rangesFromSpecies(sp) {
   if (!sp) return null;
@@ -29,7 +41,7 @@ export function rangesFromSpecies(sp) {
  * Aplica rasgos base de especie al actor (atributos, idiomas, tamaño, velocidad, vigor).
  * No pisa valores existentes que el usuario ya tocó salvo que se indique.
  */
-export async function applySpecies(actor, speciesKey) {
+export async function applySpecies(actor, speciesKey, options = {}) {
   const def = getSpecies(speciesKey);
   if (!actor || !def) return;
 
@@ -61,7 +73,10 @@ export async function applySpecies(actor, speciesKey) {
     await actor.update({ "system.progression.skills.vigor.category": "physical" });
   }
 
-  const naturals = buildSpeciesNaturalWeapons(def.key, { level: actor.system?.level ?? 1 });
+  const naturals = buildSpeciesNaturalWeapons(def.key, {
+    level: actor.system?.level ?? 1,
+    selectedChoices: options.selectedWeaponChoices || []
+  });
   if (naturals.length) {
     await actor.setFlag("tsdc", "naturalWeapons", naturals);
     for (const rec of naturals) {
@@ -78,8 +93,22 @@ export async function applySpecies(actor, speciesKey) {
     await actor.unsetFlag("tsdc", "naturalWeapons");
   }
 
+  // Ensure anatomy exists for character actors
+  if (actor.type === "character" && (!actor.system?.anatomy || Object.keys(actor.system.anatomy).length === 0)) {
+    // Standard humanoid anatomy for characters
+    const standardAnatomy = {
+      head: { materialKey: "bone", quality: 2 },
+      chest: { materialKey: "bone", quality: 2 },
+      bracers: { materialKey: "bone", quality: 2 },
+      legs: { materialKey: "bone", quality: 2 },
+      boots: { materialKey: "bone", quality: 2 }
+    };
+    patch["system.anatomy"] = standardAnatomy;
+  }
+
   if (!actor.system?.health?.parts || !Object.keys(actor.system.health.parts).length) {
-    const anatomy = actor.system?.anatomy ?? {};
+    // Use existing or newly set anatomy
+    const anatomy = patch["system.anatomy"] || (actor.system?.anatomy ?? {});
     const healthParts = buildHealthPartsFromAnatomy(anatomy, { level: actor.system?.level ?? 1 });
     if (Object.keys(healthParts).length) {
       patch["system.health.parts"] = healthParts;

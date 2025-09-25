@@ -74,17 +74,23 @@ function readWearState(actor) {
   const wearMax  = Math.max(0, stamina - fatigue);      // Límite = Aguante – Fatiga
   return { stamina, fatigue, wear, wearMax };
 }
-function canSpendWear(actor) {
+export function canSpendWear(actor) {
   const { wear, wearMax } = readWearState(actor);
   return wear < wearMax;
 }
-async function spendWear(actor, n = 1) {
+export async function spendWear(actor, n = 1) {
   const cur = Number(actor.system?.states?.wear ?? 0);
   await actor.update({ "system.states.wear": cur + Math.max(1, n) });
 }
 
 /* ===== Ventanas de reacción ===== */
 export function openReactionWindow({ ownerToken, reason, expiresTick, payload }) {
+  // Check if the actor can actually react
+  if (!canActorReact(ownerToken.actor)) {
+    console.log(`TSDC | ${ownerToken.name} cannot react (no wear capacity or reaction actions available)`);
+    return;
+  }
+
   const st = _getSceneState();
   const rx = _rxFor(ownerToken.actor?.id ?? ownerToken.id);
 
@@ -107,6 +113,92 @@ export async function clearAllReactionWindows() {
   const st = _getSceneState();
   st.rx = {};
   await _setSceneState(st);
+}
+
+/** Reset wear for all actors when combat ends */
+export async function resetAllWear() {
+  if (!game.combat) return;
+
+  for (const combatant of game.combat.combatants) {
+    if (!combatant.actor) continue;
+
+    const currentWear = Number(combatant.actor.system?.states?.wear ?? 0);
+    if (currentWear > 0) {
+      await combatant.actor.update({ "system.states.wear": 0 });
+      console.log(`TSDC | Reset wear for ${combatant.actor.name}: ${currentWear} → 0`);
+    }
+  }
+}
+
+/** Check if an actor can react (has wear capacity and available reaction actions) */
+export function canActorReact(actor) {
+  if (!canSpendWear(actor)) return false;
+
+  // Check if actor has any available reaction actions
+  return hasAvailableReactionActions(actor);
+}
+
+/** Check if an actor has any reaction-type actions available */
+function hasAvailableReactionActions(actor) {
+  // Check aptitudes with reaction type
+  const aptitudes = actor?.system?.progression?.aptitudes || {};
+  const hasReactionAptitudes = Object.keys(aptitudes).some(key => {
+    if (!aptitudes[key]?.known) return false;
+
+    // Import aptitude data to check type
+    try {
+      // This is synchronous access - we should cache this data
+      return game.tsdc?.aptitudes?.[key]?.type === "reaction";
+    } catch {
+      return false;
+    }
+  });
+
+  if (hasReactionAptitudes) return true;
+
+  // Check maneuvers with reaction type
+  const maneuvers = actor?.system?.progression?.maneuvers || {};
+  const hasReactionManeuvers = Object.keys(maneuvers).some(key => {
+    if (Number(maneuvers[key]?.rank || 0) === 0) return false;
+
+    try {
+      return game.tsdc?.maneuvers?.[key]?.type === "reaction";
+    } catch {
+      return false;
+    }
+  });
+
+  if (hasReactionManeuvers) return true;
+
+  // Check relic powers with reaction type
+  const relics = actor?.system?.progression?.relics || {};
+  const hasReactionRelics = Object.keys(relics).some(key => {
+    if (Number(relics[key]?.rank || 0) === 0) return false;
+
+    try {
+      return game.tsdc?.relics?.[key]?.type === "reaction";
+    } catch {
+      return false;
+    }
+  });
+
+  if (hasReactionRelics) return true;
+
+  // Check base reactions (like opportunity attacks)
+  // All actors can potentially make opportunity attacks if they have melee weapons
+  const weapons = actor?.system?.progression?.weapons || {};
+  const hasMeleeWeapons = Object.keys(weapons).some(key => {
+    if (Number(weapons[key]?.rank || 0) === 0) return false;
+
+    try {
+      const weaponDef = game.tsdc?.weapons?.[key];
+      return weaponDef && weaponDef.range <= MELEE_RANGE_M;
+    } catch {
+      return false;
+    }
+  });
+
+  return hasMeleeWeapons;
 }
 
 /* ===== AO (Ataque de Oportunidad) ===== */
@@ -183,3 +275,14 @@ export async function triggerFumbleReactions({ fumblerToken }) {
 function distanceM(a, b) {
   return cellsEveryOther(a, b) * 1;
 }
+
+/* ===== Hooks para reseteo de desgaste ===== */
+Hooks.on("deleteCombat", async (combat) => {
+  console.log("TSDC | Combat deleted, resetting wear for all participants");
+  await resetAllWear();
+});
+
+Hooks.on("combatEnd", async (combat) => {
+  console.log("TSDC | Combat ended, resetting wear for all participants");
+  await resetAllWear();
+});

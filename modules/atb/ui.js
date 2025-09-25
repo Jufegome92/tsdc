@@ -8,9 +8,38 @@ import { RELIC_POWERS } from "../features/relics/data.js";
 import { APTITUDES } from "../features/aptitudes/data.js";
 import { actorKnownManeuvers, actorKnownRelicPowers } from "../features/known.js";
 import { MONSTER_ABILITIES } from "../features/abilities/data.js";
+import { listSpecs } from "../features/specializations/index.js";
 import { arePartsFunctional, describePartsStatus } from "../features/inventory/index.js";
+import { listActive as listActiveAilments, resolveAilmentMechanics } from "../ailments/index.js";
+import { CATALOG as AILMENT_CATALOG } from "../ailments/catalog.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+
+const SPEC_CATEGORY_LABELS = {
+  physical: "Física",
+  mental: "Mental",
+  arts: "Arte y oficios",
+  knowledge: "Saberes",
+  social: "Social"
+};
+
+function buildSpecOptionsByCategory() {
+  const byCat = {};
+  for (const key of Object.keys(SPEC_CATEGORY_LABELS)) byCat[key] = [];
+  for (const spec of listSpecs()) {
+    const cat = spec.category || "physical";
+    const entry = { key: spec.key, label: spec.label || spec.key };
+    (byCat[cat] ??= []).push(entry);
+  }
+  for (const arr of Object.values(byCat)) {
+    arr.sort((a, b) => a.label.localeCompare(b.label, game.i18n?.lang || "es"));
+  }
+  return byCat;
+}
+
+function listSpecCategories() {
+  return Object.entries(SPEC_CATEGORY_LABELS).map(([key, label]) => ({ key, label }));
+}
 
 function populatePlannerSelects(html, actor) {
   // Maniobras
@@ -37,7 +66,7 @@ function populatePlannerSelects(html, actor) {
 
 /* ========= Listas para el diálogo ========= */
 function listBasicOptions() {
-  const ids = ["mover","ataque","interactuar","soltar","hide"]; // la Especialización tiene su bloque propio
+  const ids = ["mover","ataque","interactuar","escape","soltar","hide"]; // la Especialización tiene su bloque propio
   return ids.map(id => ({ id, name: ACTIONS[id]?.name ?? (id==="hide" ? "Ocultación" : id) }));
 }
 function listManeuverOptions(actor) {
@@ -58,19 +87,43 @@ function listRelicOptions(actor) {
   });
 }
 
+function normalizeCtOverride(ct = {}) {
+  return {
+    I: Number(ct.I ?? ct.init ?? 0),
+    E: Number(ct.E ?? ct.exec ?? 0),
+    R: Number(ct.R ?? ct.rec ?? 0)
+  };
+}
+
+function collectEscapeCandidates(actor) {
+  if (!actor) return [];
+  return listActiveAilments(actor)
+    .map(state => {
+      const def = AILMENT_CATALOG[state.id];
+      const mechanics = resolveAilmentMechanics(def, state);
+      if (!mechanics?.escape) return null;
+      return { state, mechanics, def };
+    })
+    .filter(Boolean);
+}
+
 function listMonsterAbilityOptions(actor) {
   const abilities = Array.isArray(actor?.system?.abilities) ? actor.system.abilities : [];
   return abilities
     .map(ab => {
       const key = ab.itemKey ?? ab.key;
       if (!key) return null;
-      const base = MONSTER_ABILITIES[key] ?? {};
+      const normKey = String(key).toLowerCase();
+      const base = MONSTER_ABILITIES[normKey] ?? MONSTER_ABILITIES[key] ?? {};
       const name = ab.label ?? base.label ?? key;
       const requiresParts = ab.requiresParts || base.requiresParts || [];
       const partsOk = arePartsFunctional(actor, requiresParts);
-      const disabled = ab.enabled === false || !partsOk;
-      const reason = !partsOk ? (describePartsStatus(actor, requiresParts) || "Parte dañada")
-                    : (ab.enabled === false ? "Habilidad deshabilitada" : "");
+      const manualDisabled = (ab.enabled === false) && (ab.flags?.tsdc?.manualDisabled === true);
+      const disabled = manualDisabled || !partsOk;
+      const manualReason = ab.flags?.tsdc?.manualDisabledReason || "Habilidad deshabilitada";
+      const reason = !partsOk
+        ? (describePartsStatus(actor, requiresParts) || "Parte dañada")
+        : (manualDisabled ? manualReason : "");
       return { key, name, disabled, reason };
     })
     .filter(Boolean);
@@ -80,10 +133,80 @@ function listAptitudesOptions(actor) {
   const tree = actor?.system?.progression?.aptitudes ?? {};
   return Object.entries(tree)
     .filter(([,n]) => !!n?.known || Number(n?.rank || 0) > 0)
+    .filter(([key]) => (APTITUDES[key]?.category || "active") !== "passive")
     .map(([key, n]) => ({ key, name: `${APTITUDES[key]?.label ?? key} ${n?.rank?`(N${n.rank})`:""}` }));
 }
 
 /* ========= Diálogo Planer ========= */
+function bindSpecSelectors(app, root) {
+  try {
+    const $root = root?.jquery ? root : $(root ?? app.element);
+    if (!$root?.length) {
+      console.warn("TSDC | ATB Plan | bindSpecSelectors: no root", root);
+      return;
+    }
+
+    const specSelect = $root.find('select[name="specSelect"]')[0] ?? null;
+    const specInput = $root.find('input[name="specKey"]')[0] ?? null;
+    const catSelect = $root.find('select[name="specCat"]')[0] ?? null;
+    if (!specSelect || !catSelect) {
+      console.warn("TSDC | ATB Plan | bindSpecSelectors: missing selects");
+      return;
+    }
+
+    const ensureSpecMap = () => {
+      if (!app._specOptionsByCategory) {
+        app._specOptionsByCategory = buildSpecOptionsByCategory();
+      }
+      return app._specOptionsByCategory;
+    };
+
+    const updateSpecOptions = (catKey, preserveValue = false) => {
+      const map = ensureSpecMap();
+      const options = map?.[catKey] ?? [];
+      const previous = preserveValue ? specSelect.value : "";
+    specSelect.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "— Elegir —";
+      specSelect.appendChild(placeholder);
+      for (const opt of options) {
+        const el = document.createElement("option");
+        el.value = opt.key;
+        el.textContent = opt.label;
+        specSelect.appendChild(el);
+      }
+      if (preserveValue && options.some(o => o.key === previous)) {
+        specSelect.value = previous;
+      } else {
+        specSelect.value = "";
+      }
+    };
+
+    const initial = catSelect.value || app._specDefaultCat || "physical";
+    updateSpecOptions(initial, false);
+
+    catSelect.removeEventListener('change', catSelect._tsdcListener);
+    catSelect._tsdcListener = (ev) => {
+      const value = ev.currentTarget?.value || "";
+      updateSpecOptions(value, false);
+      if (specInput) specInput.value = "";
+    };
+    catSelect.addEventListener('change', catSelect._tsdcListener);
+
+    if (specInput) {
+      specSelect.removeEventListener('change', specSelect._tsdcListener);
+      specSelect._tsdcListener = (ev) => {
+        const value = ev.currentTarget.value;
+        if (value) specInput.value = value;
+      };
+      specSelect.addEventListener('change', specSelect._tsdcListener);
+    }
+  } catch (err) {
+    console.error("TSDC | ATB Plan | bindSpecSelectors failed", err);
+  }
+}
+
 class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
   static DEFAULT_OPTIONS = {
     id: "tsdc-atb-plan",
@@ -107,20 +230,85 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     return Number.isFinite(v) ? v : null;
   }
 
+  activateListeners(html) {
+    super.activateListeners?.(html);
+    bindSpecSelectors(this, $(html ?? this.element));
+  }
+
   static async onPlanBasic() {
     const app = this;
     const sel = app.element.querySelector('select[name="basicKey"]')?.value || "";
     if (!sel) return ui.notifications.warn("Elige una acción básica.");
     const tick = app._readTick();
 
-    const map = { mover:"move", ataque:"attack", interactuar:"interact", soltar:"drop", hide:"hide" };
+    const map = { mover:"move", ataque:"attack", interactuar:"interact", escape:"escape", soltar:"drop", hide:"hide" };
     const simple = map[sel];
     if (!simple) return ui.notifications.warn("Acción básica desconocida.");
 
-    // 👇 nuevo: si es ataque y hay target local, guardamos su id
-    const tgt = Array.from(game.user?.targets ?? [])[0] ?? null;
+    if (simple === "escape") {
+      const controlled = canvas.tokens?.controlled ?? [];
+      if (controlled.length > 1) {
+        ui.notifications.warn("Selecciona solo un token para planear Escapar.");
+        return;
+      }
+      const actor = controlled[0]?.actor ?? game.user?.character ?? null;
+      if (!actor) {
+        ui.notifications.warn("No hay actor seleccionado para planear Escapar.");
+        return;
+      }
+      const candidates = collectEscapeCandidates(actor);
+      if (!candidates.length) {
+        ui.notifications.warn("Ese actor no tiene agravios que permitan una acción de escape.");
+        return;
+      }
+      let choice = null;
+      if (candidates.length === 1) {
+        choice = candidates[0];
+      } else {
+        const { DialogV2 } = foundry.applications.api;
+        const options = candidates.map(c => {
+          const label = c.state.label || c.def?.label || c.state.id;
+          const sev = c.state.severity ? ` (Sev. ${c.state.severity.toUpperCase()})` : "";
+          return `<option value="${c.state.id}">${label}${sev}</option>`;
+        }).join("\n");
+        const picked = await DialogV2?.prompt({
+          window: { title: "Elegir agravio" },
+          content: `<form><label>Agravio <select name="aid">${options}</select></label></form>`,
+          ok: {
+            label: "Confirmar",
+            callback: (_ev, button) => button.form.elements.aid?.value || ""
+          }
+        });
+        if (!picked) {
+          ui.notifications.info("Plan de escape cancelado.");
+          return;
+        }
+        choice = candidates.find(c => c.state.id === picked) ?? null;
+        if (!choice) {
+          ui.notifications.warn("No se encontró el agravio seleccionado.");
+          return;
+        }
+      }
+
+      const meta = { ailmentId: choice.state.id };
+      if (choice.mechanics.escape?.ct) {
+        meta.ctOverride = normalizeCtOverride(choice.mechanics.escape.ct);
+      }
+      const options = choice.mechanics.escape?.options ?? [];
+      if (options.length === 1) meta.escapeOption = options[0];
+
+      await ATB_API.enqueueSimpleForActor(actor.id, "escape", tick, meta);
+      window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
+      ui.notifications.info(`Plan: Escapar ${tick!=null?`→ tick ${tick}`:"(plan)"}`);
+      return;
+    }
+
+    // 👇 nuevo: si es ataque y hay un único target, guardamos su id
     const meta = {};
-    if (simple === "attack" && tgt) meta.targetTokenId = tgt.id;
+    if (simple === "attack") {
+      const targets = Array.from(game.user?.targets ?? []);
+      if (targets.length === 1) meta.targetTokenId = targets[0].id;
+    }
 
     await ATB_API.enqueueSimpleForSelected(simple, tick, meta);  // 👈 ahora pasa meta
     window?.tsdcatb?.ATBTrackerApp?._instance?.render(false);
@@ -165,8 +353,11 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static async onPlanSpec() {
     const app = this;
-    const specKey = app.element.querySelector('input[name="specKey"]')?.value?.trim() || "";
-    if (!specKey) return ui.notifications.warn("Ingresa la clave de la especialización.");
+    let specKey = app.element.querySelector('input[name="specKey"]')?.value?.trim() || "";
+    if (!specKey) {
+      specKey = app.element.querySelector('select[name="specSelect"]')?.value?.trim() || "";
+    }
+    if (!specKey) return ui.notifications.warn("Elige o ingresa una especialización.");
     const category = app.element.querySelector('select[name="specCat"]')?.value || "physical";
     const CT = Number(app.element.querySelector('select[name="specCT"]')?.value || 2);
     const tick = app._readTick();
@@ -178,6 +369,15 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
   async _prepareContext() {
     const planningTick = await ATB_API.getPlanningTick();
     const a = canvas.tokens?.controlled?.[0]?.actor ?? game.user?.character ?? null;
+    const specOptionsByCategory = buildSpecOptionsByCategory();
+    const specCategoriesRaw = listSpecCategories();
+    const defaultCat = specCategoriesRaw.find(cat => (specOptionsByCategory[cat.key]?.length ?? 0) > 0)?.key
+      || specCategoriesRaw[0]?.key
+      || "physical";
+    const specCategories = specCategoriesRaw.map(cat => ({ ...cat, isDefault: cat.key === defaultCat }));
+    const specOptionsInitial = specOptionsByCategory[defaultCat] ?? [];
+    this._specOptionsByCategory = specOptionsByCategory;
+    this._specDefaultCat = defaultCat;
     return {
       planningTick,
       actorName: a?.name ?? "—",
@@ -185,7 +385,10 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
       maneuverOptions: listManeuverOptions(a),
       relicOptions: listRelicOptions(a),
       monsterAbilityOptions: listMonsterAbilityOptions(a),
-      aptitudesOptions: listAptitudesOptions(a)
+      aptitudesOptions: listAptitudesOptions(a),
+      specCategories,
+      specOptionsInitial,
+      specDefaultCat: defaultCat
     };
   }
   static open() { if (!this._instance) this._instance = new this(); this._instance.render(true); return this._instance; }
@@ -234,4 +437,8 @@ export function registerAtbUI() {
   // macro helper
   game.transcendence = game.transcendence || {};
   game.transcendence.openPlanDialog = openPlanDialogForSelection;
+
+  Hooks.on("renderAtbPlanDialog", (app, html) => {
+    bindSpecSelectors(app, html);
+  });
 }

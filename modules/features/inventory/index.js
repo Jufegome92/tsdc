@@ -57,6 +57,9 @@ function makeNaturalItem(actor, record) {
     noAttack: !!record.noAttack,
     powerPerRank: record.powerPerRank ?? null,
     durabilityPerRank: record.durabilityPerRank ?? null,
+    // Include calculated values from the record
+    durability: record.durability ?? null,
+    power: record.power ?? null,
     material: record.material ?? null,
     quality: Number(record.quality ?? 1),
     grade: Number(record.grade ?? Math.max(1, rank || 1)),
@@ -88,9 +91,14 @@ export function bodyPartLabel(part) {
 
 function isBodyPartBroken(actor, partKey) {
   if (!partKey) return false;
+  // Try both .current and .value for compatibility
+  const current = Number(gp(actor, `system.health.parts.${partKey}.current`, null));
   const value = Number(gp(actor, `system.health.parts.${partKey}.value`, null));
-  if (!Number.isFinite(value)) return false;
-  return value <= 0;
+
+  // Use whichever property exists
+  const healthValue = Number.isFinite(current) ? current : value;
+  if (!Number.isFinite(healthValue)) return false;
+  return healthValue <= 0;
 }
 
 export function arePartsFunctional(actor, parts) {

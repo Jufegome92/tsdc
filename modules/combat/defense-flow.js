@@ -13,11 +13,22 @@ import { addProgress } from "../progression.js";
 import { computeBlockingAt } from "../features/armors/index.js";
 import { buildImpactFormula } from "../rolls/formulas.js";
 import { applyManeuverEffects } from "./effects.js"
+import { addWoundSlots } from "../health/wounds.js";
 
 const CHAT = (html, actor=null) => ChatMessage.create({
   content: html,
   speaker: actor ? ChatMessage.getSpeaker({ actor }) : undefined
 });
+
+function zoneKeyFromHitLocation(hitLocation) {
+  const l = String(hitLocation || "").toLowerCase();
+  if (l.includes("head") || l.includes("cabeza")) return "head";
+  if (l.includes("brace") || l.includes("arm") || l.includes("brazo")) return "bracers";
+  if (l.includes("leg") || l.includes("pierna") || l.includes("boot") || l.includes("pie")) {
+    return l.includes("boot") || l.includes("pie") ? "boots" : "legs";
+  }
+  return "chest";
+}
 
 /* ======================================================
  * Utilidades
@@ -194,6 +205,7 @@ function buildWeaponItemForImpact({ actor, weaponCtx, atkKey }) {
       material: record.material || record.key || null,
       quality,
       grade,
+      traits: Array.isArray(record.traits) ? [...record.traits] : [],
       damageDie: record.damageDie || "d6",
       attackAttr: record.attackAttr || "agility",
       impactAttr: record.impactAttr || record.attackAttr || "agility",
@@ -425,8 +437,11 @@ export async function runDefenseFlow({
     legs: "piernas", boots: "pies"
   })[hitLocation] || hitLocation;
 
+  const woundSeverity = computeWoundSeverity(Number(impact||0), Number(block||0));
+  const woundZone = zoneKeyFromHitLocation(hitLocation);
+
   if (isCreatureVsCharacter) {
-    const severity = computeWoundSeverity(Number(impact||0), Number(block||0));
+    const severity = woundSeverity;
     const ratioText = `Impacto ${impact} vs Bloqueo ${block}`;
     if (!severity) {
       await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>${ratioText}</b> → sin herida.`, attackerActor);
@@ -454,6 +469,9 @@ export async function runDefenseFlow({
     } else {
       await CHAT(`💥 ${attackerActor.name} causa una <b>herida ${severity}</b> a ${targetToken.name} (${ratioText}).`, attackerActor);
     }
+    if (targetToken.actor?.type === "character" && severity && woundZone) {
+      await addWoundSlots(targetToken.actor, woundZone, { severity, source: damageCategory ?? "impact" });
+    }
     return;
   }
 
@@ -463,6 +481,10 @@ export async function runDefenseFlow({
   }
 
   await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Daño Neto = ${net}</b>.`, attackerActor);
+
+  if (targetToken.actor?.type === "character" && woundSeverity && woundZone) {
+    await addWoundSlots(targetToken.actor, woundZone, { severity: woundSeverity, source: weapon?.key || "weapon" });
+  }
 
   // 6) Aplicar daño (por zona si tienes, o general)
   await applyDamageOrWound({ defenderToken: targetToken, amount: net, hitLocation: hitLocation });

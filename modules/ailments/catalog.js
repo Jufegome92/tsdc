@@ -26,17 +26,35 @@ export const CATALOG = {
     duration: { type: "rounds", value: "1d4" },
     effectsText: [
       "-1 PA por ronda.",
-      "Las T.E de movimiento aumentan su dificultad en +2."
-    ]
+      "Las T.E de movimiento aumentan su dificultad en +2.",
+      "+1 tick al Inicio de tus acciones mientras dure."
+    ],
+    mechanics: {
+      ctAdjust: { init: 1 },
+      rollModifiers: [
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Electrizado" }
+      ]
+    }
   },
   ATRAPADO: {
     id: "ATRAPADO", group: AILMENT_GROUP.ALTERATION,
     label: "Atrapado",
     duration: { type: "untilTreated" },
     effectsText: [
-      "Velocidad 0. -2 a T.A, T.I, T.D y T.E que impliquen movimiento.",
-      "Puede gastar 2 PA para intentar liberarse (T.C Fuerza vs Resistencia del elemento que lo atrapa, o T.E Destreza vs dificultad de escape)."
-    ]
+      "Velocidad 0. -2 a T.A, T.I, T.D y T.E físicas.",
+      "Acción de escape: CT 2 (I1/E1/R0) para intentar liberarse (T.R Alteración o T.E Destreza, según la situación)."
+    ],
+    mechanics: {
+      movementBlocked: true,
+      rollModifiers: [
+        { phases: ["attack", "defense", "impact"], value: -2, label: "Atrapado" },
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Atrapado" }
+      ],
+      escape: {
+        ct: { init: 1, exec: 1, rec: 0 },
+        options: ["resistance:alteration", "skill:destreza"]
+      }
+    }
   },
   CONGELADO: {
     id: "CONGELADO", group: AILMENT_GROUP.ALTERATION,
@@ -45,7 +63,14 @@ export const CATALOG = {
     effectsText: [
       "-2 a T.E de Destreza y T.C de Agilidad.",
       "Movimiento a la mitad."
-    ]
+    ],
+    mechanics: {
+      ctAdjust: { init: 1 },
+      rollModifiers: [
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Congelado" },
+        { phases: ["resistance"], resTypes: ["composure"], value: -2, label: "Congelado" }
+      ]
+    }
   },
   DERRIBADO: {
     id: "DERRIBADO", group: AILMENT_GROUP.ALTERATION,
@@ -54,7 +79,12 @@ export const CATALOG = {
     effectsText: [
       "-2 a T.D. Los oponentes tienen un avance de dado contra ti.",
       "Tu primera acción de movimiento se usa para levantarte."
-    ]
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["defense"], value: -2, label: "Derribado" }
+      ]
+    }
   },
   DESANGRADO: {
     id: "DESANGRADO", group: AILMENT_GROUP.ALTERATION,
@@ -63,15 +93,42 @@ export const CATALOG = {
     severable: true, // admite severidad: leve|grave|critico
     effectsBySeverity: {
       leve:   ["-1 a T.C de Fuerza y Tenacidad."],
-      grave:  ["-3 a T.C Fuerza y Tenacidad, -1 PA. Requiere vendaje rápido."],
-      critico:["-3 a T.C Fuerza y Tenacidad, -2 PA. Además, Inmovilizado en zona afectada."]
+      grave:  ["-3 a T.C de Fuerza y Tenacidad, -1 PA. +1 tick a la Recuperación de tus acciones. Requiere vendaje rápido."],
+      critico:["-3 a T.C de Fuerza y Tenacidad, -2 PA. +1 tick a Inicio y Recuperación. La zona afectada queda inmovilizada."]
+    },
+    mechanics: {
+      severity: {
+        leve: {
+          rollModifiers: [
+            { phases: ["resistance"], resTypes: ["poison", "infection"], value: -1, label: "Desangrado (Leve)" }
+          ]
+        },
+        grave: {
+          rollModifiers: [
+            { phases: ["resistance"], resTypes: ["poison", "infection"], value: -3, label: "Desangrado (Grave)" }
+          ],
+          ctAdjust: { rec: 1 }
+        },
+        critico: {
+          rollModifiers: [
+            { phases: ["resistance"], resTypes: ["poison", "infection"], value: -3, label: "Desangrado (Crítico)" }
+          ],
+          ctAdjust: { init: 1, rec: 1 }
+        }
+      }
     }
   },
   CONMOCIONADO: {
     id: "CONMOCIONADO", group: AILMENT_GROUP.ALTERATION,
     label: "Conmocionado",
     duration: { type: "rounds", value: "1d4" },
-    effectsText: ["+2 a la dificultad de T.E/T.C relacionadas con enfoque."]
+    effectsText: ["+2 a la dificultad de T.E/T.C relacionadas con enfoque."],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, label: "Conmocionado" },
+        { phases: ["resistance"], resTypes: ["composure"], value: -2, label: "Conmocionado" }
+      ]
+    }
   },
   ATERRORIZADO: {
     id: "ATERRORIZADO", group: AILMENT_GROUP.ALTERATION,
@@ -80,7 +137,13 @@ export const CATALOG = {
     effectsText: [
       "Debe huir de la fuente del miedo o sufre -2 a T.A y T.D.",
       "Puede gastar 1 PA para T.R Alteraciones vs (dif. inicial +2)."
-    ]
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["attack"], value: -2, label: "Aterrorizado" },
+        { phases: ["defense"], value: -2, label: "Aterrorizado" }
+      ]
+    }
   },
   PARALIZADO: {
     id: "PARALIZADO", group: AILMENT_GROUP.ALTERATION,
@@ -89,7 +152,14 @@ export const CATALOG = {
     effectsText: [
       "No puede realizar acciones ni moverse.",
       "Puede gastar 1 PA para T.R Alteraciones vs (dif. inicial +2)."
-    ]
+    ],
+    mechanics: {
+      movementBlocked: true,
+      rollModifiers: [
+        { phases: ["attack"], value: -99, label: "Paralizado" },
+        { phases: ["defense"], value: -5, label: "Paralizado" }
+      ]
+    }
   },
   ENSORDECIDO: {
     id: "ENSORDECIDO", group: AILMENT_GROUP.ALTERATION,
@@ -107,7 +177,13 @@ export const CATALOG = {
     effectsText: [
       "-5 a T.A y T.D.",
       "No puede realizar T.E que requieran visión."
-    ]
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["attack"], value: -5, label: "Cegado" },
+        { phases: ["defense"], value: -5, label: "Cegado" }
+      ]
+    }
   },
   CONFUNDIDO: {
     id: "CONFUNDIDO", group: AILMENT_GROUP.ALTERATION,
@@ -122,19 +198,43 @@ export const CATALOG = {
     effectsText: [
       "No puede moverse, atacar ni realizar maniobras defensivas.",
       "Puede gastar 2 PA para intentar liberarse (T.C Fuerza vs Resistencia / T.E Destreza vs dificultad de escape)."
-    ]
+    ],
+    mechanics: {
+      movementBlocked: true,
+      rollModifiers: [
+        { phases: ["attack"], value: -5, label: "Inmovilizado" },
+        { phases: ["defense"], value: -5, label: "Inmovilizado" }
+      ],
+      escape: {
+        ct: { init: 1, exec: 1, rec: 0 },
+        options: ["resistance:alteration", "skill:destreza"]
+      }
+    }
   },
   DESEQUILIBRADO: {
     id: "DESEQUILIBRADO", group: AILMENT_GROUP.ALTERATION,
     label: "Desequilibrado",
     duration: { type: "untilTreated" },
-    effectsText: ["-2 a T.D y T.E de Destreza/Acrobacias/Saltar/Trepar."]
+    effectsText: ["-2 a T.D y T.E de Destreza/Acrobacias/Saltar/Trepar."],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["defense"], value: -2, label: "Desequilibrado" },
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Desequilibrado" }
+      ]
+    }
   },
   ATURDIDO: {
     id: "ATURDIDO", group: AILMENT_GROUP.ALTERATION,
     label: "Aturdido",
     duration: { type: "rounds", value: 1 },
-    effectsText: ["Pierde su próxima ronda. -2 a T.R, T.C y T.D."]
+    effectsText: ["Pierde su próxima ronda. -2 a T.R, T.C y T.D."],
+    mechanics: {
+      ctAdjust: { init: 1 },
+      rollModifiers: [
+        { phases: ["defense"], value: -2, label: "Aturdido" },
+        { phases: ["resistance"], value: -2, label: "Aturdido" }
+      ]
+    }
   },
   DESORIENTADO: {
     id: "DESORIENTADO", group: AILMENT_GROUP.ALTERATION,
@@ -143,7 +243,12 @@ export const CATALOG = {
     effectsText: [
       "-2 a T.E ligadas a Intelecto/Sabiduría.",
       "-2 a Preparación (temporal)."
-    ]
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, label: "Desorientado" }
+      ]
+    }
   },
   ASFIXIADO: {
     id: "ASFIXIADO", group: AILMENT_GROUP.ALTERATION,
@@ -151,7 +256,13 @@ export const CATALOG = {
     duration: { type: "untilTreated" },
     effectsText: [
       "-1 PA. Debe hacer T.C Tenacidad cada ronda para no perder la conciencia."
-    ]
+    ],
+    mechanics: {
+      ctAdjust: { rec: 1 },
+      rollModifiers: [
+        { phases: ["resistance"], resTypes: ["alteration", "poison", "air"], value: -1, label: "Asfixiado" }
+      ]
+    }
   },
   IMPEDIDO: {
     id: "IMPEDIDO", group: AILMENT_GROUP.ALTERATION,
@@ -160,13 +271,27 @@ export const CATALOG = {
     effectsText: [
       "No puede ejecutar habilidades que requieran Enfoque.",
       "-2 a todas las tiradas."
-    ]
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["attack"], value: -2, label: "Impedido" },
+        { phases: ["defense"], value: -2, label: "Impedido" },
+        { phases: ["skill"], value: -2, label: "Impedido" },
+        { phases: ["resistance"], value: -2, label: "Impedido" }
+      ]
+    }
   },
   SOBRECARGADO: {
     id: "SOBRECARGADO", group: AILMENT_GROUP.ALTERATION,
     label: "Sobrecargado",
     duration: { type: "rounds", value: "1d6" },
-    effectsText: ["-2 a todas las T.R y T.D."]
+    effectsText: ["-2 a todas las T.R y T.D."],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["defense"], value: -2, label: "Sobrecargado" },
+        { phases: ["resistance"], value: -2, label: "Sobrecargado" }
+      ]
+    }
   },
   DESARMADO: {
     id: "DESARMADO", group: AILMENT_GROUP.ALTERATION,
@@ -187,13 +312,24 @@ export const CATALOG = {
     effectsText: [
       "Daño de fuego al inicio de turno (según fuente).",
       "-2 a T.E relacionadas con Agilidad hasta apagar el fuego."
-    ]
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Quemado" }
+      ]
+    }
   },
   DEBILITADO: {
     id: "DEBILITADO", group: AILMENT_GROUP.ALTERATION,
     label: "Debilitado",
     duration: { type: "rounds", value: "1d4" },
-    effectsText: ["-2 a T.C de Fuerza y Tenacidad y T.E de Vigor/Acrobacias."]
+    effectsText: ["-2 a T.C de Fuerza y Tenacidad y T.E de Vigor/Acrobacias."],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["resistance"], resTypes: ["poison", "infection"], value: -2, label: "Debilitado" },
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Debilitado" }
+      ]
+    }
   },
   CORROIDO: {
     id: "CORROIDO", group: AILMENT_GROUP.ALTERATION,
@@ -401,7 +537,13 @@ export const CATALOG = {
     label: "Enfermedad del Colmillo",
     contagio: "Moderado", incubacion: "1d4 días",
     duration: { type: "untilTreated" },
-    effectsText: ["Movimiento a la mitad; -3 a T.C de Agilidad."]
+    effectsText: ["Movimiento a la mitad; -3 a T.C de Agilidad."],
+    mechanics: {
+      movementMultiplier: 0.5,
+      rollModifiers: [
+        { phases: ["resistance"], value: -3, label: "Enfermedad del Colmillo" }
+      ]
+    }
   },
 
   // =========================
@@ -416,6 +558,28 @@ export const CATALOG = {
       leve:   ["-4 a T.E ligadas a Agilidad (precisión)."],
       grave:  ["Además, -4 a T.C de Compostura."],
       critico:["Como Grave + inmovilización de la zona afectada; riesgo de combustión adyacente por turno."]
+    },
+    mechanics: {
+      severity: {
+        leve: {
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:physical"], value: -4, label: "Quemadura (Leve)" }
+          ]
+        },
+        grave: {
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:physical"], value: -4, label: "Quemadura (Grave)" },
+            { phases: ["resistance"], resTypes: ["composure"], value: -4, label: "Quemadura (Grave)" }
+          ]
+        },
+        critico: {
+          movementMultiplier: 0.5,
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:physical"], value: -4, label: "Quemadura (Crítica)" },
+            { phases: ["resistance"], resTypes: ["composure"], value: -4, label: "Quemadura (Crítica)" }
+          ]
+        }
+      }
     }
   },
   LACERACION_DE_PRESION_VIENTO: {
@@ -427,6 +591,33 @@ export const CATALOG = {
       leve:   ["-4 a Percepción y Defensa."],
       grave:  ["Además, Desangrado Grave."],
       critico:["Sangrado Crítico; -4 a T.E de Fuerza; no puede usar acciones dependientes del sonido."]
+    },
+    grantsBySeverity: {
+      grave: ["DESANGRADO"],
+      critico: ["DESANGRADO"]
+    },
+    mechanics: {
+      severity: {
+        leve: {
+          rollModifiers: [
+            { phases: ["defense"], value: -4, label: "Laceración (Leve)" },
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -4, label: "Laceración (Leve)" }
+          ]
+        },
+        grave: {
+          rollModifiers: [
+            { phases: ["defense"], value: -4, label: "Laceración (Grave)" },
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -4, label: "Laceración (Grave)" }
+          ]
+        },
+        critico: {
+          rollModifiers: [
+            { phases: ["defense"], value: -4, label: "Laceración (Crítica)" },
+            { phases: ["skill"], tagsAny: ["spec:physical"], value: -4, label: "Laceración (Crítica)" }
+          ],
+          movementMultiplier: 0.75
+        }
+      }
     }
   },
   APLASTAMIENTO_TAUMATICO_TIERRA: {
@@ -438,6 +629,31 @@ export const CATALOG = {
       leve:   ["Fractura (Leve)."],
       grave:  ["Fractura (Grave) y -1 PA por gravedad anómala."],
       critico:["Fractura (Crítica) e Inmovilizado."]
+    },
+    grantsBySeverity: {
+      leve: ["FRACTURADO"],
+      grave: ["FRACTURADO"],
+      critico: ["FRACTURADO", "INMOVILIZADO"]
+    },
+    mechanics: {
+      severity: {
+        leve: {
+          movementMultiplier: 0.75,
+        },
+        grave: {
+          movementMultiplier: 0.5,
+          ctAdjust: { rec: 1 },
+          rollModifiers: [
+            { phases: ["resistance"], value: -1, label: "Aplastamiento (Grave)" }
+          ]
+        },
+        critico: {
+          movementBlocked: true,
+          rollModifiers: [
+            { phases: ["defense"], value: -4, label: "Aplastamiento (Crítico)" }
+          ]
+        }
+      }
     }
   },
   CONGELACION_TAUMATICA_AGUA: {
@@ -449,6 +665,33 @@ export const CATALOG = {
       leve:   ["-4 a T.E/T.C de Agilidad."],
       grave:  ["Además, movimiento a la mitad."],
       critico:["Además, Inmovilizado y Asfixiado."]
+    },
+    grantsBySeverity: {
+      critico: ["ASFIXIADO"]
+    },
+    mechanics: {
+      severity: {
+        leve: {
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:physical"], value: -4, label: "Congelación (Leve)" },
+            { phases: ["resistance"], value: -4, label: "Congelación (Leve)" }
+          ]
+        },
+        grave: {
+          movementMultiplier: 0.5,
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:physical"], value: -4, label: "Congelación (Grave)" },
+            { phases: ["resistance"], value: -4, label: "Congelación (Grave)" }
+          ]
+        },
+        critico: {
+          movementBlocked: true,
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:physical"], value: -4, label: "Congelación (Crítica)" },
+            { phases: ["resistance"], value: -4, label: "Congelación (Crítica)" }
+          ]
+        }
+      }
     }
   },
   SOBRECARGA_NERVIOSA_LUZ: {
@@ -460,6 +703,31 @@ export const CATALOG = {
       leve:   ["-4 a T.A y T.E de Percepción."],
       grave:  ["Además, -4 a T.E de Enfoque."],
       critico:["Además, Sobrecargado."]
+    },
+    grantsBySeverity: {
+      critico: ["SOBRECARGADO"]
+    },
+    mechanics: {
+      severity: {
+        leve: {
+          rollModifiers: [
+            { phases: ["attack"], value: -4, label: "Sobrecarga (Leve)" },
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -4, label: "Sobrecarga (Leve)" }
+          ]
+        },
+        grave: {
+          rollModifiers: [
+            { phases: ["attack"], value: -4, label: "Sobrecarga (Grave)" },
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -4, label: "Sobrecarga (Grave)" }
+          ]
+        },
+        critico: {
+          rollModifiers: [
+            { phases: ["attack"], value: -4, label: "Sobrecarga (Crítica)" },
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -4, label: "Sobrecarga (Crítica)" }
+          ]
+        }
+      }
     }
   },
   DEVORACION_SENSORIAL_OSCURIDAD: {
@@ -471,6 +739,25 @@ export const CATALOG = {
       leve:   ["Rango visual a la mitad."],
       grave:  ["Además, Aflicción: Paranoia."],
       critico:["Además, Aflicción: Fobia."]
+    },
+    mechanics: {
+      severity: {
+        leve: {
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -2, label: "Oscuridad (Leve)" }
+          ]
+        },
+        grave: {
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -3, label: "Oscuridad (Grave)" }
+          ]
+        },
+        critico: {
+          rollModifiers: [
+            { phases: ["skill"], tagsAny: ["spec:mental"], value: -4, label: "Oscuridad (Crítica)" }
+          ]
+        }
+      }
     }
   }
 };

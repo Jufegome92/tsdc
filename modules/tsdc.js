@@ -25,6 +25,9 @@ import * as Reactions from "./atb/reactions.js";
 import * as Grants from "./features/grants.js";
 import * as Known from "./features/known.js";
 import * as Monsters from "./monsters/factory.js";
+import "./movement/index.js";
+import { registerAptitudeHooks } from "./features/aptitudes/runtime.js";
+import "./features/aptitudes/granting.js";
 
 const _guardWizardOpen = new Set();
 
@@ -155,15 +158,20 @@ Hooks.once("init", () => {
   console.log("TSDC | init done");
 });
 
-Hooks.once("ready", () => {
+Hooks.once("ready", async () => {
   console.log(
     `Transcendence | ready (system=${game.system.id} v${game.system.version ?? game.system.data?.version})`
   );
+
+  // Initialize global data cache for reaction system
+  await initializeReactionDataCache();
+
   const regs = [
     registerChatListeners,
     registerAtbUI,
     registerAtbTrackerButton,
-    registerAtbAutoOpen
+    registerAtbAutoOpen,
+    registerAptitudeHooks
   ];
   for (const fn of regs) {
     try { fn?.(); }
@@ -231,3 +239,52 @@ Hooks.on("tsdc:onEndRound", async (combat, round) => {
   // ejemplo: expirar efectos que duran exactamente 1 ronda completa
   // no-op por ahora
 });
+
+/** Auto-update natural weapon stats when weapon progression changes */
+Hooks.on("updateActor", async (actor, data, _options, _userId) => {
+  // Only process if weapons progression was updated
+  if (!data.system?.progression?.weapons) return;
+
+  // Get natural weapons from flags
+  const naturalWeapons = actor.getFlag("tsdc", "naturalWeapons") || [];
+  if (!naturalWeapons.length) return;
+
+  // Check each updated weapon to see if it's a natural weapon
+  const { updateNaturalWeaponStats } = await import("./features/species/natural-weapons.js");
+
+  for (const [weaponKey, weaponData] of Object.entries(data.system.progression.weapons)) {
+    // Check if this is a natural weapon and if level changed
+    const isNaturalWeapon = naturalWeapons.some(w => w.key === weaponKey);
+    if (isNaturalWeapon && weaponData.level !== undefined) {
+      await updateNaturalWeaponStats(actor, weaponKey);
+    }
+  }
+});
+
+/** Initialize global data cache for reaction system performance */
+async function initializeReactionDataCache() {
+  try {
+    // Initialize global cache
+    game.tsdc = game.tsdc || {};
+
+    // Cache aptitudes data
+    const { APTITUDES } = await import("./features/aptitudes/data.js");
+    game.tsdc.aptitudes = APTITUDES;
+
+    // Cache maneuvers data
+    const { MANEUVERS } = await import("./features/maneuvers/data.js");
+    game.tsdc.maneuvers = MANEUVERS;
+
+    // Cache relic powers data
+    await import("./features/relics/data.js");
+    game.tsdc.relics = {};
+
+    // Cache weapons data
+    const { WEAPONS } = await import("./features/weapons/data.js");
+    game.tsdc.weapons = WEAPONS;
+
+    console.log("TSDC | Reaction data cache initialized");
+  } catch (error) {
+    console.error("TSDC | Failed to initialize reaction data cache:", error);
+  }
+}

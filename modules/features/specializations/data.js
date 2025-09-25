@@ -16,7 +16,13 @@ export const SPECIALIZATIONS = {
     reactions: false,
     retries: false,
     actionType: "action",
-    aptitudes: [],
+    aptitudes: [
+      "impulso_sobrehumano",
+      "salto_rebote",
+      "salto_sigiloso",
+      "impulso_supervivencia",
+      "salto_evasivo"
+    ],
     usesCalc: true,
     failureLearnBonus: true
   },
@@ -28,7 +34,13 @@ export const SPECIALIZATIONS = {
     reactions: false,
     retries: false,
     actionType: "action",
-    aptitudes: [],
+    aptitudes: [
+      "maniobra_evasiva",
+      "caer_con_estilo",
+      "golpe_acrobatico",
+      "reposicionamiento",
+      "rodamiento_defensivo"
+    ],
     usesCalc: true,
     failureLearnBonus: true
   },
@@ -40,7 +52,12 @@ export const SPECIALIZATIONS = {
     reactions: true,
     retries: "conditional",
     actionType: "action",
-    aptitudes: [],
+    aptitudes: [
+      "desarme",
+      "redirigir_proyectiles",
+      "segunda_oportunidad",
+      "oportunista"
+    ],
     usesCalc: true,
     failureLearnBonus: true
   },
@@ -52,7 +69,13 @@ export const SPECIALIZATIONS = {
     reactions: true,
     retries: "conditional",
     actionType: "action",
-    aptitudes: [],
+    aptitudes: [
+      "ascenso_acelerado",
+      "escalada_precision",
+      "ascenso_carga_pesada",
+      "recursividad",
+      "descenso_controlado"
+    ],
     usesCalc: true,
     failureLearnBonus: true
   },
@@ -64,7 +87,12 @@ export const SPECIALIZATIONS = {
     reactions: false,
     retries: false,
     actionType: "reaction",
-    aptitudes: [],
+    aptitudes: [
+      "paso_firme",
+      "inamovible",
+      "punto_apoyo",
+      "movimiento_seguro"
+    ],
     usesCalc: true,
     failureLearnBonus: true
   },
@@ -76,7 +104,13 @@ export const SPECIALIZATIONS = {
     reactions: false,
     retries: "conditional",
     actionType: "reaction",
-    aptitudes: [],
+    aptitudes: [
+      "carga_sobre_montura",
+      "maniobra_defensiva_montura",
+      "cuidador_montura",
+      "adiestramiento_montura",
+      "esquivar_en_movimiento"
+    ],
     usesCalc: true,
     failureLearnBonus: true
   },
@@ -88,7 +122,12 @@ export const SPECIALIZATIONS = {
     reactions: false,
     retries: "conditional",
     actionType: "action",
-    aptitudes: [],
+    aptitudes: [
+      "carga_vigor",
+      "fortaleza_inquebrantable",
+      "resistencia_hierro",
+      "golpe_de_furia"
+    ],
     usesCalc: true,
     failureLearnBonus: true
   },

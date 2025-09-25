@@ -14,6 +14,7 @@
     <span style="flex:1;"></span>
     <nav class="g-tabs" style="display:flex; gap:6px;">
       <button type="button" data-action="switch-tab" data-tab="basic"    class="{{#if (eq activeTab "basic")}}active{{/if}}">Básicas</button>
+      <button type="button" data-action="switch-tab" data-tab="natural"   class="{{#if (eq activeTab "natural")}}active{{/if}}">Armas Nat.</button>
       <button type="button" data-action="switch-tab" data-tab="maneuvers" class="{{#if (eq activeTab "maneuvers")}}active{{/if}}">Maniobras</button>
       <button type="button" data-action="switch-tab" data-tab="relics"    class="{{#if (eq activeTab "relics")}}active{{/if}}">Reliquias</button>
       <button type="button" data-action="switch-tab" data-tab="aptitudes" class="{{#if (eq activeTab "aptitudes")}}active{{/if}}">Aptitudes</button>
@@ -37,6 +38,28 @@
           </details>
         {{/each}}
       </div>
+    </section>
+    {{/if}}
+
+    <!-- Armas Naturales -->
+    {{#if (eq activeTab "natural")}}
+    <section class="g-section">
+      {{#if cardsNaturalWeapons}}
+      <div class="g-list" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+        {{#each cardsNaturalWeapons as |c|}}
+          <details class="g-item" data-card data-id="{{c.id}}">
+            <summary style="padding:8px;border-radius:8px;background:var(--color-underline-header);cursor:pointer;">
+              <b>{{c.title}}</b>
+              <span style="opacity:.7;margin-left:8px;">{{c.subtitle}}</span>
+              <a style="float:right; font-size:12px; opacity:.8;" data-action="open-plan">Planear en ATB</a>
+            </summary>
+            <div class="g-card" style="margin-top:8px;">{{{c.html}}}</div>
+          </details>
+        {{/each}}
+      </div>
+      {{else}}
+      <p style="text-align:center; opacity:0.7; margin:20px 0;">No tienes armas naturales disponibles.</p>
+      {{/if}}
     </section>
     {{/if}}
 

@@ -59,12 +59,20 @@ function naturalQualityFromLevel(level = 1) {
   return Math.max(1, Math.ceil(lvl / 3));
 }
 
-export function buildNaturalWeaponRecord(def, { level = 1 } = {}) {
+export function buildNaturalWeaponRecord(def, { level = 1, rank = null } = {}) {
   if (!def) return null;
   const quality = naturalQualityFromLevel(level);
   const baseGrade = Number(def.grade ?? 1);
   const requiresParts = inferPartsFromDef(def);
-  return {
+
+  // Calculate rank if not provided (level 1 = rank 1 for natural weapons)
+  const weaponRank = rank != null ? Math.max(1, Number(rank)) : 1;
+
+  // Calculate actual durability and power from base values
+  const baseDurability = def.durabilityPerRank ?? null;
+  const basePower = def.powerPerRank ?? null;
+
+  const record = {
     key: def.key,
     label: def.label,
     assign: def.assign ?? "main",
@@ -79,27 +87,133 @@ export function buildNaturalWeaponRecord(def, { level = 1 } = {}) {
     tags: Array.isArray(def.tags) ? [...def.tags] : [],
     effectId: def.effectId ?? null,
     noAttack: !!def.noAttack,
-    durabilityPerRank: def.durabilityPerRank ?? null,
-    powerPerRank: def.powerPerRank ?? null,
+    durabilityPerRank: baseDurability,
+    powerPerRank: basePower,
     material: def.materialKey || def.material || null,
     quality,
     grade: Math.max(1, baseGrade),
     source: def.species ?? null,
     requiresParts
   };
+
+  // Add calculated durability and power based on rank
+  if (baseDurability != null) {
+    const maxDurability = Math.max(1, baseDurability * weaponRank);
+    record.durability = {
+      current: maxDurability,
+      max: maxDurability
+    };
+  }
+
+  if (basePower != null) {
+    record.power = Math.max(1, basePower * weaponRank);
+  }
+
+  return record;
 }
 
-export function buildSpeciesNaturalWeapons(speciesKey, { level = 1 } = {}) {
+export function buildSpeciesNaturalWeapons(speciesKey, { level = 1, rank = null, selectedChoices = [] } = {}) {
   const pack = SPECIES_NATURAL_WEAPONS[speciesKey];
   if (!pack) return [];
+
+  // Default rank to 1 for new characters (level 1 = rank 1 for natural weapons)
+  const weaponRank = rank != null ? rank : 1;
+
+  // Add fixed weapons
   const keys = [...(pack.fixed ?? [])];
+
+  // Add selected choices if any
+  if (pack.choices && Array.isArray(pack.choices)) {
+    pack.choices.forEach((choiceGroup, index) => {
+      if (selectedChoices[index] && choiceGroup.includes(selectedChoices[index])) {
+        keys.push(selectedChoices[index]);
+      } else if (choiceGroup.length > 0) {
+        // Default to first choice if none selected
+        keys.push(choiceGroup[0]);
+      }
+    });
+  }
+
   const result = [];
   for (const key of keys) {
     const def = NATURAL_WEAPON_DEFS[key];
-    const record = buildNaturalWeaponRecord(def, { level });
+    const record = buildNaturalWeaponRecord(def, { level, rank: weaponRank });
     if (record) result.push(record);
   }
   return result;
+}
+
+/** Get available weapon choices for a species */
+export function getSpeciesWeaponChoices(speciesKey) {
+  const pack = SPECIES_NATURAL_WEAPONS[speciesKey];
+  if (!pack || !pack.choices) return [];
+
+  return pack.choices.map((choiceGroup, index) => ({
+    groupIndex: index,
+    choices: choiceGroup.map(key => ({
+      key,
+      def: NATURAL_WEAPON_DEFS[key],
+      label: NATURAL_WEAPON_DEFS[key]?.label || key
+    }))
+  }));
+}
+
+/** Check if a species has weapon variants to choose from */
+export function hasWeaponVariants(speciesKey) {
+  const pack = SPECIES_NATURAL_WEAPONS[speciesKey];
+  return pack?.choices && pack.choices.length > 0;
+}
+
+/** Update natural weapon stats when weapon rank changes */
+export async function updateNaturalWeaponStats(actor, weaponKey) {
+  if (!actor || !weaponKey) return;
+
+  // Get current natural weapons from flags
+  const naturalWeapons = actor.getFlag("tsdc", "naturalWeapons") || [];
+  const weaponIndex = naturalWeapons.findIndex(w => w.key === weaponKey);
+  if (weaponIndex === -1) return;
+
+  // Get current weapon rank from progression
+  const weaponData = actor.system?.progression?.weapons?.[weaponKey];
+  if (!weaponData) return;
+
+  // Get the weapon definition to recalculate stats
+  const weaponRecord = naturalWeapons[weaponIndex];
+  const def = NATURAL_WEAPON_DEFS[weaponKey];
+  if (!def) return;
+
+  // Calculate new rank (use levelToRank function to ensure consistency)
+  const { levelToRank } = await import("../../progression.js");
+  const newRank = levelToRank(weaponData.level || 1);
+
+  // Recalculate durability and power
+  const baseDurability = def.durabilityPerRank ?? null;
+  const basePower = def.powerPerRank ?? null;
+
+  const updates = { ...weaponRecord };
+
+  if (baseDurability != null) {
+    const maxDurability = Math.max(1, baseDurability * Math.max(1, newRank));
+    // Preserve current durability if it exists, but update max
+    const currentDurability = weaponRecord.durability?.current ?? maxDurability;
+    updates.durability = {
+      current: Math.min(currentDurability, maxDurability), // Don't exceed new max
+      max: maxDurability
+    };
+  }
+
+  if (basePower != null) {
+    updates.power = Math.max(1, basePower * Math.max(1, newRank));
+  }
+
+  // Update the natural weapons array
+  const updatedWeapons = [...naturalWeapons];
+  updatedWeapons[weaponIndex] = updates;
+
+  // Save back to actor flags
+  await actor.setFlag("tsdc", "naturalWeapons", updatedWeapons);
+
+  console.log(`TSDC | Updated natural weapon ${weaponKey} stats for rank ${newRank}`);
 }
 
 export const NATURAL_WEAPON_DEFS = {

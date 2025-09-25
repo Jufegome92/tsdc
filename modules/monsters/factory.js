@@ -339,15 +339,41 @@ export async function applyMonsterBlueprint(actor, blueprintOrKey, options = {})
     const abilities = blueprint.abilities.map(entry => {
       const key = entry.itemKey || entry.key;
       const def = deepClone(getMonsterAbility(key) || {});
-      const merged = {
-        ...def,
-        ...entry,
-        key,
-        itemKey: key,
-        label: entry.label || def.label || key,
-        enabled: entry.enabled !== false,
-        requiresParts: normalizeParts(entry.requiresParts || def.requiresParts || inferPartsFromAbility(def || entry))
+    const merged = {
+      ...def,
+      ...entry,
+      key,
+      itemKey: key,
+      label: entry.label || def.label || key,
+      enabled: entry.enabled !== false,
+      requiresParts: normalizeParts(entry.requiresParts || def.requiresParts || inferPartsFromAbility(def || entry))
+    };
+
+    // Mantén coherencia con el flag manualDisabled cuando venga deshabilitada por blueprint/base
+    const mergedFlags = foundry.utils.mergeObject?.(deepClone(def.flags ?? {}), deepClone(entry.flags ?? {}), { inplace: false })
+      ?? { ...(def.flags ?? {}), ...(entry.flags ?? {}) };
+    const manualDisabled = (entry.enabled === false) || (def.enabled === false);
+    if (manualDisabled) {
+      merged.enabled = false;
+      merged.flags = {
+        ...mergedFlags,
+        tsdc: {
+          ...(mergedFlags?.tsdc ?? {}),
+          manualDisabled: true,
+          manualDisabledReason: mergedFlags?.tsdc?.manualDisabledReason ?? entry.disabledReason ?? def.disabledReason ?? null
+        }
       };
+    } else if (Object.keys(mergedFlags).length) {
+      // Limpia banderas heredadas si ya no aplica
+      if (mergedFlags?.tsdc?.manualDisabled) {
+        const clone = deepClone(mergedFlags);
+        delete clone.tsdc.manualDisabled;
+        if (Object.keys(clone.tsdc).length === 0) delete clone.tsdc;
+        merged.flags = clone;
+      } else {
+        merged.flags = mergedFlags;
+      }
+    }
       return merged;
     });
     patch["system.abilities"] = abilities;

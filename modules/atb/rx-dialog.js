@@ -1,4 +1,5 @@
 // modules/atb/rx-dialog.js
+import { APTITUDES } from "../features/aptitudes/data.js";
 const SCOPE = "tsdc";
 
 function readWearState(actor) {
@@ -25,48 +26,77 @@ export function shouldPromptHere(reactorToken) {
   return game.user.isGM; // PNJ → GM decide
 }
 
-/** Prompt de Reacción (AO) con timeout. Devuelve true/false. */
+/** Prompt de Reacción (AO/aptitud) con timeout. Devuelve descriptor o null. */
 export async function promptOpportunityDialog({ reactorToken, provokerToken, timeoutMs = 6500 }) {
   const actor = reactorToken?.actor;
-  if (!actor) return false;
+  if (!actor) return null;
 
-  // Si este cliente no decide, no mostramos nada (los demás clientes harán su prompt)
-  if (!shouldPromptHere(reactorToken)) return false;
+  if (!shouldPromptHere(reactorToken)) return null;
 
   const { wear, wearMax } = readWearState(actor);
   const atLimit = wear >= wearMax;
 
+  const tree = actor.system?.progression?.aptitudes ?? {};
+  const reactionAptitudes = Object.entries(tree)
+    .filter(([, node]) => !!node?.known || Number(node?.rank || 0) > 0)
+    .map(([key, node]) => ({ key, node, def: APTITUDES[key] }))
+    .filter(item => item.def && item.def.category === "reaction")
+    .map(item => ({
+      key: item.key,
+      label: item.def.label ?? item.key,
+      rank: Number(item.node?.rank || 0)
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
   return new Promise((resolve) => {
     let settled = false;
     const dlg = new Dialog({
-      title: "Reacción: Ataque de Oportunidad",
+      title: "Reacción disponible",
       content: `
         <div class="t-col" style="gap:6px;">
-          <p><b>${reactorToken.name}</b> puede reaccionar contra <b>${provokerToken.name}</b> (salida de melee).</p>
+          <p><b>${reactorToken.name}</b> puede reaccionar contra <b>${provokerToken.name}</b>.</p>
           <p>Desgaste: <b>${wear}</b> / <b>${wearMax}</b>${atLimit ? " — <span style='color:#c00'><b>límite alcanzado</b></span>" : ""}</p>
-          <p class="muted">La reacción no altera tu ATB (I0/E0/R0). Coste: 1 Desgaste.</p>
+          <p class="muted">I0/E0/R0. Coste estándar: 1 punto de Desgaste.</p>
+          <label style="display:flex; flex-direction:column; gap:4px;">
+            <span>Respuesta</span>
+            <select name="rx-choice" ${atLimit ? "disabled" : ""}>
+              <option value="ao">Ataque de Oportunidad</option>
+              ${reactionAptitudes.map(opt => `<option value="apt:${opt.key}">${opt.label}${opt.rank ? ` (N${opt.rank})` : ""}</option>`).join("")}
+            </select>
+          </label>
         </div>
       `,
       buttons: {
         ok: {
           label: atLimit ? "No puedes (límite)" : "Reaccionar",
           icon: atLimit ? "fa-solid fa-ban" : "fa-solid fa-bolt",
-          callback: () => { settled = true; resolve(!atLimit); }
+          callback: () => {
+            settled = true;
+            if (atLimit) { resolve(null); return; }
+            const val = dlg.element?.find?.('select[name="rx-choice"]')?.val?.() ?? "ao";
+            if (val?.startsWith?.("apt:")) {
+              resolve({ type: "aptitude", key: val.slice(4) });
+            } else if (val === "ao") {
+              resolve({ type: "ao" });
+            } else {
+              resolve(null);
+            }
+          }
         },
         cancel: {
           label: "Omitir",
           icon: "fa-regular fa-circle",
-          callback: () => { settled = true; resolve(false); }
+          callback: () => { settled = true; resolve(null); }
         }
       },
       default: atLimit ? "cancel" : "ok",
-      close: () => { if (!settled) resolve(false); }
+      close: () => { if (!settled) resolve(null); }
     });
     dlg.render(true);
 
     if (timeoutMs > 0) {
       setTimeout(() => {
-        if (!settled) { try { dlg.close(); } catch {} resolve(false); }
+        if (!settled) { try { dlg.close(); } catch {} resolve(null); }
       }, timeoutMs);
     }
   });

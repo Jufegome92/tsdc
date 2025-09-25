@@ -36,6 +36,17 @@ export const ACTIONS = {
     requirements: [],
     keywords: { type:"mejora", clazz:"accion", category:"activa", descriptors:[], elements:[] },
     description: "Usa una especialización con CT elegido (1/2/3)."
+  },
+  escape: {
+    id: "escape",
+    name: "Escapar",
+    range: 0,
+    area: 0,
+    rolls: [],
+    ct: { I:1, E:1, R:0 },
+    requirements: [],
+    keywords: { type:"accion", clazz:"accion", category:"activa", descriptors:[], elements:[] },
+    description: "Acción para intentar liberarte de efectos como Atrapado o similares."
   }
   // …y tus Maniobras (barrido, finta, etc.) con su ct fijo o dependiente del nivel.
 };

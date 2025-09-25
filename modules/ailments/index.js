@@ -60,16 +60,70 @@ export async function addAilment(actor, id, opts={}) {
 
   // Construye estado
   const sev = opts.severity && def.severable ? String(opts.severity).toLowerCase() : null;
-  const dur = opts.duration || def.duration || { type: "untilTreated" };
-  const remainingRounds = computeRemainingRounds(dur);
+
+  const severityOrder = { leve: 0, grave: 1, critico: 2 };
+  const existing = active[def.id];
+
+  const desiredSeverity = (sev && def.severable) ? sev : null;
+  const finalSeverity = (() => {
+    if (!def.severable) return null;
+    if (!existing?.severity) return desiredSeverity;
+    if (!desiredSeverity) return existing.severity;
+    return (severityOrder[desiredSeverity] ?? -1) >= (severityOrder[existing.severity] ?? -1)
+      ? desiredSeverity
+      : existing.severity;
+  })();
+
+  const durationNode = opts.duration || def.duration || existing?.duration || { type: "untilTreated" };
+  const remainingRounds = computeRemainingRounds(durationNode);
+
+  if (existing) {
+    const updated = {
+      ...existing,
+      label: def.label,
+      group: def.group,
+      severity: finalSeverity,
+      duration: durationNode,
+      remainingRounds: durationNode?.type === "rounds" ? remainingRounds : existing.remainingRounds ?? null,
+      appliedAt: Date.now(),
+      notes: opts.notes ?? existing.notes ?? null,
+      source: opts.source ?? existing.source ?? null,
+      kind: opts.kind ?? existing.kind ?? null
+    };
+
+    active[def.id] = updated;
+    await setActive(actor, active);
+
+    const msgSeverity = updated.severity ? ` <span class="muted">(Sev. ${updated.severity.toUpperCase()})</span>` : "";
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `<b>${actor.name}</b> sigue afectado por <b>${def.label}</b>${msgSeverity}. La duración se renueva.`
+    });
+
+    if (def.grantsBySeverity && updated.severity) {
+      const grantIds = def.grantsBySeverity[updated.severity] || [];
+      for (const gid of grantIds) {
+        if (gid === def.id) continue;
+        const childDef = CATALOG[gid];
+        const childOpts = {
+          source: `${def.id}:${updated.severity}`,
+          kind: opts.kind || null
+        };
+        if (childDef?.severable) childOpts.severity = updated.severity;
+        await addAilment(actor, gid, childOpts);
+      }
+    }
+
+    return updated;
+  }
 
   const state = {
     id: def.id,
     label: def.label,
     group: def.group,
-    severity: sev,                      // null o "leve|grave|critico"
-    duration: dur,                      // se guarda la forma de duración
-    remainingRounds,                    // si aplica
+    severity: finalSeverity,
+    duration: durationNode,
+    remainingRounds,
     appliedAt: Date.now(),
     notes: opts.notes || null,
     source: opts.source || null,
@@ -81,15 +135,14 @@ export async function addAilment(actor, id, opts={}) {
 
   // Mensaje al chat
   const extra =
-    (sev ? ` <span class="muted">(Severidad: ${sev.toUpperCase()})</span>` : "") +
-   (Array.isArray(def.effectsText) && def.effectsText.length
-     ? `<div class="muted" style="margin-top:4px;">${def.effectsText.map(t => `• ${t}`).join("<br>")}</div>`
-     : ""
-   );
+    (state.severity ? ` <span class="muted">(Severidad: ${state.severity.toUpperCase()})</span>` : "") +
+    (Array.isArray(def.effectsText) && def.effectsText.length
+      ? `<div class="muted" style="margin-top:4px;">${def.effectsText.map(t => `• ${t}`).join("<br>")}</div>`
+      : "");
   const durationText =
-    dur?.type === "rounds" ? ` (${remainingRounds} ronda${remainingRounds===1?"":"s"})`
-    : dur?.type === "untilTreated" ? " (hasta ser tratado)"
-    : dur?.type === "permanent" ? " (permanente)"
+    durationNode?.type === "rounds" ? ` (${remainingRounds} ronda${remainingRounds===1?"":"s"})`
+    : durationNode?.type === "untilTreated" ? " (hasta ser tratado)"
+    : durationNode?.type === "permanent" ? " (permanente)"
     : "";
 
   await ChatMessage.create({
@@ -218,32 +271,98 @@ export async function setSeverity(actor, id, severity) {
 }
 
 /** ===== Modificadores contextuales para tiradas ===== */
-const AILMENT_MODIFIERS = {
-  DERRIBADO: [
-    { phases: ["defense"], value: -2, label: "Derribado" }
-  ],
-  DESEQUILIBRADO: [
-    { phases: ["defense"], value: -2, label: "Desequilibrado" }
-  ],
-  ATERRORIZADO: [
-    { phases: ["attack", "defense"], value: -2, label: "Aterrorizado" }
-  ],
-  IMPEDIDO: [
-    { phases: ["attack", "defense", "save"], value: -2, label: "Impedido" }
-  ],
-  ATURDIDO: [
-    { phases: ["defense", "save"], value: -2, label: "Aturdido" }
-  ],
-  SOBRECARGADO: [
-    { phases: ["defense", "save"], value: -2, label: "Sobrecargado" }
-  ],
-  ASFIXIADO: [
-    { phases: ["defense", "save"], value: -1, label: "Asfixiado" }
-  ],
-  CEGADO: [
-    { phases: ["attack", "defense"], value: -5, label: "Cegado" }
-  ]
-};
+const STATIC_AILMENT_MODIFIERS = {};
+
+function mergeCtAdjust(a = {}, b = {}) {
+  const out = {
+    init: Number(a.init ?? a.I ?? 0),
+    exec: Number(a.exec ?? a.E ?? 0),
+    rec: Number(a.rec ?? a.R ?? 0)
+  };
+  out.init += Number(b.init ?? b.I ?? 0);
+  out.exec += Number(b.exec ?? b.E ?? 0);
+  out.rec += Number(b.rec ?? b.R ?? 0);
+  return out;
+}
+
+function accumulateMechanics(base, chunk) {
+  if (!chunk) return base;
+  const out = { ...base };
+  if (Array.isArray(chunk.rollModifiers)) {
+    out.rollModifiers = [
+      ...(out.rollModifiers ?? []),
+      ...chunk.rollModifiers.map(mod => ({ ...mod }))
+    ];
+  }
+  if (chunk.ctAdjust) {
+    out.ctAdjust = mergeCtAdjust(out.ctAdjust, chunk.ctAdjust);
+  }
+  if (chunk.movementBlocked) {
+    out.movementBlocked = true;
+  }
+  if (typeof chunk.movementMultiplier === "number") {
+    const mult = Number(chunk.movementMultiplier) || 0;
+    out.movementMultiplier = (out.movementMultiplier ?? 1) * mult;
+  }
+  if (typeof chunk.movementFlat === "number") {
+    out.movementFlat = (out.movementFlat ?? 0) + Number(chunk.movementFlat || 0);
+  }
+  if (chunk.escape) {
+    out.escape = { ...(out.escape ?? {}), ...chunk.escape };
+  }
+  return out;
+}
+
+export function resolveAilmentMechanics(def, state) {
+  if (!def?.mechanics) return null;
+  const mechanics = def.mechanics;
+  let combined = {};
+  const auxKeys = new Set(["common", "severity"]);
+
+  const simple = Object.fromEntries(Object.entries(mechanics).filter(([k]) => !auxKeys.has(k)));
+  combined = accumulateMechanics(combined, simple);
+  if (mechanics.common) combined = accumulateMechanics(combined, mechanics.common);
+  if (mechanics.severity && state?.severity) {
+    const sevChunk = mechanics.severity[state.severity];
+    if (sevChunk) combined = accumulateMechanics(combined, sevChunk);
+  }
+  return Object.keys(combined).length ? combined : null;
+}
+
+export function hasMovementBlock(actor) {
+  return listActive(actor).some(st => {
+    const def = CATALOG[st.id];
+    const mech = resolveAilmentMechanics(def, st);
+    return !!mech?.movementBlocked;
+  });
+}
+
+export function getMovementImpact(actor) {
+  const base = { movementBlocked: false, movementMultiplier: 1, movementFlat: 0 };
+  if (!actor) return base;
+  for (const st of listActive(actor)) {
+    const def = CATALOG[st.id];
+    const mech = resolveAilmentMechanics(def, st);
+    if (!mech) continue;
+    if (mech.movementBlocked) base.movementBlocked = true;
+    if (typeof mech.movementMultiplier === "number") {
+      base.movementMultiplier *= mech.movementMultiplier;
+    }
+    if (typeof mech.movementFlat === "number") {
+      base.movementFlat += mech.movementFlat;
+    }
+  }
+  return base;
+}
+
+function modMatchesContext(mod, ctx, loweredTags) {
+  if (mod.phases && !mod.phases.includes(ctx.phase)) return false;
+  if (mod.tag && mod.tag !== ctx.tag) return false;
+  if (mod.resTypes && !mod.resTypes.includes(ctx.resType)) return false;
+  if (Array.isArray(mod.tagsAll) && mod.tagsAll.some(t => !loweredTags.includes(t.toLowerCase()))) return false;
+  if (Array.isArray(mod.tagsAny) && !mod.tagsAny.some(t => loweredTags.includes(t.toLowerCase()))) return false;
+  return true;
+}
 
 if (globalThis?.Hooks && !globalThis.__tsdcAilmentModsHooked) {
   globalThis.__tsdcAilmentModsHooked = true;
@@ -254,9 +373,12 @@ if (globalThis?.Hooks && !globalThis.__tsdcAilmentModsHooked) {
 
       const active = listActive(actor);
       if (!Array.isArray(active) || !active.length) return;
+      const loweredTags = Array.isArray(ctx?.tags)
+        ? ctx.tags.map(t => String(t).toLowerCase())
+        : [];
 
       for (const ailment of active) {
-        const mods = AILMENT_MODIFIERS[ailment.id];
+        const mods = STATIC_AILMENT_MODIFIERS[ailment.id];
         if (!mods) continue;
         for (const mod of mods) {
           if (mod.phases && !mod.phases.includes(ctx.phase)) continue;
@@ -268,6 +390,24 @@ if (globalThis?.Hooks && !globalThis.__tsdcAilmentModsHooked) {
             sourceType: "state",
             when: { phases: mod.phases }
           });
+        }
+
+        const def = CATALOG[ailment.id];
+        const mech = resolveAilmentMechanics(def, ailment);
+        if (mech?.rollModifiers) {
+          for (const mod of mech.rollModifiers) {
+            if (!modMatchesContext(mod, ctx, loweredTags)) continue;
+            const value = Number(mod.value || 0);
+            if (!Number.isFinite(value) || value === 0) continue;
+            push({
+              id: `ailment:${ailment.id.toLowerCase()}`,
+              label: mod.label ?? def?.label ?? ailment.id,
+              value,
+              amount: value,
+              sourceType: "state",
+              when: { phases: mod.phases }
+            });
+          }
         }
       }
     } catch (err) {
