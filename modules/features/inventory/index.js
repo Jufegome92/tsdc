@@ -91,14 +91,33 @@ export function bodyPartLabel(part) {
 
 function isBodyPartBroken(actor, partKey) {
   if (!partKey) return false;
-  // Try both .current and .value for compatibility
-  const current = Number(gp(actor, `system.health.parts.${partKey}.current`, null));
-  const value = Number(gp(actor, `system.health.parts.${partKey}.value`, null));
 
-  // Use whichever property exists
-  const healthValue = Number.isFinite(current) ? current : value;
-  if (!Number.isFinite(healthValue)) return false;
-  return healthValue <= 0;
+  // Get the part data directly
+  const part = actor?.system?.health?.parts?.[partKey];
+  if (!part) {
+    console.warn(`TSDC: Body part "${partKey}" does not exist for actor ${actor?.name || 'unknown'}`);
+    return false;
+  }
+
+  // Try both .current and .value for compatibility, prioritizing .value (which is the standard)
+  let healthValue = null;
+  if (typeof part.value === 'number') {
+    healthValue = part.value;
+  } else if (typeof part.current === 'number') {
+    healthValue = part.current;
+  }
+
+  if (healthValue === null || !Number.isFinite(healthValue)) {
+    // null value significa que la parte no está inicializada, no está rota
+    return false;
+  }
+
+  const isBroken = healthValue <= 0;
+  if (isBroken) {
+    console.log(`TSDC: Part "${partKey}" is broken (${healthValue} <= 0) for actor ${actor?.name}`);
+  }
+
+  return isBroken;
 }
 
 export function arePartsFunctional(actor, parts) {
@@ -174,7 +193,8 @@ function isCompatibleForSlot(item, slot) {
     case "mainHand":
     case "offHand":
       if (item.type === "natural") {
-        if (item.occupiesSlot === false) return false;
+        // Allow concurrent weapons to appear in equipment lists even if they don't occupy slots
+        // This lets players choose which one to use as primary/secondary
         return assignMatchesSlot(item.assign, slot);
       }
       return item.type === "weapon";

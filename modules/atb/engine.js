@@ -10,6 +10,8 @@ import { getMonsterAbility } from "../features/abilities/data.js";
 import { arePartsFunctional, describePartsStatus } from "../features/inventory/index.js";
 import { listActive as listActiveAilments, resolveAilmentMechanics } from "../ailments/index.js";
 import { CATALOG as AILMENT_CATALOG } from "../ailments/catalog.js";
+import { executeReaction, getAvailableReactions } from "./reactions.js";
+import { promptReactionDialog } from "./rx-dialog.js";
 
 const { deepClone } = foundry.utils;
 
@@ -351,6 +353,13 @@ async function performCardExec(state, combat, ci) {
   const actorState = ensureActorState(state, ci.actor);
   const meta = actorState?.current?.meta ?? {};
   const actionKey = actorState?.current?.actionKey ?? "";
+  const cardType = actorState?.current?.type;
+
+  // Manejar cartas de fases de reacción
+  if (cardType === "reaction-phase") {
+    await performReactionPhase(state, combat, ci, actorState.current);
+    return;
+  }
 
   let defReal = listSimpleActions().find(d => d.key === actionKey) ?? null;
   if (!defReal && actionKey.startsWith("maneuver:")) {
@@ -386,6 +395,10 @@ async function performCardExec(state, combat, ci) {
       startedThisTick: true,
       meta
     });
+
+    // Disparar triggers de reacciones después de la ejecución
+    await triggerReactionsAfterAction(actionKey, ct, meta);
+
   } catch (e) {
     console.error("ATB perform error", e);
   }
@@ -533,8 +546,17 @@ async function stepOnceInternal() {
   const card = actorState?.current ?? null;
 
   if (card && card.phase === "exec" && card.started_this_tick) {
-    await performCardExec(state, combat, card);
-    card.started_this_tick = false;
+    // Verificar reacciones antes de la ejecución
+    await checkForReactionsBeforeExecution(state, combat);
+
+    // Solo ejecutar si la acción no fue sustituida por una reacción
+    const updatedState = await readState();
+    const updatedActorState = ensureActorState(updatedState, nextInfo.actor);
+    if (updatedActorState.current && updatedActorState.current.phase === "exec") {
+      await performCardExec(updatedState, combat, updatedActorState.current);
+      updatedActorState.current.started_this_tick = false;
+      await writeState(updatedState);
+    }
   }
 
   if (state.execHold.length === 0) {
@@ -637,6 +659,456 @@ export async function enqueueSpecForSelected({ specKey, category, CT, targetTick
   }
 }
 
+/* ===== Integración de Reacciones con ATB ===== */
+
+/**
+ * Sustituye una acción programada con una reacción ejecutada inmediatamente
+ */
+export async function substituteActionWithReaction({
+  combatantId,
+  reactionChoice,
+  targetToken,
+  payload = {}
+}) {
+  const c = getCombat();
+  if (!c) return { success: false, error: "No combat active" };
+
+  const ct = c.combatants.get(combatantId);
+  if (!ct) return { success: false, error: "Combatant not found" };
+
+  const reactorToken = ct.token?.object ?? canvas.tokens.placeables.find(t => t.actor?.id === ct.actor?.id);
+  if (!reactorToken) return { success: false, error: "Token not found" };
+
+  // Obtener estado actual
+  const state = await readState();
+  const actorState = ensureActorState(state, combatantId);
+
+  // Verificar si hay acción actual que se pueda sustituir
+  if (!actorState.current) {
+    return { success: false, error: "No current action to substitute" };
+  }
+
+  // Ejecutar la reacción inmediatamente
+  const reactionResult = await executeReaction({
+    reactorToken,
+    targetToken,
+    reactionChoice,
+    payload
+  });
+
+  if (reactionResult.success) {
+    // La reacción se ejecutó exitosamente, cancelar la acción programada
+    actorState.current = null;
+
+    // Mensaje informativo
+    await ChatMessage.create({
+      content: `<p><b>${reactorToken.name}</b> sustituye su acción programada con una reacción: <i>${reactionChoice.label}</i></p>`,
+      speaker: ChatMessage.getSpeaker({ actor: ct.actor })
+    });
+
+    await writeState(state);
+    return { success: true, substituted: true };
+  } else {
+    return { success: false, error: reactionResult.error };
+  }
+}
+
+/**
+ * Verifica si hay reacciones disponibles para un combatiente
+ */
+export function checkAvailableReactionsForCombatant(combatantId, reason = "any", timing = "any") {
+  const c = getCombat();
+  if (!c) return [];
+
+  const ct = c.combatants.get(combatantId);
+  if (!ct?.actor) return [];
+
+  return getAvailableReactions(ct.actor, reason, timing);
+}
+
+/**
+ * Permite al jugador elegir una reacción y sustituir su acción programada
+ */
+export async function promptAndSubstituteAction({
+  combatantId,
+  provokerToken,
+  reason = "any",
+  timing = "any",
+  timeoutMs = 6500
+}) {
+  const c = getCombat();
+  if (!c) return { success: false, error: "No combat active" };
+
+  const ct = c.combatants.get(combatantId);
+  if (!ct) return { success: false, error: "Combatant not found" };
+
+  const reactorToken = ct.token?.object ?? canvas.tokens.placeables.find(t => t.actor?.id === ct.actor?.id);
+  if (!reactorToken) return { success: false, error: "Token not found" };
+
+  // Verificar si hay reacciones disponibles
+  const availableReactions = getAvailableReactions(ct.actor, reason, timing);
+  if (availableReactions.length === 0) {
+    return { success: false, error: "No reactions available" };
+  }
+
+  // Mostrar diálogo de reacción
+  const reactionChoice = await promptReactionDialog({
+    reactorToken,
+    provokerToken,
+    reason,
+    timing,
+    timeoutMs,
+    title: "Reacción disponible - Sustituir acción"
+  });
+
+  if (!reactionChoice) {
+    return { success: false, cancelled: true };
+  }
+
+  // Sustituir acción con reacción
+  return await substituteActionWithReaction({
+    combatantId,
+    reactionChoice,
+    targetToken: provokerToken,
+    payload: { reason, timing }
+  });
+}
+
+/**
+ * Dispara triggers de reacciones después de ejecutar una acción
+ */
+async function triggerReactionsAfterAction(actionKey, combatant, meta = {}) {
+  const token = combatant.token?.object ?? canvas.tokens.placeables.find(t => t.actor?.id === combatant.actor?.id);
+  if (!token) return;
+
+  try {
+    // Trigger para movimiento
+    if (actionKey === "move") {
+      // Para el movimiento, necesitaríamos las posiciones before/after
+      // Por ahora, esto se maneja en la acción de movimiento directamente
+      console.log(`TSDC | Movement completed by ${token.name}, movement reactions should be handled in move action`);
+    }
+
+    // Trigger para ataques - reacciones después del ataque
+    if (actionKey === "attack") {
+      const targetTokenId = meta?.targetTokenId;
+      if (targetTokenId) {
+        const targetToken = canvas.tokens.get(targetTokenId);
+        if (targetToken) {
+          // Obtener reacciones disponibles para el objetivo
+          const availableReactions = getAvailableReactions(
+            targetToken.actor,
+            "incoming-attack",
+            "after-attack"
+          );
+
+          if (availableReactions.length > 0) {
+            // Mostrar diálogo de reacciones disponibles
+            const reactionChoice = await promptReactionDialog({
+              reactorToken: targetToken,
+              provokerToken: token,
+              reason: "incoming-attack",
+              timing: "after-attack",
+              timeoutMs: 6000,
+              title: "Reacción después del ataque"
+            });
+
+            // Ejecutar la reacción seleccionada
+            if (reactionChoice) {
+              // Buscar el combatant del reactor para sustituir su acción en ATB
+              const reactorCombatant = combat.combatants.find(ct => ct.token?.object?.id === targetToken.id);
+
+              if (reactorCombatant) {
+                // Sustituir la acción programada con la reacción
+                const reactionResult = await substituteActionWithReaction({
+                  combatantId: reactorCombatant.id,
+                  reactionChoice,
+                  targetToken: token,
+                  payload: { reason: "incoming-attack", timing: "after-attack" }
+                });
+
+                if (reactionResult.success) {
+                  console.log(`TSDC | ${targetToken.name} sustituye su acción con reacción: ${reactionChoice.label}`);
+                }
+              } else {
+                // Fallback: ejecutar sin sustituir si no se encuentra el combatant
+                const executionResult = await executeReaction({
+                  reactorToken: targetToken,
+                  targetToken: token,
+                  reactionChoice,
+                  payload: { attackType: "after-attack" }
+                });
+
+                if (executionResult.success) {
+                  console.log(`TSDC | ${targetToken.name} ejecutó reacción: ${reactionChoice.label}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Trigger para fumbles - esto normalmente se detectaría en el sistema de dados
+    // Por ahora lo dejamos como placeholder para integración futura
+
+  } catch (error) {
+    console.error("TSDC | Error triggering reactions after action:", error);
+  }
+}
+
+/**
+ * Hook en el flujo de ejecución para verificar reacciones antes de ejecutar acciones
+ */
+async function checkForReactionsBeforeExecution(state, combat) {
+  // Buscar combatientes que estén a punto de ejecutar acciones
+  const aboutToExecute = [];
+
+  for (const ct of combat.combatants) {
+    const actorState = ensureActorState(state, ct.id);
+    const ci = actorState.current;
+
+    if (ci && ci.phase === "exec" && ci.started_this_tick) {
+      aboutToExecute.push({
+        combatant: ct,
+        action: ci,
+        token: ct.token?.object ?? canvas.tokens.placeables.find(t => t.actor?.id === ct.actor?.id)
+      });
+    }
+  }
+
+  // Para cada acción a punto de ejecutarse, verificar si hay reacciones antes del ataque
+  for (const execution of aboutToExecute) {
+    const { combatant, action, token } = execution;
+
+    // Si es un ataque, verificar reacciones del objetivo antes del ataque
+    if (action.actionKey === "attack" && token) {
+      const actorState = ensureActorState(state, combatant.id);
+      const targetTokenId = actorState.current?.meta?.targetTokenId;
+
+      if (targetTokenId) {
+        const targetToken = canvas.tokens.get(targetTokenId);
+        if (targetToken?.actor) {
+          const targetCombatant = combat.combatants.find(ct => ct.token?.object?.id === targetToken.id);
+
+          if (targetCombatant) {
+            const reactions = checkAvailableReactionsForCombatant(
+              targetCombatant.id,
+              "incoming-attack",
+              "before-attack"
+            );
+
+            if (reactions.length > 0) {
+              // El objetivo puede reaccionar antes del ataque
+              const reactionChoice = await promptReactionDialog({
+                reactorToken: targetToken,
+                provokerToken: token,
+                reason: "incoming-attack",
+                timing: "before-attack",
+                timeoutMs: 6000,
+                title: "Reacción antes del ataque"
+              });
+
+              if (reactionChoice) {
+                // Buscar el combatant del reactor para sustituir su acción en ATB
+                const reactorCombatant = combat.combatants.find(ct => ct.token?.object?.id === targetToken.id);
+
+                if (reactorCombatant) {
+                  // Sustituir la acción programada con la reacción
+                  const reactionResult = await substituteActionWithReaction({
+                    combatantId: reactorCombatant.id,
+                    reactionChoice,
+                    targetToken: token,
+                    payload: { reason: "incoming-attack", timing: "before-attack" }
+                  });
+
+                  if (reactionResult.success) {
+                    console.log(`TSDC | ${targetToken.name} sustituye su acción con reacción: ${reactionChoice.label}`);
+                  }
+                } else {
+                  // Fallback: ejecutar sin sustituir si no se encuentra el combatant
+                  const reactionResult = await executeReaction({
+                    reactorToken: targetToken,
+                    targetToken: token,
+                    reactionChoice,
+                    payload: { reason: "incoming-attack", timing: "before-attack" }
+                  });
+
+                  if (reactionResult.success) {
+                    console.log(`TSDC | ${targetToken.name} ejecutó reacción: ${reactionChoice.label}`);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/* ===== Ejecución de fases de reacción ===== */
+
+/** Execute a reaction phase card */
+async function performReactionPhase(state, combat, ci, phaseCard) {
+  const ct = combat.combatants.get(ci.actor);
+  const actor = ct?.actor;
+  const token = ct?.token?.object;
+
+  if (!actor || !token) {
+    console.warn("TSDC | Invalid actor/token for reaction phase");
+    return;
+  }
+
+  const { phase, aptitudeKey, aptitudeDef, targetTokenId, payload } = phaseCard;
+  const targetToken = targetTokenId ? canvas.tokens.get(targetTokenId) : null;
+
+  console.log(`TSDC | Executing ${aptitudeDef.label} phase: ${phase} for ${actor.name}`);
+
+  try {
+    switch (phase) {
+      case "init":
+        await performReactionInitPhase(actor, token, aptitudeDef, targetToken, payload);
+        break;
+
+      case "exec":
+        await performReactionExecPhase(actor, token, aptitudeDef, targetToken, payload);
+        break;
+
+      case "recovery":
+        await performReactionRecoveryPhase(actor, token, aptitudeDef, targetToken, payload);
+        break;
+
+      default:
+        console.warn(`TSDC | Unknown reaction phase: ${phase}`);
+    }
+  } catch (error) {
+    console.error(`TSDC | Error executing reaction phase ${phase}:`, error);
+  }
+}
+
+/** Execute init phase of reaction */
+async function performReactionInitPhase(actor, token, aptitudeDef, targetToken, payload) {
+  const initPhase = aptitudeDef.phases?.init;
+  if (!initPhase) return;
+
+  if (initPhase.effect === "substitute_defense_roll") {
+    // Marcar que esta reacción debe sustituir la tirada de defensa
+    payload.defenseSubstitution = {
+      aptitudeKey: initPhase.aptitudeKey,
+      specKey: initPhase.specKey,
+      active: true
+    };
+
+    await ChatMessage.create({
+      content: `<p>🎭 <b>${actor.name}</b>: ${initPhase.description}</p>`,
+      speaker: ChatMessage.getSpeaker({ actor })
+    });
+  } else if (initPhase.effect === "defense_bonus") {
+    // Aplicar bonificador de defensa
+    payload.defenseBonus = initPhase.bonus;
+
+    await ChatMessage.create({
+      content: `<p>⚡ <b>${actor.name}</b>: ${initPhase.description} (+${initPhase.bonus})</p>`,
+      speaker: ChatMessage.getSpeaker({ actor })
+    });
+  }
+}
+
+/** Execute exec phase of reaction */
+async function performReactionExecPhase(actor, token, aptitudeDef, targetToken, payload) {
+  const execPhase = aptitudeDef.phases?.exec;
+  if (!execPhase || !execPhase.effects) return;
+
+  // Verificar condición para ejecutar efectos
+  const condition = execPhase.condition;
+  if (condition && !checkReactionCondition(condition, payload)) {
+    await ChatMessage.create({
+      content: `<p>💭 <b>${actor.name}</b>: ${aptitudeDef.label} - Condición no cumplida</p>`,
+      speaker: ChatMessage.getSpeaker({ actor })
+    });
+    return;
+  }
+
+  await ChatMessage.create({
+    content: `<p>🎬 <b>${actor.name}</b>: ${execPhase.description}</p>`,
+    speaker: ChatMessage.getSpeaker({ actor })
+  });
+
+  for (const effect of execPhase.effects) {
+    await applyReactionEffect(actor, token, targetToken, effect);
+  }
+}
+
+/** Execute recovery phase of reaction */
+async function performReactionRecoveryPhase(actor, token, aptitudeDef, targetToken, payload) {
+  await ChatMessage.create({
+    content: `<p>🔄 <b>${actor.name}</b>: ${aptitudeDef.label} - Recuperación</p>`,
+    speaker: ChatMessage.getSpeaker({ actor })
+  });
+}
+
+/** Check if reaction condition is met */
+function checkReactionCondition(condition, payload) {
+  switch (condition) {
+    case "defense_success":
+      return payload.defenseResult?.success === true;
+    case "defense_complete_success":
+      return payload.defenseResult?.success === true && payload.defenseResult?.margin >= 0;
+    case "defense_success_by_3":
+      return payload.defenseResult?.success === true && payload.defenseResult?.margin >= 3;
+    default:
+      return true;
+  }
+}
+
+/** Apply a reaction effect */
+async function applyReactionEffect(actor, token, targetToken, effect) {
+  switch (effect.type) {
+    case "free_movement":
+      await ChatMessage.create({
+        content: `<p>🏃 <b>${actor.name}</b> puede moverse libremente sin provocar reacciones.</p>`,
+        speaker: ChatMessage.getSpeaker({ actor })
+      });
+      break;
+
+    case "bonus_attack":
+      await ChatMessage.create({
+        content: `<p>⚔️ <b>${actor.name}</b> puede realizar un contraataque con +${effect.bonus} de bonificación.</p>`,
+        speaker: ChatMessage.getSpeaker({ actor })
+      });
+      break;
+
+    case "disarm_attacker":
+      if (targetToken?.actor) {
+        await ChatMessage.create({
+          content: `<p>💥 <b>${actor.name}</b> desarma a <b>${targetToken.name}</b>! ${effect.note}</p>`,
+          speaker: ChatMessage.getSpeaker({ actor })
+        });
+      }
+      break;
+
+    case "free_attack":
+      await ChatMessage.create({
+        content: `<p>⚡ <b>${actor.name}</b> ataca inmediatamente sin consumir acción!</p>`,
+        speaker: ChatMessage.getSpeaker({ actor })
+      });
+      break;
+
+    case "debuff_attacker":
+      if (targetToken?.actor) {
+        await ChatMessage.create({
+          content: `<p>😵 <b>${targetToken.name}</b> sufre -${effect.penalty} a su próximo ataque. ${effect.note}</p>`,
+          speaker: ChatMessage.getSpeaker({ actor })
+        });
+      }
+      break;
+
+    default:
+      console.warn(`TSDC | Unknown reaction effect type: ${effect.type}`);
+  }
+}
+
 export const ATB_API = {
   // planeación
   getPlanningTick, setPlanningTick, adjustPlanningTick,
@@ -647,5 +1119,7 @@ export const ATB_API = {
   enqueueSimpleForSelected, enqueueSpecForSelected,
   enqueueSimpleForActor, enqueueSpecForActor,
   enqueueManeuverForSelected, enqueueRelicForSelected, enqueueAptitudeForSelected, enqueueMonsterAbilityForSelected,
-  enqueueManeuver, enqueueRelicPower, enqueueAptitude, enqueueMonsterAbility
+  enqueueManeuver, enqueueRelicPower, enqueueAptitude, enqueueMonsterAbility,
+  // reacciones
+  substituteActionWithReaction, checkAvailableReactionsForCombatant, promptAndSubstituteAction
 };

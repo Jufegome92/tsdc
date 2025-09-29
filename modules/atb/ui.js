@@ -66,7 +66,7 @@ function populatePlannerSelects(html, actor) {
 
 /* ========= Listas para el diálogo ========= */
 function listBasicOptions() {
-  const ids = ["mover","ataque","interactuar","escape","soltar","hide"]; // la Especialización tiene su bloque propio
+  const ids = ["mover","ataque","dual-wield","interactuar","escape","soltar","hide"]; // la Especialización tiene su bloque propio
   return ids.map(id => ({ id, name: ACTIONS[id]?.name ?? (id==="hide" ? "Ocultación" : id) }));
 }
 function listManeuverOptions(actor) {
@@ -241,7 +241,7 @@ class AtbPlanDialog extends HandlebarsApplicationMixin(ApplicationV2) {
     if (!sel) return ui.notifications.warn("Elige una acción básica.");
     const tick = app._readTick();
 
-    const map = { mover:"move", ataque:"attack", interactuar:"interact", escape:"escape", soltar:"drop", hide:"hide" };
+    const map = { mover:"move", ataque:"attack", "dual-wield":"dual-wield", interactuar:"interact", escape:"escape", soltar:"drop", hide:"hide" };
     const simple = map[sel];
     if (!simple) return ui.notifications.warn("Acción básica desconocida.");
 

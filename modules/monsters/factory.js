@@ -68,22 +68,55 @@ export function buildHealthPartsFromAnatomy(anatomy = {}, { level = 1 } = {}) {
   const result = {};
   const parts = Object.entries(anatomy);
   const qualityFallback = defaultQualityFromLevel(level);
+
   for (const [key, node] of parts) {
     const materialKey = node?.materialKey ?? node?.material ?? null;
     const quality = Number(node?.quality ?? qualityFallback);
-    const durability = safeMaterialDurability(materialKey, quality, 12);
+
+    // Para monstruos: calcular HP por parte basado en nivel y tamaño de la parte
+    const hp = calculateMonsterPartHP(key, level, node?.category);
+
+    // Para información de material (usado para bloqueo)
     const potency = safeMaterialPotency(materialKey, quality, 0);
+
     result[key] = {
-      label: key,
+      label: node?.label || key,  // Usar label personalizado de la anatomía
       material: materialKey,
       category: node?.category ?? null,
       quality,
-      max: durability,
-      value: durability,
-      potency
+      max: hp,           // HP máximo de la parte
+      value: hp,         // HP actual de la parte
+      potency            // Potencia del material (para bloqueo)
     };
   }
   return result;
+}
+
+function calculateMonsterPartHP(partKey, level, category) {
+  // HP base por nivel del monstruo
+  const baseHP = Math.max(1, level * 2);
+
+  // Multiplicador según la parte del cuerpo
+  const partMultipliers = {
+    head: 0.6,      // Cabeza es más frágil
+    chest: 1.0,     // Torso es estándar
+    torso: 1.0,     // Alias de chest
+    bracers: 0.8,   // Brazos intermedios
+    legs: 0.8,      // Piernas intermedias
+    boots: 0.7      // Patas/pies más frágiles
+  };
+
+  // Multiplicador según la categoría del material
+  const categoryMultipliers = {
+    light: 0.8,     // Materiales ligeros = menos HP
+    medium: 1.0,    // Materiales medianos = HP estándar
+    heavy: 1.2      // Materiales pesados = más HP
+  };
+
+  const partMult = partMultipliers[partKey] || 1.0;
+  const categoryMult = categoryMultipliers[category] || 1.0;
+
+  return Math.max(1, Math.floor(baseHP * partMult * categoryMult));
 }
 
 function buildNaturalWeaponRecords(blueprint, actorPatchLevel) {
@@ -313,7 +346,7 @@ export async function applyMonsterBlueprint(actor, blueprintOrKey, options = {})
       key: `monster:${blueprint.key}`,
       label: blueprint.label || blueprint.key,
       size: blueprint.size ?? "",
-      speed: toNumber(blueprint.speed, actor.system?.species?.speed ?? 0),
+      speed: toNumber(blueprint.movement?.speed ?? blueprint.speed, actor.system?.species?.speed ?? 0),
       languages: Array.isArray(blueprint.languages) ? [...blueprint.languages] : []
     },
     "system.background.key": "monster",
@@ -385,19 +418,30 @@ export async function applyMonsterBlueprint(actor, blueprintOrKey, options = {})
   if (Object.keys(healthParts).length) {
     const existingParts = actor.system?.health?.parts ?? {};
     const merged = {};
-    const keys = new Set([...Object.keys(healthParts), ...Object.keys(existingParts)]);
+
+    // Solo usar las partes definidas en el blueprint para evitar duplicados
+    const keys = Object.keys(healthParts);
+
+    console.log(`TSDC | Building health parts for ${blueprint.key}:`, keys);
+
     for (const key of keys) {
       const base = healthParts[key] ?? {};
       const current = existingParts[key] ?? {};
       const max = Number(base.max ?? current.max ?? base.value ?? current.value ?? 0);
       const value = current.value != null ? Math.min(Number(current.value), max || Number(current.value)) : (base.value ?? max);
-      merged[key] = {
-        ...base,
-        ...current,
-        max,
-        value: Number.isFinite(value) ? value : max
-      };
+
+      // Solo agregar partes válidas (no vacías o con HP 0)
+      if (max > 0) {
+        merged[key] = {
+          ...base,
+          ...current,
+          max,
+          value: Number.isFinite(value) ? value : max
+        };
+        console.log(`TSDC | Part ${key}: ${value}/${max} HP (material: ${base.material})`);
+      }
     }
+
     patch["system.health.parts"] = merged;
   }
 

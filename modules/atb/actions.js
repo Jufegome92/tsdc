@@ -6,7 +6,7 @@ import { rollAttack, rollResistance } from "../rolls/dispatcher.js";
 import { pushPenaltyForCurrentTick, scheduleBonusForNextAction } from "./mods.js";
 import { buildPerceptionPackage, packageToRollContext, describePackage } from "../perception/index.js";
 import { validateMovePath } from "../rolls/validators.js";
-import { tryReactOpportunity, openReactionWindow, performOpportunityAttack, canSpendWear, spendWear } from "./reactions.js";
+import { tryReactOpportunity, openReactionWindow, canSpendWear, spendWear } from "./reactions.js";
 import { promptOpportunityDialog } from "./rx-dialog.js";
 import { triggerFumbleReactions } from "../atb/reactions.js";
 import { getEquippedWeaponKey, resolveWeaponByKey, isNaturalWeaponDisabled, describeNaturalDisable } from "../features/inventory/index.js";
@@ -429,12 +429,26 @@ export async function actionMove({ actorToken, dest, maxMeters = null }) {
   for (const id of leavingIds) {
     const reactor = canvas.tokens.get(id);
     if (!reactor) continue;
-    const reactionChoice = await promptOpportunityDialog({ reactorToken: reactor, provokerToken: actorToken, timeoutMs: 6500 });
-    if (!reactionChoice) continue;
-    if (reactionChoice.type === "ao") {
-      await tryReactOpportunity({ reactorToken: reactor, provokerToken: actorToken });
-    } else if (reactionChoice.type === "aptitude" && reactionChoice.key) {
-      await performAptitudeReaction({ reactorToken: reactor, aptitudeKey: reactionChoice.key, provokerToken: actorToken });
+
+    // Usar el nuevo sistema de reacciones
+    const { promptReactionDialog } = await import("./rx-dialog.js");
+    const { executeReaction } = await import("./reactions.js");
+
+    const reactionChoice = await promptReactionDialog({
+      reactorToken: reactor,
+      provokerToken: actorToken,
+      reason: "enemy-movement",
+      timing: "instant",
+      timeoutMs: 6500
+    });
+
+    if (reactionChoice) {
+      await executeReaction({
+        reactorToken: reactor,
+        targetToken: actorToken,
+        reactionChoice,
+        payload: { reason: "enemy-movement", timing: "instant" }
+      });
     }
   }
 
@@ -837,6 +851,7 @@ export function listSimpleActions() {
   return [
     MoveAction,
     AttackAction,
+    DualWieldAction,
     InteractAction,
     EscapeAction,
     DropAction,
@@ -860,33 +875,51 @@ export function makeAptitudeAction(key) {
 }
 
 async function askPreAttackReaction(targetToken, attackerToken) {
-  // deja registro en estado de escena
-  openReactionWindow({
-    ownerToken: targetToken,
-    reason: "before-attack",
-    payload: { attackerId: attackerToken.id }
-  });
-
-  // solo decide el dueño del objetivo (o el GM)
-  const OWNER = Number(CONST.DOCUMENT_OWNERSHIP_LEVELS?.OWNER ?? CONST.DOCUMENT_PERMISSION_LEVELS?.OWNER ?? 3);
-  const canDecide = targetToken?.actor?.testUserPermission?.(game.user, OWNER) || game.user.isGM;
-  if (!canDecide) return false;
-
-  const { DialogV2 } = foundry.applications.api;
-  const ok = await DialogV2.confirm({
-    window: { title: "Reacción (antes del ataque)" },
-    content: `<p><b>${targetToken.name}</b>: ¿usar una reacción <i>antes</i> del ataque?</p>`
-  });
-  if (!ok) return false;
-
-  // implementación simple: si están en melee, ejecuta un AO inmediato
-  const dist = distanceM(targetToken, attackerToken);
-  if (dist <= MELEE_RANGE_M) {
-    await performOpportunityAttack({ reactorToken: targetToken, targetToken: attackerToken });
-  } else {
-    ui.notifications.info(`${targetToken.name}: fuera de alcance de reacción (melee).`);
+  // Verificar si el actor puede reaccionar
+  if (!canSpendWear(targetToken.actor)) {
+    console.log(`TSDC | ${targetToken.name} cannot react (wear limit reached)`);
+    return false;
   }
-  return true;
+
+  // Importar funciones de reacción
+  const { promptReactionDialog } = await import("./rx-dialog.js");
+  const { getAvailableReactions, executeReaction } = await import("./reactions.js");
+
+  // Verificar reacciones disponibles
+  const availableReactions = getAvailableReactions(
+    targetToken.actor,
+    "incoming-attack",
+    "before-attack"
+  );
+
+  if (availableReactions.length === 0) {
+    console.log(`TSDC | ${targetToken.name} has no available reactions`);
+    return false;
+  }
+
+  // Mostrar diálogo de reacciones disponibles
+  const reactionChoice = await promptReactionDialog({
+    reactorToken: targetToken,
+    provokerToken: attackerToken,
+    reason: "incoming-attack",
+    timing: "before-attack",
+    timeoutMs: 6000,
+    title: "Reacción antes del ataque"
+  });
+
+  if (!reactionChoice) {
+    return false; // Usuario canceló o no seleccionó nada
+  }
+
+  // Ejecutar la reacción seleccionada
+  const executionResult = await executeReaction({
+    reactorToken: targetToken,
+    targetToken: attackerToken,
+    reactionChoice,
+    payload: { reason: "incoming-attack", timing: "before-attack" }
+  });
+
+  return executionResult.success;
 }
 
 /** Ocultación — CT=2 → I1+E0+R1 (rápida, te “ancla” un instante) */
@@ -1167,3 +1200,423 @@ export function makeAbilityAction(ability, { key, clazz }) {
     }
   };
 }
+
+/** Ataque Múltiple — CT=3 → I1+E1+R1 */
+export const DualWieldAction = makeDef({
+  key: "dual-wield", label: "Ataque Múltiple", I: 1, E: 1, R: 1,
+  perform: async ({ actor }) => {
+    console.log("🗡️ Ejecutando Ataque Múltiple");
+
+    // 1. Validaciones básicas
+    const actorToken = actor?.getActiveTokens?.(true)?.[0]
+      ?? canvas?.tokens?.placeables?.find?.(t => t?.actor?.id === actor.id)
+      ?? null;
+
+    if (!actorToken) {
+      ui.notifications?.warn("No tienes un token activo en el mapa.");
+      return;
+    }
+
+    // 2. Verificar armas equipadas
+    const mainWeapon = getEquippedWeaponKey(actor, "main");
+    const offWeapon = getEquippedWeaponKey(actor, "off");
+
+    if (!mainWeapon || !offWeapon) {
+      ui.notifications?.warn("Necesitas armas equipadas en ambas manos para ataque múltiple.");
+      return;
+    }
+
+    // 3. Resolver detalles de armas y verificar compatibilidad
+    const mainWeaponChoice = resolveWeaponByKey(actor, mainWeapon);
+    const offWeaponChoice = resolveWeaponByKey(actor, offWeapon);
+
+    if (!mainWeaponChoice || !offWeaponChoice) {
+      ui.notifications?.warn("Error: No se pudieron resolver las armas equipadas.");
+      return;
+    }
+
+    // 4. Verificar que son armas auxiliares (no principales)
+    const mainItem = mainWeaponChoice.item;
+    const offItem = offWeaponChoice.item;
+
+    if (mainWeaponChoice.source === "natural" && mainItem.assign === "main" && !mainItem.allowsConcurrent) {
+      ui.notifications?.warn(`${mainItem.label} es un arma principal y no puede usarse en ataque múltiple.`);
+      return;
+    }
+
+    if (offWeaponChoice.source === "natural" && offItem.assign === "main" && !offItem.allowsConcurrent) {
+      ui.notifications?.warn(`${offItem.label} es un arma principal y no puede usarse en ataque múltiple.`);
+      return;
+    }
+
+    // 5. Verificar que las armas naturales no estén deshabilitadas
+    if (mainWeaponChoice.source === "natural" && mainWeaponChoice.disabled) {
+      ui.notifications?.warn(`No puedes usar ${mainItem.label}: ${mainWeaponChoice.disabledReason}`);
+      return;
+    }
+    if (offWeaponChoice.source === "natural" && offWeaponChoice.disabled) {
+      ui.notifications?.warn(`No puedes usar ${offItem.label}: ${offWeaponChoice.disabledReason}`);
+      return;
+    }
+
+    // 6. Verificar objetivo
+    const targetToken = Array.from(game.user.targets)?.[0] ?? null;
+    if (!targetToken) {
+      ui.notifications?.warn("Debes seleccionar un objetivo.");
+      return;
+    }
+
+    // 7. Verificar rango (usar el más corto)
+    const mainRangeM = weaponRangeM(actor, mainWeapon);
+    const offRangeM = weaponRangeM(actor, offWeapon);
+    const effectiveRange = Math.min(mainRangeM, offRangeM);
+
+    const v = await validateAttackRangeAndVision({
+      attackerToken: actorToken,
+      targetToken,
+      weaponRangeM: effectiveRange
+    });
+    if (!v.ok) {
+      await ChatMessage.create({
+        speaker: ChatMessage.getSpeaker({ actor }),
+        content: `<p>No alcanzas a <b>${targetToken.name}</b>: ${v.reason}.</p>`
+      });
+      return;
+    }
+
+    // 8. Realizar T.E de Destreza usando el sistema de aptitudes para garantizar la evaluación
+    console.log("🎲 Ejecutando T.E de Destreza para Ataque Múltiple");
+
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `<p><b>${actor.name}</b> intenta realizar Ataque Múltiple contra <b>${targetToken.name}</b>.</p>
+                <p>🎲 Realizando T.E de Destreza (sin ventaja)...</p>`
+    });
+
+    // Importar funciones necesarias
+    const { resolveEvolution } = await import("../features/advantage/index.js");
+    const { setPendingEvaluation } = await import("../features/aptitudes/state.js");
+    const { toCanonSpec, baseFromSpec } = await import("../features/specializations/index.js");
+
+    // Almacenar datos para continuar después de la evaluación
+    const dualWieldData = {
+      targetTokenId: targetToken.id,
+      mainWeapon,
+      offWeapon,
+      mainWeaponChoice,
+      offWeaponChoice,
+      agility: Number(actor.system?.attributes?.agility ?? 1)
+    };
+
+    // Preparar tirada de T.E de Destreza
+    const canonKey = toCanonSpec("destreza") ?? "destreza";
+    const attrs = actor.system?.attributes ?? {};
+    const baseValue = baseFromSpec(attrs, canonKey) || 0;
+    const formula = `1d10 + ${baseValue}`;
+    const rankPath = `system.progression.skills.${canonKey}.rank`;
+    const rank = Number(foundry.utils.getProperty(actor, rankPath) || 0);
+
+    // Ejecutar T.E de Destreza con mode: "none" (sin ventaja)
+    const rollResult = await resolveEvolution({
+      type: "specialization",
+      mode: "none", // Sin ventaja (1 dado)
+      formula,
+      rank,
+      flavor: "Ataque Múltiple • Destreza",
+      actor,
+      toChat: false, // No enviar al chat aquí, lo haremos manualmente
+      meta: {
+        key: canonKey,
+        category: "physical",
+        aptitudeKey: "dual-wield"
+      }
+    });
+
+    if (!rollResult?.resultRoll) {
+      ui.notifications?.warn("Error en la tirada de T.E de Destreza");
+      return;
+    }
+
+    // Crear mensaje personalizado con botón tsdc-eval-btn
+    const { resultRoll } = rollResult;
+
+    // Crear el payload para el botón de evaluación
+    const evalPayload = {
+      actorId: actor.id,
+      key: canonKey,
+      category: "physical",
+      rank,
+      totalShown: resultRoll.total,
+      aptitudeKey: "dual-wield",
+      dualWieldData: dualWieldData
+    };
+
+    const blob = encodeURIComponent(JSON.stringify(evalPayload));
+
+    // Crear mensaje personalizado con roll display y botón tsdc-eval-btn
+    const rollHtml = await resultRoll.render();
+    const customContent = `
+      ${rollHtml}
+      <div class="tsdc-eval" style="margin-top: 8px;">
+        <p><strong>T.E de Destreza • Ataque Múltiple</strong> — Solo GM</p>
+        <div class="t-row" style="gap:6px; flex-wrap:wrap;">
+          <button class="t-btn tsdc-eval-btn" data-kind="specialization" data-blob="${blob}">Abrir evaluación…</button>
+        </div>
+        <div class="muted">Evalúa si el ataque múltiple tiene éxito.</div>
+      </div>
+    `;
+
+    // Crear el mensaje
+    const message = await ChatMessage.create({
+      content: customContent,
+      speaker: ChatMessage.getSpeaker({ actor }),
+      flags: {
+        tsdc: {
+          version: 1,
+          actorId: actor.id,
+          type: "specialization",
+          policy: "none",
+          rank,
+          meta: rollResult.meta,
+          totals: { low: resultRoll.total, high: resultRoll.total }
+        }
+      }
+    });
+
+    const messageId = message.id;
+    console.log("📬 Mensaje personalizado creado con ID:", messageId);
+
+    window[`dualWieldData_${actor.id}`] = {
+      data: dualWieldData,
+      messageId: messageId,
+      pending: true
+    };
+
+    // Crear una evaluación pendiente en el sistema de aptitudes para que active el hook
+    console.log("📝 Llamando setPendingEvaluation con:", {
+      actorId: actor.id,
+      messageId,
+      data: {
+        aptitudeKey: "dual-wield",
+        meta: {
+          key: canonKey,
+          category: "physical",
+          aptitudeKey: "dual-wield",
+          dualWieldData: dualWieldData
+        }
+      }
+    });
+
+    await setPendingEvaluation(actor, messageId, {
+      aptitudeKey: "dual-wield",
+      meta: {
+        key: canonKey,
+        category: "physical",
+        aptitudeKey: "dual-wield",
+        dualWieldData: dualWieldData
+      }
+    });
+
+    console.log("✅ setPendingEvaluation completado");
+
+    console.log(`Guardando datos de dual wield para actor ${actor.name} (${actor.id}) con messageId: ${messageId}`);
+
+    // CRUCIAL: No terminar la ejecución del ATB hasta que se complete la evaluación
+    // Crear una Promise que se resuelva cuando la evaluación esté completa
+    console.log("⏸️ ATB: Esperando evaluación del GM antes de completar la acción");
+
+    return new Promise((resolve) => {
+      // Almacenar el resolver para que sea llamado después de la evaluación
+      window[`dualWieldResolver_${actor.id}_${messageId}`] = resolve;
+
+      console.log("🔗 Resolver almacenado:", `dualWieldResolver_${actor.id}_${messageId}`);
+    });
+  }
+});
+
+/** Ejecuta un ataque individual dentro del Ataque Múltiple */
+async function performSingleAttack({ actor, actorToken, targetToken, weaponKey, weaponChoice, attackNumber, totalAttacks }) {
+  // Usar la acción de ataque estándar pero con el arma específica
+  const attackAction = AttackAction;
+
+  // Simular meta con el arma específica para este ataque
+  const attackMeta = {
+    weaponKey: weaponKey,
+    targetTokenId: targetToken.id,
+    dualWieldContext: {
+      attackNumber,
+      totalAttacks,
+      weaponLabel: weaponChoice.item.label
+    }
+  };
+
+  // Ejecutar el ataque individual
+  await attackAction.perform({
+    actor,
+    meta: attackMeta,
+    combat: null,
+    combatant: null
+  });
+}
+
+/** Ejecuta los ataques múltiples tras T.E exitosa */
+async function executeDualWieldAttacks(actor, evaluationData) {
+  const { data } = evaluationData;
+  const { targetTokenId, mainWeapon, offWeapon, mainWeaponChoice, offWeaponChoice, agility } = data;
+
+  // Buscar token objetivo
+  const targetToken = canvas.tokens.placeables.find(t => t.id === targetTokenId);
+  if (!targetToken) {
+    ui.notifications?.warn("No se encontró el objetivo para el Ataque Múltiple.");
+    return;
+  }
+
+  const actorToken = actor?.getActiveTokens?.(true)?.[0]
+    ?? canvas?.tokens?.placeables?.find?.(t => t?.actor?.id === actor.id)
+    ?? null;
+
+  // Calcular ataques
+  const additionalAttacks = Math.floor(agility / 2);
+  const totalAttacks = 1 + additionalAttacks;
+
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `<p><b>✅ T.E de Destreza exitosa!</b></p>
+              <p>Ejecutando ${totalAttacks} ataques consecutivos (1 base + ${additionalAttacks} adicionales)</p>
+              <p>Agilidad: ${agility} | Armas: ${mainWeaponChoice.item.label} + ${offWeaponChoice.item.label}</p>`
+  });
+
+  // Ejecutar ataques secuenciales alternando armas
+  const weapons = [mainWeapon, offWeapon];
+  const weaponChoices = [mainWeaponChoice, offWeaponChoice];
+
+  for (let i = 0; i < totalAttacks; i++) {
+    const weaponIndex = i % 2; // alterna entre 0 (main) y 1 (off)
+    const currentWeapon = weapons[weaponIndex];
+    const currentChoice = weaponChoices[weaponIndex];
+    const attackNumber = i + 1;
+    const weaponName = currentChoice.item.label;
+
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `<p><b>Ataque ${attackNumber}/${totalAttacks} con ${weaponName}</b></p>`
+    });
+
+    // Ejecutar ataque individual con el arma actual
+    try {
+      await performSingleAttack({
+        actor,
+        actorToken,
+        targetToken,
+        weaponKey: currentWeapon,
+        weaponChoice: currentChoice,
+        attackNumber,
+        totalAttacks
+      });
+
+      // Pequeña pausa entre ataques para claridad
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+    } catch (error) {
+      console.error(`Error en ataque ${attackNumber}:`, error);
+      await ChatMessage.create({
+        speaker: ChatMessage.getSpeaker({ actor }),
+        content: `<p>❌ Error en ataque ${attackNumber} con ${weaponName}</p>`
+      });
+    }
+  }
+
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `<p><b>🗡️ Ataque Múltiple completado</b></p>
+              <p>Se ejecutaron ${totalAttacks} ataques consecutivos.</p>`
+  });
+}
+
+/** Maneja el fallo de la T.E de Destreza */
+async function failDualWieldAttacks(actor, evaluationData) {
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `<p><b>❌ T.E de Destreza fallida</b></p>
+              <p>El Ataque Múltiple falla. No se realizan ataques adicionales.</p>`
+  });
+}
+
+// Registrar handlers globalmente para el sistema de evaluaciones
+if (typeof window !== "undefined") {
+  window.executeDualWieldAttacks = executeDualWieldAttacks;
+  window.failDualWieldAttacks = failDualWieldAttacks;
+}
+
+// Hook para interceptar evaluaciones de aptitudes (incluyendo dual wield)
+Hooks.on("aptitude-evaluation-completed", async (data) => {
+  console.log("🎯 HOOK RECIBIDO aptitude-evaluation-completed:", data);
+  console.log("📊 Datos del hook:", {
+    actorName: data.actor?.name,
+    actorId: data.actor?.id,
+    success: data.success,
+    messageId: data.messageId,
+    pendingAptitudeKey: data.pending?.aptitudeKey,
+    pendingMeta: data.pending?.meta
+  });
+
+  const { actor, success, pending, messageId } = data;
+
+  // Verificar si hay datos de dual wield pendientes para este actor
+  const dualWieldDataKey = `dualWieldData_${actor.id}`;
+  const dualWieldInfo = window[dualWieldDataKey];
+
+  console.log(`🔍 Verificando dual wield data para ${actor.name}:`, {
+    dualWieldDataKey,
+    hasData: !!dualWieldInfo,
+    isPending: dualWieldInfo?.pending,
+    pendingAptitudeKey: pending?.aptitudeKey,
+    pendingMeta: pending?.meta,
+    messageId: messageId,
+    storedMessageId: dualWieldInfo?.messageId
+  });
+
+  if (dualWieldInfo && dualWieldInfo.pending) {
+    // Verificar si la evaluación es para el dual wield (por messageId o aptitudeKey)
+    const isForDualWield = pending?.aptitudeKey === "dual-wield" ||
+                          (messageId && messageId === dualWieldInfo.messageId);
+
+    if (isForDualWield) {
+      console.log(`✅ Evaluación de T.E Destreza completada para dual wield: ${success ? "éxito" : "fallo"}`);
+
+      // Marcar como procesado
+      dualWieldInfo.pending = false;
+
+      if (success) {
+        await executeDualWieldAttacks(actor, { data: dualWieldInfo.data });
+      } else {
+        await failDualWieldAttacks(actor, { data: dualWieldInfo.data });
+      }
+
+      // CRUCIAL: Resolver la Promise para completar la ejecución del ATB
+      const resolverKey = `dualWieldResolver_${actor.id}_${messageId}`;
+      const resolver = window[resolverKey];
+
+      console.log("🔗 Resolviendo Promise del ATB:", {
+        resolverKey,
+        hasResolver: !!resolver,
+        success
+      });
+
+      if (resolver) {
+        resolver(); // Esto completa la ejecución del ATB
+        delete window[resolverKey];
+        console.log("✅ ATB execution completed after evaluation");
+      } else {
+        console.warn("❌ No se encontró resolver para completar la ejecución del ATB");
+      }
+
+      // Limpiar datos temporales
+      delete window[dualWieldDataKey];
+    } else {
+      console.log("❌ La evaluación no es para dual wield");
+    }
+  } else {
+    console.log("❌ No hay datos de dual wield pendientes para este actor");
+  }
+});

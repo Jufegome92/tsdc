@@ -213,7 +213,9 @@ export async function rollImpact(actor, {
   breakBonus = 0,
   targetDurability = null,
   whisperBreakToGM = true,
-  context = {}
+  context = {},
+  targetActor = null,
+  hitLocation = null
 } = {}) {
   const naturalInfo = key ? resolveWeaponByKey(actor, key) : null;
   if (naturalInfo?.source === "natural" && isNaturalWeaponDisabled(actor, naturalInfo.record)) {
@@ -228,7 +230,9 @@ export async function rollImpact(actor, {
 
   const tags = makeTagsFor({ ...context, phase: "impact" });
 
-  await r.toMessage({
+  // Si el objetivo es una criatura, susurrar la tirada al GM
+  const isTargetCreature = targetActor?.type === "creature";
+  const messageData = {
     flavor: flavor ?? (key ? `Impacto • ${key}` : `Impacto`),
     flags: {
       tsdc: {
@@ -242,7 +246,13 @@ export async function rollImpact(actor, {
         tags
       }
     }
-  });
+  };
+
+  if (isTargetCreature) {
+    messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(u => u.id);
+  }
+
+  await r.toMessage(messageData);
 
   const crit = detectImpactCrit(r);
   if (!crit.isCrit) return { resultRoll: r, isCrit: false };
@@ -254,23 +264,85 @@ export async function rollImpact(actor, {
                 || actor?.items?.find?.(i => i.id === k || i.name === k) || null;
     } catch (_) {}
   }
-  const breakPower = computeBreakPower(weaponItem, breakBonus);
 
-  const msgHtml = `
+  // Si hay un targetActor y es un monstruo, usar sus partes del cuerpo para rotura
+  let breakPower = computeBreakPower(weaponItem, breakBonus);
+  let targetBodyParts = null;
+
+  if (targetActor && targetActor.type === "creature") {
+    targetBodyParts = targetActor.system?.health?.parts || {};
+    // Para monstruos, el poder de rotura debería ser contra las partes del cuerpo del objetivo
+    // En lugar del arma del atacante
+    console.log("TSDC | Target is creature, using body parts for breakage evaluation");
+  }
+
+  let msgHtml = `
     <div class="tsdc-crit">
-      <p><strong>Impacto Crítico</strong> — Poder de Rotura: <b>${breakPower}</b></p>
-      <button class="t-btn tsdc-break-eval" 
+      <p><strong>Impacto Crítico</strong> — Poder de Rotura: <b>${breakPower}</b></p>`;
+
+  if (targetBodyParts && Object.keys(targetBodyParts).length > 0) {
+    if (hitLocation && targetBodyParts[hitLocation]) {
+      // Solo mostrar la parte que fue golpeada
+      const partData = targetBodyParts[hitLocation];
+      const durability = partData.quality || 0;
+      const willBreak = breakPower >= durability;
+      const statusIcon = willBreak ? "💥" : "🛡️";
+      const statusText = willBreak ? "ROMPE" : "no rompe";
+
+      msgHtml += `
+        <div style="margin-top: 8px;"><strong>Evaluar rotura en ${partData.label || hitLocation}:</strong></div>
+        <div style="margin: 4px 0; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
+          <strong>${partData.label || hitLocation}</strong> (Durabilidad: ${durability}, Material: ${partData.material || 'N/A'})
+          <br>
+          <span style="color: ${willBreak ? '#d32f2f' : '#388e3c'};">
+            ${statusIcon} Potencia ${breakPower} vs Durabilidad ${durability} → ${statusText}
+          </span>
+        </div>`;
+    } else {
+      // Fallback: mostrar todas las partes si no hay hitLocation específica
+      msgHtml += `<div style="margin-top: 8px;"><strong>Evaluar rotura contra partes del cuerpo:</strong></div>`;
+
+      for (const [partKey, partData] of Object.entries(targetBodyParts)) {
+        const durability = partData.quality || 0;
+        const willBreak = breakPower >= durability;
+        const statusIcon = willBreak ? "💥" : "🛡️";
+        const statusText = willBreak ? "ROMPE" : "no rompe";
+
+        msgHtml += `
+          <div style="margin: 4px 0; padding: 4px; border: 1px solid #ccc; border-radius: 4px;">
+            <strong>${partData.label || partKey}</strong> (Durabilidad: ${durability}, Material: ${partData.material || 'N/A'})
+            <br>
+            <span style="color: ${willBreak ? '#d32f2f' : '#388e3c'};">
+              ${statusIcon} Potencia ${breakPower} vs Durabilidad ${durability} → ${statusText}
+            </span>
+          </div>`;
+      }
+    }
+  } else {
+    msgHtml += `
+      <button class="t-btn tsdc-break-eval"
               data-power="${breakPower}"
               data-actor="${actor?._id ?? actor?.id ?? ''}">
         Evaluar rotura…
-      </button>
+      </button>`;
+  }
+
+  msgHtml += `
       <div class="muted" style="margin-top:4px;">Solo GM: compara contra la Durabilidad del objetivo.</div>
     </div>
   `;
-  await ChatMessage.create({
+
+  // Si el objetivo es una criatura, susurrar el mensaje de crítico al GM
+  const critMessageData = {
     content: msgHtml,
     speaker: ChatMessage.getSpeaker({ actor })
-  });
+  };
+
+  if (isTargetCreature) {
+    critMessageData.whisper = ChatMessage.getWhisperRecipients("GM").map(u => u.id);
+  }
+
+  await ChatMessage.create(critMessageData);
 
   if (targetDurability != null) {
     const ok = (breakPower >= Number(targetDurability));

@@ -47,6 +47,17 @@ export const ACTIONS = {
     requirements: [],
     keywords: { type:"accion", clazz:"accion", category:"activa", descriptors:[], elements:[] },
     description: "Acción para intentar liberarte de efectos como Atrapado o similares."
+  },
+  "dual-wield": {
+    id: "dual-wield",
+    name: "Ataque Múltiple",
+    range: "Variable", // Depende de las armas equipadas
+    area: 0,
+    rolls: [{ kind:"TE", stat:"dexterity" }], // T.E Destreza evaluada por GM
+    ct: { I:1, E:1, R:1 },                    // CT=3
+    requirements: ["Armas en ambas manos", "Armas auxiliares solamente"],
+    keywords: { type:"ataque", clazz:"ataque_multiple", category:"activa", descriptors:["dual","multiple"], elements:[] },
+    description: "Encola una secuencia de combate con dos armas. Requiere T.E de Destreza (evaluada por GM, sin ventaja). Si tienes éxito, realizas múltiples ataques consecutivos: 1 base + floor(Agilidad/2) adicionales, alternando entre ambas armas. Solo funciona con armas auxiliares."
   }
   // …y tus Maniobras (barrido, finta, etc.) con su ct fijo o dependiente del nivel.
 };

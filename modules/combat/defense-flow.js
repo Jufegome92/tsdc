@@ -432,19 +432,27 @@ export async function runDefenseFlow({
 
   const net = Math.max(0, Number(impact||0) - Number(block||0));
   const isCreatureVsCharacter = attackerActor?.type === "creature" && targetToken?.actor?.type === "character";
-  const locNice = ({
-    head: "cabeza", chest: "torso", bracers: "brazos",
-    legs: "piernas", boots: "pies"
-  })[hitLocation] || hitLocation;
+
+  // Usar label personalizado de la parte si está disponible
+  let locNice = hitLocation;
+  if (targetToken?.actor?.system?.health?.parts?.[hitLocation]?.label) {
+    locNice = targetToken.actor.system.health.parts[hitLocation].label;
+  } else {
+    // Fallback a mapeo estático
+    const staticLabels = {
+      head: "cabeza", chest: "torso", bracers: "brazos",
+      legs: "piernas", boots: "pies"
+    };
+    locNice = staticLabels[hitLocation] || hitLocation;
+  }
 
   const woundSeverity = computeWoundSeverity(Number(impact||0), Number(block||0));
   const woundZone = zoneKeyFromHitLocation(hitLocation);
 
   if (isCreatureVsCharacter) {
     const severity = woundSeverity;
-    const ratioText = `Impacto ${impact} vs Bloqueo ${block}`;
     if (!severity) {
-      await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>${ratioText}</b> → sin herida.`, attackerActor);
+      await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice} → sin herida.`, attackerActor);
       return;
     }
     const damageCategory = inferDamageCategory(weapon, attackCtx || {});
@@ -461,6 +469,7 @@ export async function runDefenseFlow({
       dark: "oscuridad"
     };
     const catLabel = damageCategory ? (categoryLabelMap[damageCategory] || damageCategory) : null;
+    const ratioText = `Impacto ${impact} vs Bloqueo ${block}`;
     if (ailmentIds.length) {
       for (const id of ailmentIds) {
         await addAilment(targetToken.actor, id, { severity });
@@ -475,12 +484,39 @@ export async function runDefenseFlow({
     return;
   }
 
+  // Para criaturas, ocultar valores específicos de impacto/bloqueo
+  const isTargetCreature = targetToken.actor?.type === "creature";
+
   if (net <= 0) {
-    await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Sin daño</b>.`, attackerActor);
+    if (isTargetCreature) {
+      // Mensaje público para jugadores (sin valores)
+      await CHAT(`${attackerActor.name} no consigue dañar a ${targetToken.name}.`, attackerActor);
+
+      // Mensaje privado para GM (con valores)
+      await ChatMessage.create({
+        content: `⚔️ <b>${attackerActor.name}</b> impacta a <b>${targetToken.name}</b> en <i>${locNice}</i>: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Sin daño</b>.`,
+        speaker: ChatMessage.getSpeaker({ actor: attackerActor }),
+        whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id)
+      });
+    } else {
+      await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Sin daño</b>.`, attackerActor);
+    }
     return;
   }
 
-  await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Daño Neto = ${net}</b>.`, attackerActor);
+  if (isTargetCreature) {
+    // Mensaje público para jugadores (sin valores)
+    await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}.`, attackerActor);
+
+    // Mensaje privado para GM (con valores)
+    await ChatMessage.create({
+      content: `⚔️ <b>${attackerActor.name}</b> impacta a <b>${targetToken.name}</b> en <i>${locNice}</i>: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Daño Neto = ${net}</b>.`,
+      speaker: ChatMessage.getSpeaker({ actor: attackerActor }),
+      whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id)
+    });
+  } else {
+    await CHAT(`⚔️ ${attackerActor.name} impacta a ${targetToken.name} en ${locNice}: <b>Impacto ${impact}</b> vs <b>Bloqueo ${block}</b> → <b>Daño Neto = ${net}</b>.`, attackerActor);
+  }
 
   if (targetToken.actor?.type === "character" && woundSeverity && woundZone) {
     await addWoundSlots(targetToken.actor, woundZone, { severity: woundSeverity, source: weapon?.key || "weapon" });
@@ -495,6 +531,24 @@ export async function runDefenseFlow({
  * Tirada de defensa
  * ====================================================== */
 async function requestDefenseRoll({ defender, defenderToken, attackerActor, attackCtx, attackResult }) {
+  // Verificar si el defensor tiene maniobra evasiva activa
+  const maniobraEvasiva = defender.getFlag("tsdc", "maniobraEvasiva");
+
+  if (maniobraEvasiva?.active) {
+    // Limpiar el flag después de usarlo
+    await defender.unsetFlag("tsdc", "maniobraEvasiva");
+
+    // Usar T.E de acrobacias en lugar de T.D
+    return await executeManiobraEvasiva({
+      defender,
+      defenderToken,
+      attackerActor,
+      attackCtx,
+      attackResult,
+      maniobraData: maniobraEvasiva
+    });
+  }
+
   try {
     if (typeof rollDefense === "function") {
       const res = await rollDefense(defender, {
@@ -620,7 +674,9 @@ async function resolveImpactVsBlock({ attackerActor, attackerToken, targetToken,
         die:   meta.impactDie   ?? weaponItemPayload?.damageDie ?? undefined,
         grade: meta.impactGrade ?? weaponItemPayload?.grade ?? undefined,
         attrKey: hintedAttr ?? weaponItemPayload?.impactAttr ?? weaponItemPayload?.attackAttr,
-        weaponItem: weaponItemPayload
+        weaponItem: weaponItemPayload,
+        targetActor: targetToken?.actor || null,
+        hitLocation: hitLocation
       });
       const impactRaw =
         impactMsg?.resultRoll?.total ??
@@ -720,12 +776,40 @@ async function applyDamageOrWound({ defenderToken, amount, hitLocation }) {
     const current = Number(getDeep(actor.system, pathByZone) || 0);
     const next = Math.max(0, current - amount);
     await actor.update({ [`system.${pathByZone}`]: next });
-    await CHAT(`🩸 <b>${actor.name}</b> pierde ${amount} PV en <i>${hitLocation}</i> (queda ${next}).`, actor);
+    // Para criaturas, ocultar completamente el mensaje de HP a los jugadores
+    const isCreature = actor.type === "creature";
+    if (isCreature) {
+      // Usar label personalizado de la parte si está disponible
+      let partLabel = hitLocation;
+      if (actor.system?.health?.parts?.[hitLocation]?.label) {
+        partLabel = actor.system.health.parts[hitLocation].label;
+      }
+
+      // Solo susurrar al GM
+      await ChatMessage.create({
+        content: `🩸 <b>${actor.name}</b> pierde ${amount} PV en <i>${partLabel}</i> (queda ${next}).`,
+        speaker: ChatMessage.getSpeaker({ actor }),
+        whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id)
+      });
+    } else {
+      await CHAT(`🩸 <b>${actor.name}</b> pierde ${amount} PV en <i>${hitLocation}</i> (queda ${next}).`, actor);
+    }
   } else if (actor.system?.hp?.value != null) {
     const cur = Number(actor.system.hp.value || 0);
     const next = Math.max(0, cur - amount);
     await actor.update({ "system.hp.value": next });
-    await CHAT(`🩸 <b>${actor.name}</b> pierde ${amount} PV (queda ${next}).`, actor);
+    // Para criaturas, ocultar completamente el mensaje de HP a los jugadores
+    const isCreature = actor.type === "creature";
+    if (isCreature) {
+      // Solo susurrar al GM
+      await ChatMessage.create({
+        content: `🩸 <b>${actor.name}</b> pierde ${amount} PV (queda ${next}).`,
+        speaker: ChatMessage.getSpeaker({ actor }),
+        whisper: ChatMessage.getWhisperRecipients("GM").map(u => u.id)
+      });
+    } else {
+      await CHAT(`🩸 <b>${actor.name}</b> pierde ${amount} PV (queda ${next}).`, actor);
+    }
   } else {
     await CHAT(`🩸 <b>${actor.name}</b> sufre ${amount} de daño en <i>${hitLocation}</i>.`, actor);
   }
@@ -740,12 +824,145 @@ function zoneHealthPath(actor, hitLocation) {
     if (s.includes("leg")  || s.includes("pierna")
       || s.includes("boot") || s.includes("boots")
       || s.includes("pie")  || s.includes("pies"))      return "health.parts.legs.value";
-    if (s.includes("chest") || s.includes("torso"))    return "health.parts.torso.value";
-    return "health.parts.torso.value";
+    if (s.includes("chest") || s.includes("torso"))    return "health.parts.chest.value";
+    return "health.parts.chest.value";
   }
   return null;
 }
 
 function getDeep(obj, path) {
   return path.split(".").reduce((a,k)=>a?.[k], obj);
+}
+
+/* ======================================================
+ * Maniobra Evasiva - T.E de acrobacias en lugar de T.D
+ * ====================================================== */
+/** Execute phase-based reaction defense substitution */
+async function executeReactionDefense({
+  defender,
+  defenderToken,
+  attackerActor,
+  attackCtx,
+  attackResult,
+  reactionData
+}) {
+  try {
+    const { rollSpecializationForAptitude } = await import("../features/aptitudes/handlers.js");
+
+    const roll = await rollSpecializationForAptitude(defender, {
+      aptitudeKey: reactionData.aptitudeKey,
+      specKey: reactionData.specKey,
+      label: `${reactionData.label || "Reacción"} (Defensa)`,
+      category: "defense",
+      mode: "ask",
+      flavorPrefix: "Defensa"
+    });
+
+    if (!roll) {
+      return { success: false, total: 0, evo: null, policy: "execution", hitLocation: null };
+    }
+
+    const total = Number(roll.total ?? 0);
+    const attackTotal = Number(attackResult?.total ?? 0);
+    const success = total >= attackTotal;
+    const margin = total - attackTotal;
+
+    // Guardar resultado para fases posteriores
+    const defenseResult = { success, total, margin, attackTotal };
+
+    // Pasar resultado a fases de ejecución
+    if (reactionData.payload) {
+      reactionData.payload.defenseResult = defenseResult;
+    }
+
+    return {
+      success,
+      total,
+      evo: roll.evo || null,
+      policy: "execution",
+      hitLocation: null,
+      defenseResult
+    };
+
+  } catch (error) {
+    console.error("TSDC | Error en reacción de defensa:", error);
+    ui.notifications?.error(`Error ejecutando reacción de defensa: ${error.message}`);
+    return { success: false, total: 0, evo: null, policy: "execution", hitLocation: null };
+  }
+}
+
+async function executeManiobraEvasiva({
+  defender,
+  defenderToken,
+  attackerActor,
+  attackCtx,
+  attackResult,
+  maniobraData
+}) {
+  // Usar el nuevo sistema de reacciones si está disponible
+  if (maniobraData.usePhaseSystem) {
+    return await executeReactionDefense({
+      defender,
+      defenderToken,
+      attackerActor,
+      attackCtx,
+      attackResult,
+      reactionData: maniobraData
+    });
+  }
+
+  // Sistema legacy para compatibilidad
+  try {
+    const { rollSpecializationForAptitude } = await import("../features/aptitudes/handlers.js");
+
+    const roll = await rollSpecializationForAptitude(defender, {
+      aptitudeKey: maniobraData.aptitudeKey,
+      specKey: "acrobacias",
+      label: "Maniobra Evasiva (Defensa)",
+      category: "defense",
+      mode: "ask",
+      flavorPrefix: "Defensa"
+    });
+
+    if (!roll) {
+      return { success: false, total: 0, evo: null, policy: "execution", hitLocation: null };
+    }
+
+    const total = Number(roll.total ?? 0);
+    const success = total >= Number(attackResult?.total ?? 0);
+
+    // Si la maniobra es exitosa, permitir movimiento gratis
+    if (success) {
+      await CHAT(`🤸 <b>${defender.name}</b> esquiva con una maniobra evasiva y puede moverse sin provocar reacciones.`, defender);
+
+      // Marcar flag para movimiento gratis
+      await defender.setFlag("tsdc", "movimientoGratis", {
+        casillas: 2,
+        razon: "maniobra-evasiva"
+      });
+    } else {
+      // Si falla por 3+, aplicar daño adicional según el rango del atacante
+      const margin = (attackResult?.total ?? 0) - total;
+      if (margin >= 3) {
+        const attackerRank = maniobraData.rank || 0;
+        await CHAT(`💥 <b>${defender.name}</b> falla la maniobra evasiva por ${margin}. El atacante inflige ${attackerRank} de daño adicional.`, defender);
+
+        // Aquí se podría aplicar el daño adicional si fuera necesario
+        // Por ahora solo mostramos el mensaje
+      }
+    }
+
+    return {
+      success: success,
+      total: total,
+      evo: roll?.evo ?? null,
+      policy: roll?.evo?.usedPolicy ?? "execution",
+      hitLocation: roll?.hitLocation || roll?.location || roll?.bodyPart || null
+    };
+
+  } catch (error) {
+    console.error("TSDC | Error en maniobra evasiva:", error);
+    ui.notifications?.error(`Error ejecutando maniobra evasiva: ${error.message}`);
+    return { success: false, total: 0, evo: null, policy: "execution", hitLocation: null };
+  }
 }

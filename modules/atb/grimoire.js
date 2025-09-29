@@ -30,7 +30,7 @@ function renderTpl(path, data) {
 
 /* ===== Helpers para colecciones ===== */
 function collectBasics() {
-  const ids = ["mover","ataque","interactuar","soltar","especializacion","hide"];
+  const ids = ["mover","ataque","dual-wield","interactuar","soltar","especializacion","hide"];
   return ids.map(id => {
     const def = ACTIONS[id];
     const title = def?.name ?? (id==="hide"?"Ocultación":id);

@@ -1,5 +1,6 @@
 // modules/combat/range.js
 import { getWeapon as getWeaponDef } from "../features/weapons/index.js";
+import { resolveWeaponByKey } from "../features/inventory/index.js";
 
 export const CELL_M = 1;
 
@@ -20,19 +21,34 @@ function sizeBonusCells(actor) {
 
 /** Alcance efectivo (en METROS) para un arma equipada (por clave) */
 export function weaponRangeM(actor, weaponKey) {
-  const def = weaponKey ? getWeaponDef(weaponKey) : null;
   const bonusCells = sizeBonusCells(actor);
-  if (!def) return (1 + bonusCells) * CELL_M; // fallback melee
 
-  const family = String(def.family || "");
-  const baseReach = Number(def.reach ?? 1);
+  // First try regular weapon catalog
+  const def = weaponKey ? getWeaponDef(weaponKey) : null;
+  if (def) {
+    const family = String(def.family || "");
+    const baseReach = Number(def.reach ?? 1);
 
-  // Para melee: reach en CASILLAS → sumar bonus por tamaño y pasar a metros
-  if (family && !["thrown", "ranged"].includes(family)) {
-    return (baseReach + bonusCells) * CELL_M;
+    // Para melee: reach en CASILLAS → sumar bonus por tamaño y pasar a metros
+    if (family && !["thrown", "ranged"].includes(family)) {
+      return (baseReach + bonusCells) * CELL_M;
+    }
+    // Para thrown/ranged: reach ya está en METROS → sumar el bonus en metros
+    return baseReach + (bonusCells * CELL_M);
   }
-  // Para thrown/ranged: reach ya está en METROS → sumar el bonus en metros
-  return baseReach + (bonusCells * CELL_M);
+
+  // If not found in regular weapons, try natural weapons
+  const naturalWeapon = actor ? resolveWeaponByKey(actor, weaponKey) : null;
+  if (naturalWeapon && naturalWeapon.source === "natural") {
+    const item = naturalWeapon.item;
+    if (item && typeof item.reachMeters === 'number') {
+      // Natural weapons store reach in meters directly
+      return item.reachMeters + (bonusCells * CELL_M);
+    }
+  }
+
+  // Fallback to melee range
+  return (1 + bonusCells) * CELL_M;
 }
 
 /** Alcance efectivo (en METROS) para una maniobra (range en CASILLAS) */

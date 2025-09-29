@@ -10,7 +10,10 @@
   "attributes": {
     "fuerza": 3, "agilidad": 3, "tenacidad": 2,
     "intelecto": 1, "sabiduria": 2, "astucia": 2,
-    "presencia": 1, "compostura": 2, "encanto": 0
+    "presencia": 1, "compostura": 2, "aura": 0
+  },
+  "movement": {
+    "speed": 8
   },
   "progression": {
     "attack": { "level": 2 },
@@ -19,11 +22,11 @@
     "armor": { "light": { "level": 2 }, "medium": { "level": 1 }, "heavy": { "level": 0 } }
   },
   "anatomy": {
-    "head":    { "materialKey": "huesos",    "category": "medium" },
-    "chest":   { "materialKey": "pelaje",    "category": "light"  },
-    "bracers": { "materialKey": "pelaje",    "category": "light"  },
-    "legs":    { "materialKey": "pelaje",    "category": "light"  },
-    "boots":   { "materialKey": "garras",    "category": "medium" }
+    "head":    { "materialKey": "huesos",    "category": "medium", "label": "cabeza" },
+    "chest":   { "materialKey": "pelaje",    "category": "light",  "label": "torso" },
+    "bracers": { "materialKey": "pelaje",    "category": "light",  "label": "patas delanteras" },
+    "legs":    { "materialKey": "pelaje",    "category": "light",  "label": "patas traseras" },
+    "boots":   { "materialKey": "garras",    "category": "medium", "label": "garras" }
   },
   "attacks": [
     { "type": "natural", "label": "Mordisco", "weaponKey": "colmillos", "damageDie": "d6", "grade": 1, "traits": ["perforante"], "requiresParts": ["head"] },

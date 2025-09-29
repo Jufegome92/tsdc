@@ -38,7 +38,10 @@ export const APTITUDES = {
     effect: "Reacción: salto instintivo para evitar un peligro. Sustituye la tirada y otorga +2 vs trampas. Riesgo: si falla por 4+, recibe el doble de daño.",
     compLevels: 3,
     ct: { init: 0, exec: 0, rec: 0 },
-    reaction: { when: ["trap","hazard"] },
+    reaction: {
+      when: ["trap","hazard"],
+      timing: "instant"  // instant, before-attack, after-attack
+    },
     usage: { inCombat: true, outCombat: true }
   },
 
@@ -85,6 +88,10 @@ export const APTITUDES = {
     descriptor: "movimiento",
     effect: "Evasión aérea ante un ataque. Tras resolverla puedes moverte 1 casilla sin provocar reacciones.",
     risk: "Fallar por 3+ aplica el ataque con un nivel de daño adicional.",
+    reaction: {
+      when: ["incoming-attack", "enemy-attack"],
+      timing: "before-attack"
+    },
     ct: { init: 0, exec: 0, rec: 0 },
     requiresPick: false,
     usage: { inCombat: true, outCombat: true }
@@ -99,11 +106,121 @@ export const APTITUDES = {
     area: 0,
     requires: "Rango 1 de Acrobacias",
     descriptor: "defensa",
-    effect: "Sustituye tu T.D por una T.E de Acrobacias contra el siguiente ataque cuerpo a cuerpo recibido.",
+    effect: "INICIO: Sustituye tu T.D por una T.E de Acrobacias. EJECUCIÓN: Si tienes éxito, puedes moverte hasta tu velocidad sin provocar reacciones y realizar un contraataque cuerpo a cuerpo con +2 de bonificación.",
     risk: "Fallar por 3+ inflige daño adicional igual al rango del atacante.",
-    ct: { init: 0, exec: 0, rec: 0 },
+    reaction: {
+      when: ["incoming-attack", "enemy-attack"],
+      timing: "before-attack"
+    },
+    ct: { init: 1, exec: 1, rec: 0 },
+    phases: {
+      init: {
+        description: "Activa la esquiva acrobática",
+        effect: "substitute_defense_roll",
+        aptitudeKey: "maniobra_evasiva",
+        specKey: "acrobacias"
+      },
+      exec: {
+        description: "Contraataque y reposicionamiento",
+        condition: "defense_success",
+        effects: [
+          {
+            type: "free_movement",
+            distance: "speed",
+            note: "No provoca reacciones"
+          },
+          {
+            type: "bonus_attack",
+            requirement: "melee_range",
+            bonus: 2,
+            note: "Contraataque fluido"
+          }
+        ]
+      }
+    },
     requiresPick: false,
     usage: { inCombat: true, outCombat: false }
+  },
+
+  parada_perfecta: {
+    label: "Parada Perfecta",
+    type: "reaction",
+    category: "reaction",
+    clazz: "aptitude",
+    range: 0,
+    area: 0,
+    requires: "Rango 2 de Combate Cuerpo a Cuerpo",
+    descriptor: "defensa",
+    effect: "INICIO: Sustituye tu T.D por una T.E de Combate C.C. EJECUCIÓN: Si tienes éxito por 3+, desarmas al atacante y puedes atacar inmediatamente sin consumir acción.",
+    risk: "Fallar inflinge el daño completo sin posibilidad de bloqueo.",
+    reaction: {
+      when: ["incoming-attack", "enemy-attack"],
+      timing: "before-attack"
+    },
+    ct: { init: 1, exec: 1, rec: 1 },
+    phases: {
+      init: {
+        description: "Intercepta el ataque con precisión",
+        effect: "substitute_defense_roll",
+        aptitudeKey: "parada_perfecta",
+        specKey: "combate_cuerpo_cuerpo"
+      },
+      exec: {
+        description: "Desarme y contraataque",
+        condition: "defense_success_by_3",
+        effects: [
+          {
+            type: "disarm_attacker",
+            note: "El arma cae al suelo"
+          },
+          {
+            type: "free_attack",
+            note: "Ataque inmediato sin costo de acción"
+          }
+        ]
+      }
+    },
+    requiresPick: false,
+    usage: { inCombat: true, outCombat: false }
+  },
+
+  reflejo_sobrehumano: {
+    label: "Reflejo Sobrehumano",
+    type: "reaction",
+    category: "reaction",
+    clazz: "aptitude",
+    range: 0,
+    area: 0,
+    requires: "Rango 3 de Reflejos",
+    descriptor: "defensa",
+    effect: "INICIO: +4 a cualquier tirada de defensa. EJECUCIÓN: Si esquivas completamente, el próximo ataque del enemigo tiene -3 de penalización.",
+    risk: "Fallar por 2+ te deja aturdido hasta tu próximo turno.",
+    reaction: {
+      when: ["incoming-attack", "incoming-hazard"],
+      timing: "before-attack"
+    },
+    ct: { init: 1, exec: 0, rec: 2 },
+    phases: {
+      init: {
+        description: "Reflejos sobrehumanos activos",
+        effect: "defense_bonus",
+        bonus: 4
+      },
+      exec: {
+        description: "Desorientación del atacante",
+        condition: "defense_complete_success",
+        effects: [
+          {
+            type: "debuff_attacker",
+            duration: "next_attack",
+            penalty: 3,
+            note: "Confundido por tu velocidad"
+          }
+        ]
+      }
+    },
+    requiresPick: false,
+    usage: { inCombat: true, outCombat: true }
   },
 
   caer_con_estilo: {
@@ -163,6 +280,10 @@ export const APTITUDES = {
     effect: "Al fallar la defensa reduces la severidad en 1 y puedes reposicionarte a una casilla adyacente.",
     risk: "Fallar por 4+ deja al personaje Derribado.",
     ct: { init: 0, exec: 0, rec: 0 },
+    reaction: {
+      when: ["incoming-attack"],
+      timing: "after-attack"
+    },
     requiresPick: false,
     usage: { inCombat: true, outCombat: false }
   },
@@ -179,6 +300,67 @@ export const APTITUDES = {
     effect: "Supera la T.C de Agilidad del objetivo para que suelte un objeto al suelo.",
     risk: "Fallar por 3+ permite una reacción inmediata del objetivo.",
     ct: { init: 0, exec: 1, rec: 0 },
+    requiresPick: false,
+    usage: { inCombat: true, outCombat: false }
+  },
+
+  // Nuevas aptitudes de reacción para diferentes triggers
+  ataque_de_oportunidad_mejorado: {
+    label: "Ataque de Oportunidad Mejorado",
+    type: "reaction",
+    category: "reaction",
+    clazz: "aptitude",
+    range: 0,
+    area: 0,
+    requires: "Rango 3 con arma cuerpo a cuerpo",
+    descriptor: "ataque",
+    effect: "Reacción al movimiento enemigo: ataque con +2 al impacto.",
+    risk: "Fallar por 4+ te deja expuesto hasta tu próximo turno.",
+    ct: { init: 0, exec: 0, rec: 1 },
+    reaction: {
+      when: ["enemy-movement"],
+      timing: "instant"
+    },
+    requiresPick: false,
+    usage: { inCombat: true, outCombat: false }
+  },
+
+  contragolpe: {
+    label: "Contragolpe",
+    type: "reaction",
+    category: "reaction",
+    clazz: "aptitude",
+    range: 0,
+    area: 0,
+    requires: "Rango 3 de Combate",
+    descriptor: "ataque",
+    effect: "Reacción a fumble enemigo: ataque inmediato con ventaja.",
+    risk: "Solo puedes usar una vez por combate.",
+    ct: { init: 0, exec: 0, rec: 0 },
+    reaction: {
+      when: ["enemy-fumble"],
+      timing: "instant"
+    },
+    requiresPick: false,
+    usage: { inCombat: true, outCombat: false }
+  },
+
+  parada_perfecta: {
+    label: "Parada Perfecta",
+    type: "reaction",
+    category: "reaction",
+    clazz: "aptitude",
+    range: 0,
+    area: 0,
+    requires: "Rango 4 de Defensa",
+    descriptor: "defensa",
+    effect: "Reacción antes de ataque enemigo: anula completamente un ataque si superas TD 15.",
+    risk: "Fallar deja vulnerable (-3 defensa hasta próximo turno).",
+    ct: { init: 0, exec: 0, rec: 0 },
+    reaction: {
+      when: ["incoming-attack"],
+      timing: "before-attack"
+    },
     requiresPick: false,
     usage: { inCombat: true, outCombat: false }
   },

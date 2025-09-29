@@ -611,32 +611,15 @@ function registerReactionHandlers() {
 
   // Maniobra Evasiva — sustituye la próxima defensa por TE de Acrobacias
   reactionHandlers.set("maniobra_evasiva", async ({ actor, token, aptitudeKey, provokerToken, rank = 0 }) => {
-    const roll = await rollSpecializationForAptitude(actor, {
+    // Marcar al actor para usar maniobra evasiva en la próxima defensa
+    await actor.setFlag("tsdc", "maniobraEvasiva", {
+      active: true,
       aptitudeKey,
-      specKey: "acrobacias",
-      label: "Maniobra Evasiva",
-      category: "defense",
-      mode: "ask",
-      flavorPrefix: "Reacción"
+      provokerTokenId: provokerToken?.id,
+      rank
     });
 
-    if (!roll) return false;
-
-    const messageId = roll.message?.id ?? roll.message?._id ?? null;
-    if (messageId) {
-      await setPendingEvaluation(actor, messageId, {
-        aptitudeKey,
-        check: "margin",
-        threshold: 3,
-        onFailure: {
-          effect: "additionalDamageByRank",
-          attackerToken: provokerToken,
-          message: "La maniobra evasiva falla y el atacante inflige daño adicional igual a su rango."
-        }
-      });
-    }
-
-    notifyInfo(`${actor.name} ejecuta una maniobra evasiva contra el ataque cuerpo a cuerpo.`);
+    notifyInfo(`${actor.name} se prepara para ejecutar una maniobra evasiva contra el próximo ataque.`);
     return true;
   });
 
@@ -1179,3 +1162,5 @@ export async function finalizeAptitudeEffect(actor, aptitudeKey) {
     await setAptitudeEffect(actor, aptitudeKey, current);
   }
 }
+
+export { rollSpecializationForAptitude };

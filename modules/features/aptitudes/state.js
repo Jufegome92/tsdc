@@ -16,8 +16,42 @@ function cloneState(actor) {
 async function writeState(actor, next) {
   if (!actor) return;
   const clean = next && Object.keys(next).length ? next : null;
-  if (clean) await actor.setFlag(FLAG_SCOPE, FLAG_KEY, clean);
-  else await actor.unsetFlag(FLAG_SCOPE, FLAG_KEY);
+
+  console.log("🏗️ writeState called:", {
+    actorId: actor.id,
+    hasNext: !!next,
+    nextKeys: next ? Object.keys(next) : [],
+    willSetFlag: !!clean,
+    flagScope: FLAG_SCOPE,
+    flagKey: FLAG_KEY,
+    cleanData: clean
+  });
+
+  if (clean) {
+    console.log("🚀 Setting flag on actor...");
+    await actor.setFlag(FLAG_SCOPE, FLAG_KEY, clean);
+    console.log("✅ Flag set successfully");
+
+    // Verificar inmediatamente si se guardó
+    const verify = actor.getFlag(FLAG_SCOPE, FLAG_KEY);
+    console.log("🔍 Verification read:", {
+      saved: !!verify,
+      verifyData: verify
+    });
+
+    // Verificar después de un pequeño delay para detectar limpiezas automáticas
+    setTimeout(() => {
+      const delayedVerify = actor.getFlag(FLAG_SCOPE, FLAG_KEY);
+      console.log("⏰ Delayed verification (100ms):", {
+        stillExists: !!delayedVerify,
+        data: delayedVerify
+      });
+    }, 100);
+  } else {
+    console.log("🗑️ Unsetting flag...");
+    await actor.unsetFlag(FLAG_SCOPE, FLAG_KEY);
+    console.log("✅ Flag unset successfully");
+  }
 }
 
 function ensureSection(state, section) {
@@ -65,15 +99,49 @@ export function getPendingEvaluation(actor, messageId) {
   if (!actor || !messageId) return null;
   const state = actor.getFlag?.(FLAG_SCOPE, FLAG_KEY);
   const pending = state?.pending ?? {};
+
+  console.log("🔍 getPendingEvaluation debug:", {
+    actorId: actor.id,
+    actorName: actor.name,
+    actorType: actor.constructor.name,
+    hasGetFlag: typeof actor.getFlag === 'function',
+    messageId,
+    flagScope: FLAG_SCOPE,
+    flagKey: FLAG_KEY,
+    hasState: !!state,
+    state: state,
+    pendingKeys: Object.keys(pending),
+    requestedData: pending[messageId],
+    allActorFlags: actor.flags || {}
+  });
+
   return pending[messageId] ?? null;
 }
 
 export async function setPendingEvaluation(actor, messageId, data) {
   if (!actor || !messageId) return;
+  console.log("💾 setPendingEvaluation called:", {
+    actorId: actor.id,
+    actorName: actor.name,
+    actorType: actor.constructor.name,
+    hasSetFlag: typeof actor.setFlag === 'function',
+    messageId,
+    data
+  });
+
   const state = cloneState(actor);
   const pending = ensureSection(state, "pending");
   pending[messageId] = data ?? {};
+
+  console.log("💾 About to write state:", {
+    actorId: actor.id,
+    messageId,
+    pendingKeys: Object.keys(pending),
+    stateToWrite: state
+  });
+
   await writeState(actor, state);
+  console.log("✅ setPendingEvaluation writeState completed");
 }
 
 export async function clearPendingEvaluation(actor, messageId) {

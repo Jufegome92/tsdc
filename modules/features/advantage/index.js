@@ -47,7 +47,36 @@ export async function resolveEvolution(p = {}) {
 
   if (mode === "ask") mode = await promptPolicy();
 
-  // Dos tiradas (alto/bajo)
+  // Manejar modo "none" - una sola tirada
+  if (mode === "none") {
+    const singleRoll = new Roll(formula);
+    await singleRoll.evaluate();
+
+    if (toChat) {
+      await singleRoll.toMessage({
+        flavor: `Transcendence • ${flavor} (Sin ventaja)`,
+        flags: {
+          tsdc: {
+            version: 1,
+            actorId: actor?._id ?? actor?.id ?? null,
+            type, policy: "none",
+            rank,
+            meta: { ...meta },
+            totals: { low: singleRoll.total, high: singleRoll.total }
+          }
+        }
+      });
+    }
+
+    return {
+      resultRoll: singleRoll,
+      otherRoll: null,
+      usedPolicy: "none",
+      meta: p?.meta ?? undefined
+    };
+  }
+
+  // Dos tiradas (alto/bajo) para execution y learning
   const rA = new Roll(formula);
   await rA.evaluate();
   const rB = new Roll(formula);
@@ -56,7 +85,7 @@ export async function resolveEvolution(p = {}) {
   const high = rA.total >= rB.total ? rA : rB;
   const low  = rA.total >= rB.total ? rB : rA;
 
-  const resultRoll = (mode === "execution") ? high : (mode === "learning" ? low : high);
+  const resultRoll = (mode === "execution") ? high : low; // learning usa low
   const otherRoll  = (resultRoll === high) ? low : high;
 
   const usedPolicy = mode;

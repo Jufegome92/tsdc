@@ -427,7 +427,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.7,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.D cuando desvías o bloqueas cuerpo a cuerpo."
   },
   jutte: {
@@ -440,7 +440,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.6,
     attackAttr: "wisdom",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+2 por rango de competencia a T.A al desarmar o inmovilizar."
   },
   scian: {
@@ -453,7 +453,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.5,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+2 por rango de competencia a T.I al atacar desde oculto o en sigilo."
   },
   kris: {
@@ -466,7 +466,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.6,
     attackAttr: "cunning",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "Ignora 2 puntos de reducción de daño por rango de competencia contra enemigos heridos."
   },
 
@@ -483,7 +483,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.9,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.A cuando se usa con otra arma (dos armas)."
   },
   tanto: {
@@ -496,7 +496,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.6,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.I al atacar desde oculto o en sigilo."
   },
   kama: {
@@ -509,7 +509,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.7,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+2 por rango de competencia a T.I por cada ataque realizado durante la ronda."
   },
   claideamh: {
@@ -522,7 +522,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.8,
     attackAttr: "strength",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.A contra enemigos con armaduras ligeras."
   },
   seax: {
@@ -535,7 +535,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.7,
     attackAttr: "strength",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.A en maniobras de un solo objetivo."
   },
   cimitarra: {
@@ -574,7 +574,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.8,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a las T.E de Destreza durante el combate con dos armas."
   },
 
@@ -591,7 +591,7 @@ export const WEAPONS = {
     reach: 10, // metros
     weight: 0.3,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.A si se usa a la mitad de su alcance máximo."
   },
   shuriken: {
@@ -604,7 +604,7 @@ export const WEAPONS = {
     reach: 10,
     weight: 0.2,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.A cuando se usan en serie."
   },
   pilum: {
@@ -643,7 +643,7 @@ export const WEAPONS = {
     reach: 12,
     weight: 0.4,
     attackAttr: "cunning",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "+1 por rango de competencia a T.A cuando ataca a más de una criatura."
   },
 
@@ -755,7 +755,7 @@ export const WEAPONS = {
     reach: 3, // 1-3 m
     weight: 1.0,
     attackAttr: "strength",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "Alcance 1–3 m."
   },
   nekode: {
@@ -768,7 +768,7 @@ export const WEAPONS = {
     reach: 1,
     weight: 0.5,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "Guantes con garras."
   },
   kusarifundo: {
@@ -794,7 +794,7 @@ export const WEAPONS = {
     reach: 3,
     weight: 0.4,
     attackAttr: "agility",
-    assign: "off",
+    assign: "either",             // Can use either hand for dual wield
     bonusText: "Garras retráctiles; alcance 1–3 m."
   },
   urumi: {

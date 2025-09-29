@@ -217,10 +217,18 @@ export async function emitModInspector(actor, meta = {}, breakdown = null) {
     </div>
   `;
 
-  await ChatMessage.create({
+  // Si es una criatura, solo mostrar al GM
+  const isCreature = actor?.type === "creature";
+  const messageData = {
     speaker: ChatMessage.getSpeaker({ actor }),
     content: html
-  });
+  };
+
+  if (isCreature) {
+    messageData.whisper = ChatMessage.getWhisperRecipients("GM").map(u => u.id);
+  }
+
+  await ChatMessage.create(messageData);
 }
 
 function fmtAmt(n) {

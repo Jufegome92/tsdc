@@ -79,33 +79,83 @@ export function peekActorAptitudeEffect(actor, key) {
 }
 
 export async function handleAptitudeEvaluation({ actor, messageId, success, dc, totalUsed }) {
-  if (!actor || !messageId) return;
+  console.log("🔍 handleAptitudeEvaluation iniciado:", {
+    actorName: actor?.name,
+    messageId,
+    success,
+    dc,
+    totalUsed
+  });
+
+  if (!actor || !messageId) {
+    console.warn("❌ Faltan datos: actor o messageId");
+    return;
+  }
+
+  // Debug: verificar flags antes de getPendingEvaluation
+  console.log("🔍 Pre-getPendingEvaluation check:", {
+    actorId: actor.id,
+    messageId,
+    directFlagAccess: actor.getFlag("tsdc", "aptitudeState"),
+    allFlags: actor.flags?.tsdc || {}
+  });
+
   const pending = getPendingEvaluation(actor, messageId);
-  if (!pending) return;
+  console.log("📋 Evaluación pendiente encontrada:", pending);
+
+  if (!pending) {
+    console.warn("❌ No se encontró evaluación pendiente para messageId:", messageId);
+    // NO retornar aquí - continuar para emitir el hook aunque no haya datos pendientes
+  }
 
   try {
-    const aptitudeKey = pending.aptitudeKey;
-    if (!success) {
-      if (pending.check === "margin" && Number.isFinite(pending.threshold)) {
-        const margin = Number(dc || 0) - Number(totalUsed || 0);
-        if (margin >= Number(pending.threshold)) {
+    // Solo ejecutar lógica de aptitudes si hay datos pendientes
+    if (pending) {
+      const aptitudeKey = pending.aptitudeKey;
+      if (!success) {
+        if (pending.check === "margin" && Number.isFinite(pending.threshold)) {
+          const margin = Number(dc || 0) - Number(totalUsed || 0);
+          if (margin >= Number(pending.threshold)) {
+            await applyAptitudeRiskFailure(actor, pending);
+          }
+        } else if (pending.onFailureImmediate) {
           await applyAptitudeRiskFailure(actor, pending);
         }
-      } else if (pending.onFailureImmediate) {
-        await applyAptitudeRiskFailure(actor, pending);
-      }
-      if (pending.clearEffectOnFailure && aptitudeKey) {
-        await consumeAptitudeEffect(actor, aptitudeKey);
-      }
-    } else if (pending.onSuccess) {
-      if (pending.onSuccess.finalizeEffect && aptitudeKey) {
-        await finalizeAptitudeEffect(actor, aptitudeKey);
-      }
-      if (pending.onSuccess.setEffect && aptitudeKey) {
-        await setAptitudeEffect(actor, aptitudeKey, pending.onSuccess.setEffect);
+        if (pending.clearEffectOnFailure && aptitudeKey) {
+          await consumeAptitudeEffect(actor, aptitudeKey);
+        }
+      } else if (pending.onSuccess) {
+        if (pending.onSuccess.finalizeEffect && aptitudeKey) {
+          await finalizeAptitudeEffect(actor, aptitudeKey);
+        }
+        if (pending.onSuccess.setEffect && aptitudeKey) {
+          await setAptitudeEffect(actor, aptitudeKey, pending.onSuccess.setEffect);
+        }
       }
     }
   } finally {
+    // SIEMPRE emitir hook para evaluaciones de especialización personalizadas
+    // Esto permite que sistemas como dual wield funcionen independientemente del sistema de aptitudes
+    console.log("🔥 EMITIENDO HOOK aptitude-evaluation-completed (siempre):", {
+      messageId,
+      actorName: actor?.name,
+      success,
+      totalUsed,
+      dc,
+      pending: pending?.meta || pending
+    });
+
+    if (typeof Hooks !== "undefined") {
+      Hooks.call("aptitude-evaluation-completed", {
+        messageId,
+        actor,
+        success,
+        totalUsed,
+        dc,
+        pending
+      });
+    }
+
     await clearPendingEvaluation(actor, messageId);
   }
 }

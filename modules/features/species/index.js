@@ -83,7 +83,8 @@ export async function applySpecies(actor, speciesKey, options = {}) {
       await setTrackLevel(actor, "weapons", rec.key, 1);
       await actor.update({ [`system.progression.weapons.${rec.key}.category`]: "natural" });
     }
-    const primary = naturals.find(rec => rec.occupiesSlot !== false && (rec.assign ?? "main") !== "off");
+    // Improved weapon equipping logic
+    const primary = naturals.find(rec => rec.occupiesSlot !== false && ["main", "either"].includes(rec.assign ?? "main"));
     const offhand = naturals.find(rec => rec.occupiesSlot !== false && (rec.assign ?? "main") === "off");
     const equipPatch = {};
     if (primary) equipPatch["system.inventory.equipped.mainHand"] = `natural:${primary.key}`;

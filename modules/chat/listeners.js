@@ -3,6 +3,7 @@ import { addProgress, addFail } from "../progression.js";
 import { applyNaturalWeaponEffect } from "../features/effects/index.js";
 import * as Ail from "../ailments/index.js";
 import { computeBlockingAt } from "../features/armors/index.js";
+import { handleAptitudeEvaluation } from "../features/aptitudes/runtime.js";
 
 /* ===== Helpers ===== */
 
@@ -142,10 +143,12 @@ export function registerChatListeners() {
         const blob  = decodeURIComponent(String(evalBtn.dataset.blob || "%7B%7D"));
         const input = JSON.parse(blob);
 
+        const messageId = getMessageIdFromElement(evalBtn);
+
         if (kind === "attack")              await evalAttack(input);
         else if (kind === "defense")        await evalDefense(input);
         else if (kind === "resistance")     await evalResistance(input);
-        else if (kind === "specialization") await evalSpecialization(input);
+        else if (kind === "specialization") await evalSpecialization(input, messageId);
       } catch (err) {
         console.error("TSDC | Eval error", err);
       }
@@ -345,7 +348,7 @@ async function evalDefense(p) {
 }
 
 /* ============ ESPECIALIZACIÓN ============ */
-async function evalSpecialization(p) {
+async function evalSpecialization(p, messageId = null) {
   const actor = game.actors?.get(p.actorId);
   if (!actor) return;
 
@@ -382,6 +385,34 @@ async function evalSpecialization(p) {
 
   if (success && learned && p.key) {
     await addProgress(actor, "skills", p.key, 1);
+  }
+
+  // Verificar si hay una evaluación de aptitud pendiente asociada a esta especialización
+  // Esto permite que las aptitudes que requieren T.E (como Dual Wield) ejecuten sus efectos
+  if (messageId) {
+    console.log("🎯 Ejecutando handleAptitudeEvaluation con:", {
+      actorName: actor.name,
+      actorId: actor.id,
+      messageId: messageId,
+      success,
+      dc: Number(td),
+      totalUsed: shown
+    });
+
+    try {
+      await handleAptitudeEvaluation({
+        actor,
+        messageId: messageId, // Usar el messageId real del mensaje de chat
+        success,
+        dc: Number(td),
+        totalUsed: shown
+      });
+      console.log("✅ handleAptitudeEvaluation completado");
+    } catch (error) {
+      console.error("❌ Error al manejar evaluación de aptitud:", error);
+    }
+  } else {
+    console.warn("⚠️ No se encontró messageId para la evaluación");
   }
 }
 

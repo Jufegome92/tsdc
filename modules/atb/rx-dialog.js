@@ -1,5 +1,6 @@
 // modules/atb/rx-dialog.js
 import { APTITUDES } from "../features/aptitudes/data.js";
+import { getAvailableReactions } from "./reactions.js";
 const SCOPE = "tsdc";
 
 function readWearState(actor) {
@@ -97,6 +98,201 @@ export async function promptOpportunityDialog({ reactorToken, provokerToken, tim
     if (timeoutMs > 0) {
       setTimeout(() => {
         if (!settled) { try { dlg.close(); } catch {} resolve(null); }
+      }, timeoutMs);
+    }
+  });
+}
+
+/**
+ * Diálogo mejorado de reacciones con soporte para múltiples triggers y timing
+ */
+export async function promptReactionDialog({
+  reactorToken,
+  provokerToken,
+  reason = "any",
+  timing = "any",
+  timeoutMs = 6500,
+  title = "Reacción disponible"
+}) {
+  const actor = reactorToken?.actor;
+  if (!actor) return null;
+
+  if (!shouldPromptHere(reactorToken)) return null;
+
+  const { wear, wearMax } = readWearState(actor);
+  const atLimit = wear >= wearMax;
+
+  // Obtener reacciones disponibles para este trigger y timing
+  const availableReactions = getAvailableReactions(actor, reason, timing);
+
+  if (availableReactions.length === 0) {
+    return null; // No hay reacciones disponibles
+  }
+
+  // Construir contexto descriptivo según el trigger
+  let contextText = `${reactorToken.name} puede reaccionar`;
+  if (provokerToken) {
+    switch (reason) {
+      case "enemy-movement":
+        contextText += ` al movimiento de ${provokerToken.name}`;
+        break;
+      case "enemy-fumble":
+        contextText += ` al fallo crítico de ${provokerToken.name}`;
+        break;
+      case "incoming-attack":
+        contextText += timing === "before-attack"
+          ? ` antes del ataque de ${provokerToken.name}`
+          : ` después del ataque de ${provokerToken.name}`;
+        break;
+      default:
+        contextText += ` contra ${provokerToken.name}`;
+    }
+  }
+  contextText += ".";
+
+  // Construir opciones del dropdown
+  const reactionOptions = availableReactions.map(reaction => {
+    let label = reaction.label;
+
+    // Agregar información adicional según el tipo
+    if (reaction.type === "aptitude" && actor.system?.progression?.aptitudes?.[reaction.key]?.rank) {
+      const rank = actor.system.progression.aptitudes[reaction.key].rank;
+      label += ` (N${rank})`;
+    }
+
+    // Agregar timing si es relevante
+    if (reaction.data?.reaction?.timing && timing === "any") {
+      const timingLabel = {
+        "instant": "Instantáneo",
+        "before-attack": "Antes del ataque",
+        "after-attack": "Después del ataque"
+      }[reaction.data.reaction.timing] || reaction.data.reaction.timing;
+      label += ` [${timingLabel}]`;
+    }
+
+    return {
+      value: `${reaction.type}:${reaction.key}`,
+      label: label,
+      description: reaction.data?.effect || ""
+    };
+  });
+
+  const { DialogV2 } = foundry.applications.api;
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const content = `
+      <div class="t-col" style="gap:8px; max-width: 400px;">
+        <p><b>${contextText}</b></p>
+
+        <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px;">
+          <p style="margin: 0; font-size: 0.9em;"><strong>Desgaste:</strong> ${wear} / ${wearMax}${atLimit ? " — <span style='color:#c00'><b>límite alcanzado</b></span>" : ""}</p>
+          <p style="margin: 0; font-size: 0.85em; opacity: 0.7;">I0/E0/R0. Coste estándar: 1 punto de Desgaste.</p>
+        </div>
+
+        <label style="display:flex; flex-direction:column; gap:4px;">
+          <span><strong>Seleccionar Reacción:</strong></span>
+          <select name="reaction-choice" ${atLimit ? "disabled" : ""} style="width: 100%;">
+            <option value="">-- Ninguna reacción --</option>
+            ${reactionOptions.map(opt =>
+              `<option value="${opt.value}" title="${opt.description}">${opt.label}</option>`
+            ).join("")}
+          </select>
+        </label>
+
+        <div id="reaction-description" style="font-size: 0.85em; font-style: italic; color: #888; min-height: 20px; display: none;">
+          <!-- Descripción de la reacción seleccionada -->
+        </div>
+      </div>
+    `;
+
+    const config = {
+      window: {
+        title: title,
+        resizable: false
+      },
+      content: content,
+      buttons: [
+        {
+          action: "execute",
+          label: atLimit ? "No puedes (límite)" : "Ejecutar Reacción",
+          icon: atLimit ? "fa-solid fa-ban" : "fa-solid fa-bolt",
+          default: !atLimit,
+          disabled: atLimit,
+          callback: (_event, _button, dialog) => {
+            settled = true;
+            if (atLimit) {
+              resolve(null);
+              return;
+            }
+
+            const formData = new FormData(dialog.element.querySelector("form"));
+            const val = formData.get("reaction-choice") || "";
+
+            if (!val) {
+              resolve(null); // No reaction selected
+              return;
+            }
+
+            const [type, key] = val.split(":");
+            const selectedReaction = availableReactions.find(r => r.type === type && r.key === key);
+
+            resolve({
+              type: type,
+              key: key,
+              data: selectedReaction?.data,
+              label: selectedReaction?.label
+            });
+          }
+        },
+        {
+          action: "cancel",
+          label: "Omitir",
+          icon: "fa-regular fa-circle",
+          callback: () => {
+            settled = true;
+            resolve(null);
+          }
+        }
+      ],
+      render: (_event, dialog) => {
+        // Agregar funcionalidad para mostrar descripción de la reacción
+        const select = dialog.element.querySelector('select[name="reaction-choice"]');
+        const descDiv = dialog.element.querySelector('#reaction-description');
+
+        if (select && descDiv) {
+          select.addEventListener('change', function() {
+            const selectedValue = this.value;
+            if (selectedValue) {
+              const [type, key] = selectedValue.split(":");
+              const reaction = availableReactions.find(r => r.type === type && r.key === key);
+              if (reaction?.data?.effect) {
+                descDiv.textContent = reaction.data.effect;
+                descDiv.style.display = 'block';
+              } else {
+                descDiv.style.display = 'none';
+              }
+            } else {
+              descDiv.style.display = 'none';
+            }
+          });
+        }
+      },
+      close: () => {
+        if (!settled) resolve(null);
+      }
+    };
+
+    const dlg = new DialogV2(config);
+    dlg.render(true);
+
+    if (timeoutMs > 0) {
+      setTimeout(() => {
+        if (!settled) {
+          try { dlg.close(); } catch {}
+          resolve(null);
+        }
       }, timeoutMs);
     }
   });
