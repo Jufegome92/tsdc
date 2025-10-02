@@ -101,22 +101,24 @@
 
   <style>
     .tsdc.mineral-vein-sheet {
-      padding: 10px;
+      padding: var(--t-pad);
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: var(--t-gap);
+      max-height: 100%;
+      overflow-y: auto;
     }
     .tsdc.mineral-vein-sheet .sheet-header {
       display: flex;
-      gap: 15px;
+      gap: var(--t-gap);
       align-items: center;
     }
     .tsdc.mineral-vein-sheet .profile-img {
       width: 100px;
       height: 100px;
       object-fit: cover;
-      border: 2px solid #999;
-      border-radius: 5px;
+      border: 2px solid var(--t-border);
+      border-radius: var(--t-radius);
       cursor: pointer;
     }
     .tsdc.mineral-vein-sheet .header-fields {
@@ -126,7 +128,9 @@
       font-size: 24px;
       font-weight: bold;
       border: none;
-      border-bottom: 1px solid #ccc;
+      border-bottom: 1px solid var(--t-border);
+      background: transparent;
+      color: var(--t-text);
       width: 100%;
     }
     .tsdc.mineral-vein-sheet .resource {
@@ -134,61 +138,66 @@
     }
     .tsdc.mineral-vein-sheet .sheet-body {
       display: grid;
-      gap: 12px;
+      gap: var(--t-gap);
     }
     .tsdc.mineral-vein-sheet .card {
-      background: rgba(255,255,255,0.04);
-      border-radius: 8px;
-      padding: 12px;
+      background: var(--t-elev);
+      border-radius: var(--t-radius);
+      padding: var(--t-pad);
       display: flex;
       flex-direction: column;
       gap: 10px;
-      border: 1px solid rgba(255,255,255,0.08);
+      border: 1px solid var(--t-border);
     }
     .tsdc.mineral-vein-sheet .card-header {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      gap: 8px;
+      gap: var(--t-gap);
     }
     .tsdc.mineral-vein-sheet .card-header h2 {
       margin: 0;
+      color: var(--t-text);
     }
     .tsdc.mineral-vein-sheet .tag {
       font-size: 11px;
       text-transform: uppercase;
       padding: 2px 6px;
-      background: rgba(255,255,255,0.1);
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
       border-radius: 999px;
       letter-spacing: 0.05em;
+      color: var(--t-accent);
     }
     .tsdc.mineral-vein-sheet .description {
       margin: 0;
       font-size: 13px;
-      color: var(--color-text-light-5);
+      color: var(--t-muted);
     }
     .tsdc.mineral-vein-sheet dl.stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 8px;
+      gap: var(--t-gap);
       margin: 0;
     }
     .tsdc.mineral-vein-sheet dl.stats div {
       background: rgba(0,0,0,0.15);
       border-radius: 6px;
       padding: 6px;
+      border: 1px solid var(--t-border);
     }
     .tsdc.mineral-vein-sheet dl.stats dt {
       font-size: 10px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: var(--color-text-light-5);
+      color: var(--t-muted);
       margin-bottom: 2px;
     }
     .tsdc.mineral-vein-sheet dl.stats dd {
       margin: 0;
       font-weight: 600;
       font-size: 13px;
+      color: var(--t-text);
     }
     .tsdc.mineral-vein-sheet .wizard-button {
       align-self: flex-start;
@@ -196,14 +205,20 @@
       align-items: center;
       gap: 6px;
       padding: 6px 10px;
-      border-radius: 6px;
-      background: var(--color-primary-4);
-      color: white;
+      border-radius: var(--t-radius);
+      background: var(--t-accent-2);
+      color: var(--t-text);
+      border: 1px solid var(--t-border);
+      cursor: pointer;
+      transition: filter 0.2s;
+    }
+    .tsdc.mineral-vein-sheet .wizard-button:hover {
+      filter: brightness(1.1);
     }
     .tsdc.mineral-vein-sheet .note {
       font-size: 12px;
       font-style: italic;
-      color: var(--color-text-light-5);
+      color: var(--t-muted);
       margin: 0;
     }
     .tsdc.mineral-vein-sheet .controls .grid {
@@ -216,17 +231,24 @@
       flex-direction: column;
       gap: 4px;
       font-size: 12px;
+      color: var(--t-text);
     }
     .tsdc.mineral-vein-sheet .controls input,
     .tsdc.mineral-vein-sheet .controls select {
-      padding: 5px;
-      border-radius: 6px;
+      padding: 6px 8px;
+      border-radius: var(--t-radius);
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
     }
     .tsdc.mineral-vein-sheet .controls .checkbox {
       flex-direction: row;
       align-items: center;
       gap: 6px;
       font-size: 13px;
+    }
+    .tsdc.mineral-vein-sheet .controls .muted {
+      color: var(--t-muted);
     }
   </style>
 </form>

@@ -41,7 +41,6 @@
                     <button type="button" class="material-row {{#if isSelected}}is-selected{{/if}}" data-action="select-material" data-key="{{key}}">
                       <span class="col name">
                         <span class="label">{{label}}</span>
-                        <span class="tag">{{typeLabel}}</span>
                       </span>
                       <span class="col stat">{{durability}}</span>
                       <span class="col stat">{{potency}}</span>
@@ -107,38 +106,73 @@
         <div class="richness-grid">
           {{#each richnessOptions}}
             <button type="button" class="richness-card {{#if isSelected}}is-selected{{/if}}" data-action="select-richness" data-key="{{key}}">
-              <header>
-                <h4>{{label}}</h4>
-                <span class="dice">{{dice}} kg</span>
-              </header>
-              <p>{{description}}</p>
-              <footer>{{hours}} h de trabajo</footer>
+              <h4>{{label}}</h4>
+              <div class="richness-stats">
+                <span class="stat">{{dice}} kg/intervalo</span>
+                <span class="stat">{{hours}} horas</span>
+              </div>
             </button>
           {{/each}}
         </div>
       </section>
 
-      <section class="quality">
-        <h3>Calidad del depósito</h3>
-        <div class="quality-box">
-          <div>
-            <p class="grade">Grado {{quality.grade}} — {{quality.label}}</p>
-            <p class="range">1d100: {{quality.roll}} ({{quality.min}}–{{quality.max}})</p>
+      <section class="config-group">
+        <h3>Configuración de la veta</h3>
+        <div class="config-grid">
+          <div class="config-item">
+            <h4>Nivel de la veta</h4>
+            <p class="hint">Afecta la dificultad (DC = Dificultad base + Nivel)</p>
+            <div class="level-control">
+              <button type="button" data-action="adjust-level" data-delta="-1">−</button>
+              <input type="number" name="vein-level" value="{{level}}" min="1" max="20" />
+              <button type="button" data-action="adjust-level" data-delta="1">+</button>
+            </div>
           </div>
-          <button type="button" class="reroll" data-action="reroll-quality">
-            <i class="fa-solid fa-dice"></i> Volver a tirar
-          </button>
+
+          <div class="config-item">
+            <h4>Calidad del depósito</h4>
+            <p class="hint">Determina el grado del material extraído</p>
+            <div class="quality-box">
+              <div>
+                <p class="grade">Grado {{quality.grade}} — {{quality.label}}</p>
+                <p class="range">1d100: {{quality.roll}} ({{quality.min}}–{{quality.max}})</p>
+              </div>
+              <button type="button" class="reroll" data-action="reroll-quality">
+                <i class="fa-solid fa-dice"></i> Volver a tirar
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
       <section class="overview">
-        <h3>Resumen</h3>
-        <ul>
-          <li><strong>Extracción:</strong> {{extractionHours}} h ({{extractionMinutes}} min totales)</li>
-          <li><strong>Riqueza:</strong> {{richness.label}} — produce {{richness.dice}} kg por intervalo</li>
-          <li><strong>Herramienta:</strong> {{toolInfo.label}} (cubre hasta grado {{toolInfo.canExtractGrade}})</li>
-          <li><strong>Accesibilidad:</strong> {{accessibility.label}} {{#if laborCost}}(Costo mano de obra {{laborCost}} Shekels/kg){{/if}}</li>
-        </ul>
+        <h3>Resumen de extracción</h3>
+        <div class="overview-grid">
+          <div class="overview-item">
+            <dt>Tiempo total</dt>
+            <dd>{{extractionHours}} h ({{extractionMinutes}} min)</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Riqueza</dt>
+            <dd>{{richness.label}} — {{richness.dice}} kg/intervalo</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Nivel</dt>
+            <dd>{{level}} (DC = {{accessibility.extractionDifficultyLabel}} + {{level}})</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Herramienta</dt>
+            <dd>{{toolInfo.label}}</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Accesibilidad</dt>
+            <dd>{{accessibility.label}}</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Mano de obra</dt>
+            <dd>{{laborCost}} Shekels/kg</dd>
+          </div>
+        </div>
       </section>
     </section>
   {{/if}}
@@ -434,43 +468,111 @@
     }
     .mineral-vein .richness-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
       gap: 10px;
     }
     .mineral-vein .richness-card {
-      text-align: left;
+      text-align: center;
       padding: 12px;
-      border-radius: 8px;
-      border: 1px solid transparent;
-      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+      border: 2px solid var(--t-border);
+      background: var(--t-elev);
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
     }
-    .mineral-vein .richness-card header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
+    .mineral-vein .richness-card:hover {
+      border-color: var(--t-accent);
+      background: rgba(212, 175, 119, 0.08);
+      transform: translateY(-2px);
     }
     .mineral-vein .richness-card h4 {
       margin: 0;
+      font-size: 14px;
+      color: var(--t-accent);
+      font-weight: 600;
     }
-    .mineral-vein .richness-card .dice {
-      font-size: 11px;
-      color: var(--color-text-light-5);
+    .mineral-vein .richness-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
-    .mineral-vein .richness-card footer {
+    .mineral-vein .richness-stats .stat {
       font-size: 11px;
-      color: var(--color-text-light-5);
+      color: var(--t-muted);
     }
     .mineral-vein .richness-card.is-selected {
-      border-color: var(--color-primary-4);
+      border-color: var(--t-accent);
+      background: rgba(212, 175, 119, 0.15);
+      box-shadow: 0 0 0 2px rgba(212, 175, 119, 0.2);
+    }
+    .mineral-vein .config-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .mineral-vein .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .mineral-vein .config-item {
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .mineral-vein .config-item h4 {
+      margin: 0;
+      font-size: 14px;
+      color: var(--t-accent);
+    }
+    .mineral-vein .config-item .hint {
+      font-size: 11px;
+      color: var(--t-muted);
+      margin: 0;
+      line-height: 1.4;
+    }
+    .mineral-vein .level-control {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .mineral-vein .level-control button {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 150ms ease;
+    }
+    .mineral-vein .level-control button:hover {
+      background: rgba(255,255,255,0.12);
+      border-color: #FF9800;
+    }
+    .mineral-vein .level-control input {
+      flex: 1;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 600;
+      padding: 8px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.12);
     }
     .mineral-vein .quality-box {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: rgba(255,255,255,0.05);
+      background: rgba(0,0,0,0.2);
       border-radius: 8px;
       padding: 12px;
       flex-wrap: wrap;
@@ -478,23 +580,53 @@
     }
     .mineral-vein .quality-box .grade {
       font-weight: 600;
+      margin: 0;
+      margin-bottom: 4px;
+    }
+    .mineral-vein .quality-box .range {
+      font-size: 11px;
+      color: var(--color-text-light-5);
+      margin: 0;
     }
     .mineral-vein .quality-box .reroll {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 10px;
+      padding: 8px 12px;
       border-radius: 6px;
       background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      cursor: pointer;
+      transition: all 150ms ease;
     }
-    .mineral-vein .overview ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
+    .mineral-vein .quality-box .reroll:hover {
+      background: rgba(255,255,255,0.12);
+      border-color: #FF9800;
+    }
+    .mineral-vein .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .mineral-vein .overview-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 12px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      font-size: 12px;
+      gap: 4px;
+    }
+    .mineral-vein .overview-item dt {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .overview-item dd {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
     }
     .mineral-vein .wizard-footer {
       margin-top: 12px;

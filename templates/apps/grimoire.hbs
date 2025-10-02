@@ -117,4 +117,124 @@
     </section>
     {{/if}}
   </div>
+
+  <style>
+    .tsdc-grimoire {
+      background: linear-gradient(135deg, #2a1810 0%, #1a0f08 100%);
+      color: var(--t-text);
+      padding: 16px;
+      border-radius: 12px;
+    }
+
+    .tsdc-grimoire .g-head {
+      border-bottom: 2px solid var(--t-border);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+
+    .tsdc-grimoire .g-title {
+      color: var(--t-accent);
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .tsdc-grimoire .g-plan,
+    .tsdc-grimoire .g-filter {
+      color: var(--t-text);
+    }
+
+    .tsdc-grimoire input[type="text"] {
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+
+    .tsdc-grimoire input[type="text"]:focus {
+      outline: none;
+      border-color: var(--t-accent);
+      box-shadow: 0 0 0 2px rgba(212, 175, 119, 0.2);
+    }
+
+    .tsdc-grimoire button {
+      background: var(--t-accent-2);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tsdc-grimoire button:hover {
+      background: var(--t-accent);
+      border-color: var(--t-accent);
+    }
+
+    .tsdc-grimoire button.active {
+      background: var(--t-accent);
+      color: white;
+      border-color: var(--t-accent);
+    }
+
+    .tsdc-grimoire .g-item summary {
+      background: var(--t-elev) !important;
+      border: 1px solid var(--t-border);
+      transition: all 0.2s;
+    }
+
+    .tsdc-grimoire .g-item summary:hover {
+      background: rgba(212, 175, 119, 0.08) !important;
+      border-color: var(--t-accent);
+    }
+
+    .tsdc-grimoire .g-item summary b {
+      color: var(--t-accent);
+    }
+
+    .tsdc-grimoire .g-item summary span {
+      color: var(--t-muted);
+    }
+
+    .tsdc-grimoire .g-item summary a {
+      color: var(--t-accent);
+      text-decoration: none;
+    }
+
+    .tsdc-grimoire .g-item summary a:hover {
+      text-decoration: underline;
+    }
+
+    .tsdc-grimoire .g-card {
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--t-text);
+    }
+
+    .tsdc-grimoire .g-body {
+      max-height: calc(100vh - 200px);
+      overflow-y: auto;
+    }
+
+    .tsdc-grimoire .g-body::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .tsdc-grimoire .g-body::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+    }
+
+    .tsdc-grimoire .g-body::-webkit-scrollbar-thumb {
+      background: var(--t-accent-2);
+      border-radius: 4px;
+    }
+
+    .tsdc-grimoire .g-body::-webkit-scrollbar-thumb:hover {
+      background: var(--t-accent);
+    }
+  </style>
 </div>

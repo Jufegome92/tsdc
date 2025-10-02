@@ -37,4 +37,141 @@
       </div>
     {{/each}}
   </section>
+
+  <style>
+    .tsdc-atb-tracker {
+      background: linear-gradient(135deg, #2a1810 0%, #1a0f08 100%);
+      color: var(--t-text);
+      padding: 16px;
+      border-radius: 12px;
+    }
+
+    .tsdc-atb-tracker .tt-head {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .tsdc-atb-tracker .tt-title {
+      color: var(--t-accent);
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .tsdc-atb-tracker .tt-controls {
+      color: var(--t-text);
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--t-border);
+    }
+
+    .tsdc-atb-tracker button {
+      background: var(--t-accent-2);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tsdc-atb-tracker button:hover {
+      background: var(--t-accent);
+      border-color: var(--t-accent);
+    }
+
+    .tsdc-atb-tracker button.t-prim {
+      background: var(--t-accent);
+      color: white;
+      font-weight: 600;
+    }
+
+    .tsdc-atb-tracker button.t-muted {
+      background: transparent;
+      color: var(--t-muted);
+    }
+
+    .tsdc-atb-tracker .tt-ticks {
+      display: grid;
+      grid-template-columns: repeat(var(--cols), 1fr);
+      gap: 4px;
+      margin-top: 12px;
+    }
+
+    .tsdc-atb-tracker .tt-tick {
+      text-align: center;
+      padding: 4px;
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--t-accent);
+    }
+
+    .tsdc-atb-tracker .tt-rows {
+      margin-top: 12px;
+    }
+
+    .tsdc-atb-tracker .tt-row {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+    }
+
+    .tsdc-atb-tracker .tt-who {
+      font-weight: 600;
+      color: var(--t-text);
+    }
+
+    .tsdc-atb-tracker .tt-line {
+      display: grid;
+      grid-template-columns: repeat(var(--cols), 1fr);
+      gap: 3px;
+      height: 42px;
+      position: relative;
+    }
+
+    .tsdc-atb-tracker .tt-seg {
+      border: 1px solid #7a7a7a;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      padding: 0 8px;
+      overflow: hidden;
+      font-size: 12px;
+      color: #000;
+    }
+
+    .tsdc-atb-tracker .tt-seg.is-active {
+      box-shadow: 0 0 0 3px rgba(212, 175, 119, 0.6);
+      border-color: var(--t-accent) !important;
+    }
+
+    /* Colores de fases - adaptados al tema marrón */
+    .tsdc-atb-tracker .phase-init {
+      background: #c9d8ff;
+    }
+
+    .tsdc-atb-tracker .phase-exec {
+      background: #ffd8b3;
+    }
+
+    .tsdc-atb-tracker .phase-rec {
+      background: #ececec;
+    }
+
+    .tsdc-atb-tracker .phase-free {
+      background: #dff5df;
+    }
+
+    .tsdc-atb-tracker .tt-label {
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+  </style>
 </div>

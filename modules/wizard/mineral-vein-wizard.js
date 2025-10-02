@@ -62,6 +62,7 @@ class MineralVeinWizard extends HandlebarsApplicationMixin(ApplicationV2) {
       search: "",
       selectedMaterialKey: defaultMaterialKey,
       richnessKey: actor.system?.veinRichness || "moderada",
+      level: actor.system?.level || 1,
       quality: null,
       qualityRoll: null,
       rollHTML: ""
@@ -177,6 +178,7 @@ class MineralVeinWizard extends HandlebarsApplicationMixin(ApplicationV2) {
       selectedMaterialCost: selectedMaterial ? formatCost(selectedMaterial.cost) : null,
       richness,
       richnessOptions,
+      level: this._wizardState.level,
       quality: {
         ...qualityInfo,
         roll: this._wizardState.qualityRoll,
@@ -250,6 +252,32 @@ class MineralVeinWizard extends HandlebarsApplicationMixin(ApplicationV2) {
       });
     }
 
+    // Level adjustment buttons
+    root.querySelectorAll('[data-action="adjust-level"]').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        const delta = parseInt(btn.dataset.delta, 10);
+        if (!delta) return;
+        const newLevel = Math.max(1, Math.min(20, this._wizardState.level + delta));
+        if (newLevel !== this._wizardState.level) {
+          this._wizardState.level = newLevel;
+          this.render();
+        }
+      });
+    });
+
+    // Level input field
+    const levelInput = root.querySelector('input[name="vein-level"]');
+    if (levelInput) {
+      levelInput.addEventListener('change', (event) => {
+        const value = parseInt(event.target.value, 10);
+        if (!isNaN(value) && value >= 1 && value <= 20) {
+          this._wizardState.level = value;
+          this.render();
+        }
+      });
+    }
+
     const finishBtn = root.querySelector('[data-action="finish"]');
     if (finishBtn) {
       finishBtn.addEventListener('click', async (event) => {
@@ -287,6 +315,7 @@ class MineralVeinWizard extends HandlebarsApplicationMixin(ApplicationV2) {
         accessibility: accessibility.key,
         accessibilityLabel: accessibility.label,
         difficulty: accessibility.extractionDifficulty,
+        level: this._wizardState.level,
         quality: qualityInfo.grade,
         qualityKey: qualityInfo.key,
         qualityLabel: qualityInfo.label,

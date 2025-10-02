@@ -15,6 +15,11 @@
   <section class="sheet-body">
     <div class="tab" data-tab="main">
 
+      <button type="button" class="wizard-button" data-action="open-wizard">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        Abrir asistente de configuración
+      </button>
+
       <div class="form-group">
         <label>Clave de Planta</label>
         <input type="text" name="system.plantKey" value="{{system.plantKey}}" placeholder="ej: aconito, belladona" />
@@ -99,11 +104,13 @@
 
   <style>
     .tsdc.plant-sheet {
-      padding: 10px;
+      padding: var(--t-pad);
+      max-height: 100%;
+      overflow-y: auto;
     }
     .tsdc.plant-sheet .sheet-header {
       display: flex;
-      gap: 15px;
+      gap: var(--t-gap);
       margin-bottom: 20px;
       align-items: center;
     }
@@ -111,8 +118,8 @@
       width: 100px;
       height: 100px;
       object-fit: cover;
-      border: 2px solid #999;
-      border-radius: 5px;
+      border: 2px solid var(--t-border);
+      border-radius: var(--t-radius);
       cursor: pointer;
     }
     .tsdc.plant-sheet .header-fields {
@@ -122,7 +129,9 @@
       font-size: 24px;
       font-weight: bold;
       border: none;
-      border-bottom: 1px solid #ccc;
+      border-bottom: 1px solid var(--t-border);
+      background: transparent;
+      color: var(--t-text);
       width: 100%;
     }
     .tsdc.plant-sheet .resource {
@@ -134,32 +143,55 @@
     .tsdc.plant-sheet .form-group label {
       display: block;
       font-weight: bold;
+      color: var(--t-text);
       margin-bottom: 5px;
     }
     .tsdc.plant-sheet .form-group input,
     .tsdc.plant-sheet .form-group select {
       width: 100%;
-      padding: 5px;
+      padding: 6px 8px;
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      border-radius: 8px;
+      color: var(--t-text);
     }
     .tsdc.plant-sheet .form-group small {
       display: block;
-      color: #666;
+      color: var(--t-muted);
       font-size: 11px;
       margin-top: 3px;
     }
+    .tsdc.plant-sheet .wizard-button {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: var(--t-radius);
+      background: var(--t-accent-2);
+      color: var(--t-text);
+      border: 1px solid var(--t-border);
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+    .tsdc.plant-sheet .wizard-button:hover {
+      background: var(--t-accent);
+      filter: brightness(1.1);
+    }
     .tsdc.plant-sheet .info-block {
-      background: #f5f5f5;
+      background: var(--t-elev);
       padding: 10px;
-      border-radius: 5px;
-      border-left: 3px solid #4CAF50;
+      border-radius: var(--t-radius);
+      border-left: 3px solid var(--t-accent);
     }
     .tsdc.plant-sheet .info-block h3 {
       margin-top: 0;
-      color: #4CAF50;
+      color: var(--t-accent);
     }
     .tsdc.plant-sheet hr {
       border: none;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid var(--t-border);
       margin: 20px 0;
     }
   </style>

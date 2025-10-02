@@ -1,0 +1,510 @@
+<div class="plant-wizard">
+  <header class="wizard-header">
+    <h2>{{#if (eq step "plant")}}Seleccionar Planta{{else}}Configurar Planta{{/if}}</h2>
+    <div class="wizard-steps">
+      <div class="wizard-step {{#if (eq step "plant")}}is-active{{/if}}">
+        <span class="step-index">1</span>
+        <span class="step-label">Planta</span>
+      </div>
+      <div class="wizard-step {{#if (eq step "setup")}}is-active{{/if}}">
+        <span class="step-index">2</span>
+        <span class="step-label">Configuración</span>
+      </div>
+    </div>
+  </header>
+
+  {{#if (eq step "plant")}}
+    <section class="wizard-body plant-selection">
+      <div class="wizard-search">
+        <label>
+          <span>Buscar planta</span>
+          <input type="text" name="search" value="{{search}}" placeholder="Nombre, tipo..." />
+        </label>
+      </div>
+
+      {{#if hasPlants}}
+        <div class="plant-layout">
+          <div class="plant-groups">
+            {{#each plantGroups}}
+              <div class="plant-group">
+                <div class="group-header">
+                  <h2>{{typeLabel}}</h2>
+                  <span class="count">{{plants.length}} plantas</span>
+                </div>
+                <div class="plant-list">
+                  <div class="plant-header-row">
+                    <span>Nombre</span>
+                    <span>Índice</span>
+                    <span>Accesibilidad</span>
+                    <span>Costo</span>
+                  </div>
+                  {{#each plants}}
+                    <button type="button" class="plant-row {{#if isSelected}}is-selected{{/if}}" data-action="select-plant" data-key="{{key}}">
+                      <span class="col name">{{label}}</span>
+                      <span class="col index">{{alchemicalIndex}}</span>
+                      <span class="col access {{accessibilityKey}}">{{accessibilityLabel}}</span>
+                      <span class="col cost">{{cost}} ₪</span>
+                    </button>
+                  {{/each}}
+                </div>
+              </div>
+            {{/each}}
+          </div>
+
+          <aside class="plant-preview">
+            {{#if selectedPlant}}
+              <header>
+                <h3>{{selectedPlant.label}}</h3>
+                <span class="tag">{{selectedPlant.useLabel}}</span>
+              </header>
+              <dl>
+                <div><dt>Índice Alquímico</dt><dd>{{selectedPlant.alchemicalIndex}}</dd></div>
+                <div><dt>Uso</dt><dd>{{selectedPlant.useLabel}}</dd></div>
+                <div><dt>Costo</dt><dd>{{selectedPlant.costPerUnit}} Shekels/unidad</dd></div>
+                <div><dt>Accesibilidad</dt><dd>{{accessibility.label}}</dd></div>
+                <div><dt>Dificultad</dt><dd>{{accessibility.difficulty}}</dd></div>
+                <div><dt>Kit requerido</dt><dd>{{toolInfo.label}}</dd></div>
+                <div><dt>Tiempo extracción</dt><dd>{{selectedPlant.extractionTime}} min</dd></div>
+              </dl>
+            {{else}}
+              <div class="empty-preview">
+                <p>Selecciona una planta para ver sus detalles.</p>
+              </div>
+            {{/if}}
+          </aside>
+        </div>
+      {{else}}
+        <p class="empty">No hay plantas que coincidan con la búsqueda.</p>
+      {{/if}}
+    </section>
+  {{/if}}
+
+  {{#if (eq step "setup")}}
+    <section class="wizard-body setup">
+      {{#if selectedPlant}}
+        <article class="selected-plant">
+          <header>
+            <h2>{{selectedPlant.label}}</h2>
+            <span class="tag">{{selectedPlant.useLabel}}</span>
+          </header>
+          <dl class="summary">
+            <div><dt>Índice Alquímico</dt><dd>{{selectedPlant.alchemicalIndex}}</dd></div>
+            <div><dt>Uso</dt><dd>{{selectedPlant.useLabel}}</dd></div>
+            <div><dt>Costo</dt><dd>{{selectedPlant.costPerUnit}} Shekels/unidad</dd></div>
+            <div><dt>Accesibilidad</dt><dd>{{accessibility.label}}</dd></div>
+            <div><dt>Dificultad de extracción</dt><dd>{{accessibility.difficulty}}</dd></div>
+            <div><dt>Kit requerido</dt><dd>{{toolInfo.label}}</dd></div>
+            <div><dt>Tiempo de extracción</dt><dd>{{selectedPlant.extractionTime}} minutos</dd></div>
+          </dl>
+        </article>
+      {{/if}}
+
+      <section class="config-group">
+        <h3>Configuración de la planta</h3>
+        <div class="config-grid">
+          <div class="config-item">
+            <h4>Nivel de la planta</h4>
+            <p class="hint">Afecta la dificultad (DC = {{accessibility.difficultyDC}} + Nivel)</p>
+            <div class="level-control">
+              <button type="button" data-action="adjust-level" data-delta="-1">−</button>
+              <input type="number" name="plant-level" value="{{level}}" min="1" max="20" />
+              <button type="button" data-action="adjust-level" data-delta="1">+</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview">
+        <h3>Resumen</h3>
+        <div class="overview-grid">
+          <div class="overview-item">
+            <dt>Nivel</dt>
+            <dd>{{level}} (DC = {{accessibility.difficultyDC}} + {{level}})</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Índice Alquímico</dt>
+            <dd>{{selectedPlant.alchemicalIndex}}</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Tiempo de extracción</dt>
+            <dd>{{selectedPlant.extractionTime}} minutos</dd>
+          </div>
+          <div class="overview-item">
+            <dt>Costo de mano de obra</dt>
+            <dd>{{toolInfo.laborCost}} Shekels/unidad</dd>
+          </div>
+        </div>
+      </section>
+    </section>
+  {{/if}}
+
+  <footer class="wizard-footer">
+    {{#if (eq step "plant")}}
+      <button type="button" data-action="cancel">Cancelar</button>
+    {{/if}}
+    {{#if (eq step "setup")}}
+      <button type="button" data-action="back">← Atrás</button>
+      <button type="button" data-action="finalize" class="primary">Finalizar</button>
+    {{/if}}
+  </footer>
+
+  <style>
+    .plant-wizard {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      color: var(--t-text);
+    }
+    .plant-wizard .wizard-header {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .plant-wizard .wizard-steps {
+      display: flex;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .plant-wizard .wizard-step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: var(--t-elev);
+      color: var(--t-muted);
+    }
+    .plant-wizard .wizard-step.is-active {
+      background: var(--t-accent-2);
+      color: var(--t-text);
+    }
+    .plant-wizard .wizard-step .step-index {
+      font-weight: 600;
+    }
+    .plant-wizard .wizard-body {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-height: 60vh;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .plant-wizard .wizard-search label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .plant-wizard .wizard-search input {
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
+    }
+    .plant-wizard .plant-layout {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      align-items: start;
+    }
+    .plant-wizard .plant-groups {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .plant-wizard .plant-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .plant-wizard .plant-group .group-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .plant-wizard .plant-group h2 {
+      margin: 0;
+      font-size: 16px;
+      color: var(--t-accent);
+    }
+    .plant-wizard .plant-group .count {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--t-muted);
+    }
+    .plant-wizard .plant-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--t-elev);
+      border-radius: 12px;
+      padding: 6px;
+    }
+    .plant-wizard .plant-header-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) 80px 120px 100px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--t-muted);
+      padding: 4px 10px;
+    }
+    .plant-wizard .plant-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) 80px 120px 100px;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+      color: var(--t-text);
+    }
+    .plant-wizard .plant-row .col {
+      font-size: 12px;
+    }
+    .plant-wizard .plant-row .col.name {
+      font-weight: 500;
+    }
+    .plant-wizard .plant-row .col.access.alta { color: #48bb78; }
+    .plant-wizard .plant-row .col.access.media { color: #ed8936; }
+    .plant-wizard .plant-row .col.access.baja { color: #e53e3e; }
+    .plant-wizard .plant-row:hover {
+      border-color: var(--t-border);
+      background: var(--t-elev);
+    }
+    .plant-wizard .plant-row.is-selected {
+      border-color: var(--t-accent);
+      background: rgba(212, 175, 119, 0.15);
+    }
+    .plant-wizard .plant-preview {
+      position: sticky;
+      top: 0;
+      align-self: flex-start;
+      background: var(--t-elev);
+      border-radius: 12px;
+      border: 1px solid var(--t-border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 200px;
+    }
+    .plant-wizard .plant-preview header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .plant-wizard .plant-preview h3 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--t-accent);
+    }
+    .plant-wizard .plant-preview .tag {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--t-muted);
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .plant-wizard .plant-preview dl {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0;
+    }
+    .plant-wizard .plant-preview dl div {
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 8px;
+      border: 1px solid var(--t-border);
+    }
+    .plant-wizard .plant-preview dt {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--t-muted);
+      margin-bottom: 4px;
+    }
+    .plant-wizard .plant-preview dd {
+      margin: 0;
+      font-weight: 600;
+      color: var(--t-text);
+    }
+    .plant-wizard .selected-plant {
+      padding: 12px;
+      background: var(--t-elev);
+      border-radius: 12px;
+      border: 1px solid var(--t-border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .plant-wizard .selected-plant header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .plant-wizard .selected-plant h2 {
+      margin: 0;
+      color: var(--t-accent);
+    }
+    .plant-wizard .selected-plant .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin: 0;
+    }
+    .plant-wizard .selected-plant .summary div {
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+      padding: 6px;
+      border: 1px solid var(--t-border);
+    }
+    .plant-wizard .selected-plant dt {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--t-muted);
+    }
+    .plant-wizard .selected-plant dd {
+      margin: 0;
+      font-weight: 600;
+      color: var(--t-text);
+    }
+    .plant-wizard .config-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .plant-wizard .config-group h3 {
+      color: var(--t-accent);
+      margin: 0;
+    }
+    .plant-wizard .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .plant-wizard .config-item {
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .plant-wizard .config-item h4 {
+      margin: 0;
+      font-size: 14px;
+      color: var(--t-accent);
+    }
+    .plant-wizard .config-item .hint {
+      font-size: 11px;
+      color: var(--t-muted);
+      margin: 0;
+      line-height: 1.4;
+    }
+    .plant-wizard .level-control {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .plant-wizard .level-control button {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: var(--t-accent-2);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .plant-wizard .level-control button:hover {
+      background: var(--t-accent);
+    }
+    .plant-wizard .level-control input {
+      flex: 1;
+      text-align: center;
+      font-size: 16px;
+      padding: 6px;
+      border-radius: 8px;
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
+    }
+    .plant-wizard .overview {
+      background: var(--t-elev);
+      border: 1px solid var(--t-border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .plant-wizard .overview h3 {
+      margin: 0 0 12px 0;
+      color: var(--t-accent);
+    }
+    .plant-wizard .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .plant-wizard .overview-item {
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid var(--t-border);
+    }
+    .plant-wizard .overview-item dt {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--t-muted);
+      margin-bottom: 6px;
+    }
+    .plant-wizard .overview-item dd {
+      margin: 0;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--t-text);
+    }
+    .plant-wizard .wizard-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--t-border);
+    }
+    .plant-wizard button {
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: var(--t-accent-2);
+      border: 1px solid var(--t-border);
+      color: var(--t-text);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .plant-wizard button:hover {
+      background: var(--t-accent);
+    }
+    .plant-wizard button.primary {
+      background: var(--t-accent);
+      color: white;
+      font-weight: 600;
+    }
+  </style>
+</div>

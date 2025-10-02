@@ -9,21 +9,29 @@ body.system-tsdc {
   --t-pad: 10px;
   --t-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
 
-  /* Paleta (modo claro por defecto) */
-  --t-bg: #0f1115;
-  --t-panel: #151924;
-  --t-elev: #1b2130;
-  --t-border: #2a3246;
-  --t-text: #e8ecff;
-  --t-muted: #9fb0d5;
-  --t-accent: #7aa2f7;      /* azul violeta */
-  --t-accent-2: #7dcfff;    /* cian suave */
-  --t-good: #9ece6a;
-  --t-bad: #f7768e;
+  /* Paleta - Tema marrón/dorado */
+  --t-bg: #1a0f08;                    /* Fondo oscuro marrón */
+  --t-panel: #2a1810;                 /* Panel marrón oscuro */
+  --t-elev: rgba(212, 175, 119, 0.05);  /* Elevación sutil dorada */
+  --t-border: rgba(212, 175, 119, 0.3); /* Borde dorado translúcido */
+  --t-text: #e8d7c3;                  /* Texto crema claro */
+  --t-muted: #b8a58f;                 /* Texto apagado beige */
+  --t-accent: #d4af77;                /* Dorado primario */
+  --t-accent-2: #8b6f47;              /* Marrón medio */
+  --t-good: #48bb78;                  /* Verde success */
+  --t-bad: #e53e3e;                   /* Rojo error */
+  --t-warning: #ed8936;               /* Naranja warning */
 }
 
 body.system-tsdc {
   font-family: var(--t-font);
+  background: linear-gradient(135deg, #2a1810 0%, #1a0f08 100%);
+  background-attachment: fixed;
+}
+
+/* Aplicar gradiente a las ventanas de aplicación */
+body.system-tsdc .window-app {
+  background: linear-gradient(135deg, #2a1810 0%, #1a0f08 100%);
 }
 
 /* ===============================
@@ -349,4 +357,27 @@ body.system-tsdc #combat-tracker li.combatant .token-initiative {
 
 body.system-tsdc #combat-tracker li.combatant .combatant-controls {
   margin-left: 0;
+}
+
+/* --- Mineral Vein wizard: arreglos visuales --- */
+body.system-tsdc .tsdc-wizard.mineral-vein .material-row {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Asegura que el texto quede por encima de cualquier overlay de hover */
+body.system-tsdc .tsdc-wizard.mineral-vein .material-row > .col {
+  position: relative;
+  z-index: 1;
+}
+
+/* Alinea verticalmente el nombre cuando ya no hay 'tag' debajo */
+body.system-tsdc .tsdc-wizard.mineral-vein .material-row .col.name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+body.system-tsdc .tsdc-wizard.mineral-vein .material-row .col.name .label {
+  line-height: 1.2;
 }

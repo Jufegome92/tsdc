@@ -1,6 +1,8 @@
 // modules/sheets/plant-sheet.js
 // Hoja simplificada para actores tipo "plant"
 
+import { openPlantWizard } from "../wizard/plant-wizard.js";
+
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 
 export class PlantSheet extends HandlebarsApplicationMixin(foundry.applications.sheets.ActorSheetV2) {
@@ -76,6 +78,14 @@ export class PlantSheet extends HandlebarsApplicationMixin(foundry.applications.
 
     html.querySelectorAll("input, select, textarea").forEach(input => {
       input.addEventListener("change", (ev) => this._onFieldChange(ev));
+    });
+
+    // Wizard button
+    html.querySelectorAll('[data-action="open-wizard"]').forEach(btn => {
+      btn.addEventListener("click", async (event) => {
+        event.preventDefault();
+        await openPlantWizard(this.actor);
+      });
     });
   }
 

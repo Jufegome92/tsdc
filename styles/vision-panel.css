@@ -1,9 +1,9 @@
 /* styles/vision-panel.css */
-.tsdc.vision-panel .grid { display: grid; gap: 8px; }
+.tsdc.vision-panel .grid { display: grid; gap: var(--t-gap); }
 .tsdc.vision-panel .grid.cols-2 { grid-template-columns: 1fr 1fr; }
 .tsdc.vision-panel .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-.tsdc.vision-panel .card { padding: 8px; border: 1px solid var(--color-border-dark); border-radius: 6px; }
-.tsdc-vision-panel .muted { opacity: .75; font-size: 0.9em; }
+.tsdc.vision-panel .card { padding: var(--t-pad); border: 1px solid var(--t-border); border-radius: var(--t-radius); background: var(--t-elev); }
+.tsdc-vision-panel .muted { color: var(--t-muted); font-size: 0.9em; }
 
 #tsdc-vision-panel .tabs-content:not(:has(.tab.active)) .tab:first-of-type {
   display: flex !important;

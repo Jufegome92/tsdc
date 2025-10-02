@@ -15,6 +15,7 @@ import * as Ail from "./ailments/index.js";
 import { openCharacterWizard } from "./wizard/character-wizard.js";
 import { openCreatureWizard } from "./wizard/creature-wizard.js";
 import { openMineralVeinWizard } from "./wizard/mineral-vein-wizard.js";
+import { openPlantWizard } from "./wizard/plant-wizard.js";
 import { applyBackgroundStartingCompetences } from "./features/affinities/index.js";
 //import "./combat/loop.js";
 //import { beginNewInitiativeDay } from "./combat/initiative.js";
@@ -102,6 +103,24 @@ async function maybeOpenWizardForSheet(sheet) {
       }
       return;
     }
+
+    if (actor.type === "plant") {
+      if (actor.flags?.tsdc?.plantBuilt) return;
+      await actor.setFlag("tsdc", "wizardOpen", true);
+      await sheet.close({ force: true });
+      try {
+        await openPlantWizard(actor);
+      } finally {
+        if (actor?.id && game.actors?.get(actor.id)) {
+          try {
+            await actor.unsetFlag("tsdc", "wizardOpen");
+          } catch (err) {
+            console.warn("TSDC | no se pudo limpiar wizardOpen en planta", err);
+          }
+        }
+      }
+      return;
+    }
   } catch (err) {
     console.error("TSDC | maybeOpenWizardForSheet failed", err);
   } finally {
@@ -122,7 +141,8 @@ Hooks.once("init", () => {
     "systems/tsdc/templates/apps/vision-panel.hbs",
     "systems/tsdc/templates/apps/crafting-workshop.hbs",
     "systems/tsdc/templates/apps/extraction-dialog.hbs",
-    "systems/tsdc/templates/wizard/mineral-vein.hbs"
+    "systems/tsdc/templates/wizard/mineral-vein.hbs",
+    "systems/tsdc/templates/wizard/plant.hbs"
   ]);
 
   Handlebars.registerHelper("loc", (k) => game.i18n.localize(String(k ?? "")));

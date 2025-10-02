@@ -19,6 +19,7 @@
         "modules/tsdc.js"
     ],
     "styles": [
+        "styles/theme.css",
         "styles/tsdc.css",
         "styles/vision-panel.css"
     ],

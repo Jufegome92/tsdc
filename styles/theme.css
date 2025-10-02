@@ -1,0 +1,254 @@
+/* TSDC Unified Theme - Brown/Orange Color Palette */
+:root {
+  /* Primary background gradient */
+  --tsdc-bg-gradient: linear-gradient(135deg, #2a1810 0%, #1a0f08 100%);
+
+  /* Base colors */
+  --tsdc-primary: #d4af77;        /* Gold/tan primary */
+  --tsdc-primary-dark: #8b6f47;   /* Darker brown */
+  --tsdc-primary-light: #f5e6d3;  /* Light cream */
+
+  /* Text colors */
+  --tsdc-text-primary: #e8d7c3;   /* Main text */
+  --tsdc-text-secondary: #b8a58f; /* Secondary text */
+  --tsdc-text-muted: #8b7355;     /* Muted text */
+
+  /* Accent colors */
+  --tsdc-accent-success: #48bb78;  /* Green */
+  --tsdc-accent-warning: #ed8936;  /* Orange */
+  --tsdc-accent-error: #e53e3e;    /* Red */
+  --tsdc-accent-info: #4299e1;     /* Blue */
+  --tsdc-accent-purple: #9f7aea;   /* Purple */
+
+  /* UI elements */
+  --tsdc-border: rgba(212, 175, 119, 0.3);
+  --tsdc-border-hover: #d4af77;
+  --tsdc-bg-subtle: rgba(255, 255, 255, 0.03);
+  --tsdc-bg-emphasis: rgba(255, 255, 255, 0.08);
+  --tsdc-bg-dark: rgba(0, 0, 0, 0.3);
+
+  /* Shadows */
+  --tsdc-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --tsdc-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --tsdc-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+
+  /* Border radius */
+  --tsdc-radius-sm: 6px;
+  --tsdc-radius-md: 8px;
+  --tsdc-radius-lg: 12px;
+
+  /* Spacing */
+  --tsdc-space-xs: 4px;
+  --tsdc-space-sm: 8px;
+  --tsdc-space-md: 12px;
+  --tsdc-space-lg: 16px;
+  --tsdc-space-xl: 24px;
+}
+
+/* Base dialog/wizard styling */
+.tsdc-dialog,
+.tsdc-wizard,
+.tsdc.sheet {
+  background: var(--tsdc-bg-gradient);
+  color: var(--tsdc-text-primary);
+  font-family: "Roboto", sans-serif;
+}
+
+/* Headers */
+.tsdc-dialog h1,
+.tsdc-dialog h2,
+.tsdc-dialog h3,
+.tsdc-wizard h1,
+.tsdc-wizard h2,
+.tsdc-wizard h3,
+.tsdc.sheet h1,
+.tsdc.sheet h2,
+.tsdc.sheet h3 {
+  color: var(--tsdc-primary);
+  font-weight: 600;
+}
+
+.tsdc-dialog h1,
+.tsdc-wizard h1,
+.tsdc.sheet h1 {
+  font-size: 24px;
+  margin: 0 0 var(--tsdc-space-lg) 0;
+}
+
+.tsdc-dialog h2,
+.tsdc-wizard h2,
+.tsdc.sheet h2 {
+  font-size: 18px;
+  margin: 0 0 var(--tsdc-space-md) 0;
+}
+
+.tsdc-dialog h3,
+.tsdc-wizard h3,
+.tsdc.sheet h3 {
+  font-size: 16px;
+  margin: 0 0 var(--tsdc-space-sm) 0;
+}
+
+.tsdc-dialog h4,
+.tsdc-wizard h4,
+.tsdc.sheet h4 {
+  font-size: 14px;
+  color: var(--tsdc-primary);
+  margin: 0 0 var(--tsdc-space-xs) 0;
+  font-weight: 600;
+}
+
+/* Buttons */
+.tsdc-dialog button,
+.tsdc-wizard button,
+.tsdc.sheet button {
+  background: var(--tsdc-bg-emphasis);
+  border: 1px solid var(--tsdc-border);
+  color: var(--tsdc-text-primary);
+  border-radius: var(--tsdc-radius-sm);
+  padding: var(--tsdc-space-sm) var(--tsdc-space-md);
+  cursor: pointer;
+  transition: all 150ms ease;
+  font-family: inherit;
+}
+
+.tsdc-dialog button:hover,
+.tsdc-wizard button:hover,
+.tsdc.sheet button:hover {
+  background: var(--tsdc-bg-subtle);
+  border-color: var(--tsdc-border-hover);
+}
+
+.tsdc-dialog button.primary,
+.tsdc-wizard button.primary,
+.tsdc.sheet button.primary {
+  background: var(--tsdc-primary-dark);
+  border-color: var(--tsdc-primary);
+  color: white;
+}
+
+.tsdc-dialog button.primary:hover,
+.tsdc-wizard button.primary:hover,
+.tsdc.sheet button.primary:hover {
+  background: var(--tsdc-primary);
+}
+
+.tsdc-dialog button:disabled,
+.tsdc-wizard button:disabled,
+.tsdc.sheet button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Inputs */
+.tsdc-dialog input,
+.tsdc-dialog select,
+.tsdc-dialog textarea,
+.tsdc-wizard input,
+.tsdc-wizard select,
+.tsdc-wizard textarea,
+.tsdc.sheet input,
+.tsdc.sheet select,
+.tsdc.sheet textarea {
+  background: var(--tsdc-bg-dark);
+  border: 1px solid var(--tsdc-border);
+  color: var(--tsdc-text-primary);
+  border-radius: var(--tsdc-radius-sm);
+  padding: var(--tsdc-space-sm);
+  font-family: inherit;
+}
+
+.tsdc-dialog input:focus,
+.tsdc-dialog select:focus,
+.tsdc-dialog textarea:focus,
+.tsdc-wizard input:focus,
+.tsdc-wizard select:focus,
+.tsdc-wizard textarea:focus,
+.tsdc.sheet input:focus,
+.tsdc.sheet select:focus,
+.tsdc.sheet textarea:focus {
+  outline: none;
+  border-color: var(--tsdc-primary);
+  box-shadow: 0 0 0 2px rgba(212, 175, 119, 0.2);
+}
+
+/* Cards */
+.tsdc-card {
+  background: var(--tsdc-bg-subtle);
+  border: 1px solid var(--tsdc-border);
+  border-radius: var(--tsdc-radius-lg);
+  padding: var(--tsdc-space-lg);
+}
+
+.tsdc-card.is-selected,
+.tsdc-card:focus {
+  border-color: var(--tsdc-primary);
+  background: var(--tsdc-bg-emphasis);
+}
+
+/* Labels and hints */
+.tsdc-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--tsdc-text-secondary);
+  font-weight: 600;
+}
+
+.tsdc-hint {
+  font-size: 11px;
+  color: var(--tsdc-text-muted);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* Status badges */
+.tsdc-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.tsdc-badge.success { background: var(--tsdc-accent-success); color: white; }
+.tsdc-badge.warning { background: var(--tsdc-accent-warning); color: white; }
+.tsdc-badge.error { background: var(--tsdc-accent-error); color: white; }
+.tsdc-badge.info { background: var(--tsdc-accent-info); color: white; }
+
+/* Dividers */
+.tsdc-divider {
+  border: none;
+  border-top: 1px solid var(--tsdc-border);
+  margin: var(--tsdc-space-lg) 0;
+}
+
+/* Scrollbars */
+.tsdc-dialog ::-webkit-scrollbar,
+.tsdc-wizard ::-webkit-scrollbar,
+.tsdc.sheet ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.tsdc-dialog ::-webkit-scrollbar-track,
+.tsdc-wizard ::-webkit-scrollbar-track,
+.tsdc.sheet ::-webkit-scrollbar-track {
+  background: var(--tsdc-bg-dark);
+  border-radius: 4px;
+}
+
+.tsdc-dialog ::-webkit-scrollbar-thumb,
+.tsdc-wizard ::-webkit-scrollbar-thumb,
+.tsdc.sheet ::-webkit-scrollbar-thumb {
+  background: var(--tsdc-primary-dark);
+  border-radius: 4px;
+}
+
+.tsdc-dialog ::-webkit-scrollbar-thumb:hover,
+.tsdc-wizard ::-webkit-scrollbar-thumb:hover,
+.tsdc.sheet ::-webkit-scrollbar-thumb:hover {
+  background: var(--tsdc-primary);
+}
