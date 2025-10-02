@@ -709,7 +709,12 @@ async function scheduleReactionPhases({
   aptitudeKey,
   payload
 }) {
-  const { readState, writeState, ensureActorState } = await import("./engine.js");
+  const {
+    readState,
+    writeState,
+    ensureActorState,
+    performReactionInitPhase
+  } = await import("./engine.js");
 
   const state = await readState();
   const combatantId = combat.combatants.find(c => c.token?.id === reactorToken.id)?.id;
@@ -720,69 +725,160 @@ async function scheduleReactionPhases({
 
   const actorState = ensureActorState(state, combatantId);
   const currentTick = state.tick;
+  const reactionId = foundry.utils.randomID();
+
+  const sharedPayload = {
+    ...(payload || {}),
+    reactionId,
+    reactorId: reactorToken.id,
+    targetId: targetToken?.id ?? null
+  };
 
   // Limpiar la cola actual (las reacciones interrumpen/sustituyen acciones planificadas)
   actorState.queue = [];
   actorState.current = null;
 
+  // Remover ejecuciones pendientes previas de este actor
+  if (Array.isArray(state.execHold) && state.execHold.length) {
+    state.execHold = state.execHold.filter(entry => entry.actor !== combatantId);
+  }
+
   const { init = 0, exec = 0, rec = 0 } = aptitudeDef.ct || {};
 
-  // Programar fase de INICIO
-  if (aptitudeDef.phases.init) {
-    const initCard = createReactionPhaseCard({
-      phase: "init",
+  const phaseDescriptors = [];
+  const initStartTick = currentTick;
+  const execStartTick = currentTick + Math.max(0, Number(init));
+  const recStartTick = execStartTick + Math.max(0, Number(exec));
+
+  const instantiateCard = (descriptor) => {
+    const phase = descriptor.reactionPhase;
+    const initTicks = Number(descriptor.initTicks || 0);
+    const execTicks = Number(descriptor.execTicks || 0);
+    const recTicks  = Number(descriptor.recTicks  || 0);
+    const initialPhase = initTicks > 0 ? "init" : (execTicks > 0 ? "exec" : "rec");
+    const ticksLeft = initTicks > 0 ? initTicks : (execTicks > 0 ? execTicks : recTicks);
+
+    return {
+      actor: descriptor.combatantId,
+      actionKey: descriptor.actionKey || `reaction:${descriptor.aptitudeKey}:${phase}`,
+      type: "reaction-phase",
+      reactionPhase: phase,
+      aptitudeKey: descriptor.aptitudeKey,
+      aptitudeDef: descriptor.aptitudeDef,
+      targetTokenId: descriptor.targetTokenId,
+      payload: descriptor.payload,
+      combatantId: descriptor.combatantId,
+      reactionId: descriptor.reactionId,
+      I: initTicks,
+      E: execTicks,
+      R: recTicks,
+      placement_tick: currentTick,
+      placement_order: ++state.placementCounter,
+      exec_order: ++state.qOrderCounter,
+      phase: initialPhase,
+      ticks_left: Math.max(0, ticksLeft),
+      started_this_tick: initialPhase !== "init",
+      meta: {
+        ...(descriptor.meta || {}),
+        reactionId: descriptor.reactionId,
+        reactionPhase: descriptor.reactionPhase,
+        aptitudeKey: descriptor.aptitudeKey,
+        aptitudeLabel: descriptor.aptitudeDef?.label,
+        targetTokenId: descriptor.targetTokenId,
+        payload: descriptor.payload
+      }
+    };
+  };
+
+  const initCardDescriptor = aptitudeDef.phases.init
+    ? createReactionPhaseCard({
+        phase: "init",
+        aptitudeKey,
+        aptitudeDef,
+        targetToken,
+        payload: sharedPayload,
+        targetTick: initStartTick,
+        combatantId,
+        reactionId,
+        durations: {
+          initTicks: Math.max(1, Number(init || 1)),
+          execTicks: 0,
+          recTicks: 0
+        }
+      })
+    : null;
+
+  if (initCardDescriptor) {
+    actorState.current = instantiateCard(initCardDescriptor);
+
+    await performReactionInitPhase({
+      actor: reactorToken.actor,
+      token: reactorToken,
       aptitudeKey,
       aptitudeDef,
       targetToken,
-      payload,
-      tickEnd: currentTick + init
+      payload: sharedPayload,
+      combatantId,
+      reactionId
     });
-
-    if (init === 0) {
-      // Ejecutar inmediatamente
-      actorState.current = initCard;
-    } else {
-      // Programar para más adelante
-      actorState.queue.push(initCard);
-    }
   }
 
-  // Programar fase de EJECUCIÓN
   if (aptitudeDef.phases.exec) {
     const execCard = createReactionPhaseCard({
       phase: "exec",
       aptitudeKey,
       aptitudeDef,
       targetToken,
-      payload,
-      tickEnd: currentTick + init + exec
+      payload: sharedPayload,
+      targetTick: execStartTick,
+      combatantId,
+      reactionId,
+      durations: {
+        initTicks: 0,
+        execTicks: Math.max(1, Number(exec || 1)),
+        recTicks: 0
+      }
     });
-
-    actorState.queue.push(execCard);
+    execCard.qorder = ++state.qOrderCounter;
+    phaseDescriptors.push(execCard);
   }
 
-  // Programar fase de RECUPERACIÓN (si tiene efectos)
   if (rec > 0) {
     const recCard = createReactionPhaseCard({
       phase: "recovery",
       aptitudeKey,
       aptitudeDef,
       targetToken,
-      payload,
-      tickEnd: currentTick + init + exec + rec
+      payload: sharedPayload,
+      targetTick: recStartTick,
+      combatantId,
+      reactionId,
+      durations: {
+        initTicks: 0,
+        execTicks: 0,
+        recTicks: Math.max(1, Number(rec || 1))
+      }
     });
-
-    actorState.queue.push(recCard);
+    recCard.qorder = ++state.qOrderCounter;
+    phaseDescriptors.push(recCard);
   }
+
+  phaseDescriptors
+    .sort((a, b) => (Number(a.targetTick || 0) - Number(b.targetTick || 0))
+      || ((a.phaseOrder || 0) - (b.phaseOrder || 0))
+      || (Number(a.qorder || 0) - Number(b.qorder || 0)))
+    .forEach(descriptor => {
+      actorState.queue.push(descriptor);
+    });
 
   await writeState(state);
 
   console.log(`TSDC | Scheduled ${aptitudeDef.label} phases for ${reactorToken.name}:`, {
     currentTick,
     phases: {
-      init: init > 0 ? `tick ${currentTick + init}` : "immediate",
-      exec: exec > 0 ? `tick ${currentTick + init + exec}` : "none",
-      rec: rec > 0 ? `tick ${currentTick + init + exec + rec}` : "none"
+      init: aptitudeDef.phases.init ? `tick ${initStartTick}` : "none",
+      exec: aptitudeDef.phases.exec ? `tick ${execStartTick}` : "none",
+      rec: rec > 0 ? `tick ${recStartTick}` : "none"
     }
   });
 }
@@ -794,20 +890,32 @@ function createReactionPhaseCard({
   aptitudeDef,
   targetToken,
   payload,
-  tickEnd
+  targetTick,
+  combatantId,
+  reactionId,
+  durations = {}
 }) {
   return {
+    kind: "reaction-phase",
     type: "reaction-phase",
     uid: foundry.utils.randomID(),
-    tickEnd,
+    targetTick,
     label: `${aptitudeDef.label} (${phase})`,
-    phase,
+    reactionPhase: phase,
+    phaseOrder: phase === "init" ? 0 : phase === "exec" ? 1 : 2,
+    actionKey: `reaction:${aptitudeKey ?? "phase"}:${phase}`,
     aptitudeKey,
     aptitudeDef,
     targetTokenId: targetToken?.id,
     payload: payload || {},
+    combatantId,
+    reactionId,
+    initTicks: Number(durations.initTicks || 0),
+    execTicks: Number(durations.execTicks || 0),
+    recTicks: Number(durations.recTicks || 0),
     source: "reaction",
-    order: Date.now()
+    order: Date.now(),
+    execOrder: Date.now()
   };
 }
 

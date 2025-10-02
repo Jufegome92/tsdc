@@ -2,6 +2,38 @@
 
 const ZONE_KEYS = ["head", "chest", "bracers", "legs", "boots"];
 
+/**
+ * Mapeo de zona → agravio por severidad
+ * Estos IDs corresponden al catálogo de agravios
+ */
+const WOUND_ZONE_AILMENTS = {
+  head: {
+    leve: "HERIDA_CABEZA_LEVE",
+    grave: "HERIDA_CABEZA_GRAVE",
+    critico: "HERIDA_CABEZA_CRITICA"
+  },
+  chest: {
+    leve: "HERIDA_TORSO_LEVE",
+    grave: "HERIDA_TORSO_GRAVE",
+    critico: "HERIDA_TORSO_CRITICA"
+  },
+  bracers: {
+    leve: "HERIDA_BRAZOS_LEVE",
+    grave: "HERIDA_BRAZOS_GRAVE",
+    critico: "HERIDA_BRAZOS_CRITICA"
+  },
+  legs: {
+    leve: "HERIDA_PIERNAS_LEVE",
+    grave: "HERIDA_PIERNAS_GRAVE",
+    critico: "HERIDA_PIERNAS_CRITICA"
+  },
+  boots: {
+    leve: "HERIDA_PIES_LEVE",
+    grave: "HERIDA_PIES_GRAVE",
+    critico: "HERIDA_PIES_CRITICA"
+  }
+};
+
 function cloneState(state) {
   return JSON.parse(JSON.stringify(state));
 }
@@ -85,6 +117,22 @@ export async function addWoundSlots(actor, zoneKey, { severity = "leve", source 
   sumZones(state);
 
   await actor.update({ "system.health.wounds": state });
+
+  // Aplicar el agravio correspondiente a la zona y severidad
+  const severityKey = String(severity || "leve").toLowerCase();
+  const ailmentId = WOUND_ZONE_AILMENTS[key]?.[severityKey];
+  if (ailmentId) {
+    try {
+      const { addAilment } = await import("../ailments/index.js");
+      await addAilment(actor, ailmentId, {
+        severity: severityKey,
+        source: source || `wound:${key}`,
+        kind: key
+      });
+    } catch (err) {
+      console.error("TSDC | Error aplicando agravio de herida:", err);
+    }
+  }
 
   const label = zoneLabel(key);
   const amount = zone.used - before;

@@ -31,14 +31,14 @@ function mapDamageToAilmentId(dtype) {
   const t = String(dtype || "").toLowerCase();
   switch (t) {
     case "cut":    return "DESANGRADO";
-    case "blunt":  return "FRACTURADO";
-    case "pierce": return "INFECCION_TRAUMATICA";
-    case "fire":   return "QUEMADURA_TAUMATICA_FUEGO";
-    case "air":    return "LACERACION_DE_PRESION_VIENTO";
-    case "earth":  return "APLASTAMIENTO_TAUMATICO_TIERRA";
-    case "water":  return "CONGELACION_TAUMATICA_AGUA";
-    case "light":  return "SOBRECARGA_NERVIOSA_LUZ";
-    case "dark":   return "DEVORACION_SENSORIAL_OSCURIDAD";
+    case "blunt":  return "HERIDA_CONTUNDENTE";
+    case "pierce": return "HERIDA_PERFORANTE";
+    case "fire":   return "HERIDA_FUEGO";
+    case "air":    return "HERIDA_VIENTO";
+    case "earth":  return "HERIDA_TIERRA";
+    case "water":  return "HERIDA_AGUA";
+    case "light":  return "HERIDA_LUZ";
+    case "dark":   return "HERIDA_OSCURIDAD";
     default:       return null;
   }
 }
@@ -149,6 +149,7 @@ export function registerChatListeners() {
         else if (kind === "defense")        await evalDefense(input);
         else if (kind === "resistance")     await evalResistance(input);
         else if (kind === "specialization") await evalSpecialization(input, messageId);
+        else if (kind === "attribute")      await evalCharacteristic(input);
       } catch (err) {
         console.error("TSDC | Eval error", err);
       }
@@ -241,6 +242,10 @@ async function evalDefense(p) {
           <input type="number" name="atk" placeholder="p.ej. 17" />
         </div>
         <div class="t-field">
+          <label>Rango de competencia del arma atacante</label>
+          <input type="number" name="attackerRank" placeholder="p.ej. 3" value="1" min="0" />
+        </div>
+        <div class="t-field">
           <label>Tipo de daño (para heridas si falla)</label>
           <select name="dtype">
             <option value="cut">Cortante</option>
@@ -262,15 +267,17 @@ async function evalDefense(p) {
       label: "Continuar",
       callback: (_ev, button) => ({
         atkTotal: Number(button.form.elements.atk?.value || 0),
-        dtype: String(button.form.elements.dtype?.value || "cut")
+        dtype: String(button.form.elements.dtype?.value || "cut"),
+        attackerRank: Number(button.form.elements.attackerRank?.value || 1)
       })
     }
   });
   if (!res1) return;
 
-  const atkTotal   = Number(res1.atkTotal || 0);
-  const damageType = res1.dtype;
-  const success    = (defShown >= atkTotal);
+  const atkTotal     = Number(res1.atkTotal || 0);
+  const damageType   = res1.dtype;
+  const attackerRank = Number(res1.attackerRank || 1);
+  const success      = (defShown >= atkTotal);
 
   const other    = (p.otherTotal != null) ? Number(p.otherTotal) : null;
   const canLearn = (p.policy === "learning" && success && other != null);
@@ -334,7 +341,8 @@ async function evalDefense(p) {
       await Ail.addAilment(actor, aid, {
         severity: sev,
         source: `defense:${damageType}`,
-        kind: bodyPart
+        kind: bodyPart,
+        magnitude: attackerRank  // rango de competencia del atacante
       });
     } else {
       await Ail.incrementAilmentLoad(actor, 1, `Fallo TD (${damageType}) → ${sev}`);
@@ -414,6 +422,65 @@ async function evalSpecialization(p, messageId = null) {
   } else {
     console.warn("⚠️ No se encontró messageId para la evaluación");
   }
+}
+
+/* ============ CARACTERÍSTICA ============ */
+async function evalCharacteristic(p) {
+  const actor = game.actors?.get(p.actorId);
+  if (!actor) return;
+
+  const attrLabels = {
+    strength: "Fuerza",
+    agility: "Agilidad",
+    tenacity: "Tenacidad",
+    cunning: "Astucia",
+    wisdom: "Sabiduría",
+    intellect: "Intelecto",
+    aura: "Aura",
+    composure: "Compostura",
+    presence: "Presencia"
+  };
+
+  const totalShown = Number(p.totalShown ?? 0);
+  const attrKey = String(p.characteristic ?? "");
+  const attrLabel = attrLabels[attrKey] ?? (attrKey || "Característica");
+
+  const res = await foundry.applications.api.DialogV2.prompt({
+    window: { title: `Evaluar ${attrLabel}` },
+    content: `
+      <form class="t-col" style="gap:8px;">
+        <div class="t-field">
+          <label>DC objetivo</label>
+          <input type="number" name="dc" value="12" />
+        </div>
+        <div class="t-field">
+          <label>Descripción (opcional)</label>
+          <input type="text" name="desc" placeholder="Trampa, peligro ambiental, etc." />
+        </div>
+        <div class="muted">Tirada mostrada: <b>${isNaN(totalShown) ? "?" : totalShown}</b>${p.levelRef ? ` • Nivel de referencia: <b>${p.levelRef}</b>` : ""}</div>
+      </form>
+    `,
+    ok: {
+      label: "Resolver",
+      callback: (_ev, button) => ({
+        dc: Number(button.form.elements.dc?.value || 0),
+        desc: String(button.form.elements.desc?.value || "").trim()
+      })
+    }
+  });
+  if (!res) return;
+
+  const dc = Number(res.dc || 0);
+  const success = totalShown >= dc;
+  const margin = totalShown - dc;
+
+  await ChatMessage.create({
+    whisper: gmWhisperIds(),
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `
+      <p><b>${attrLabel}</b> ${success ? "ÉXITO ✅" : "FALLO ❌"} — margen <b>${margin}</b>${res.desc ? ` • ${res.desc}` : ""}</p>
+    `
+  });
 }
 
 /* ============ RESISTENCIA ============ */

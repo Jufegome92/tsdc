@@ -1,0 +1,166 @@
+<form class="tsdc plant-sheet" autocomplete="off">
+  <header class="sheet-header">
+    <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" />
+    <div class="header-fields">
+      <h1 class="charname">
+        <input name="name" type="text" value="{{actor.name}}" placeholder="Nombre de la planta" />
+      </h1>
+      <div class="resource">
+        <label>Nivel</label>
+        <input type="number" name="system.level" value="{{system.level}}" min="1" />
+      </div>
+    </div>
+  </header>
+
+  <section class="sheet-body">
+    <div class="tab" data-tab="main">
+
+      <div class="form-group">
+        <label>Clave de Planta</label>
+        <input type="text" name="system.plantKey" value="{{system.plantKey}}" placeholder="ej: aconito, belladona" />
+      </div>
+
+      <div class="form-group">
+        <label>Accesibilidad</label>
+        <select name="system.accessibility">
+          {{#each accessibilityOptions}}
+            <option value="{{this.value}}" {{#if (eq ../system.accessibility this.value)}}selected{{/if}}>
+              {{this.label}}
+            </option>
+          {{/each}}
+        </select>
+        <small>Determina dificultad, tiempo e intervalos de extracción</small>
+      </div>
+
+      <div class="form-group">
+        <label>Dificultad de Extracción</label>
+        <select name="system.difficulty">
+          {{#each difficultyOptions}}
+            <option value="{{this.value}}" {{#if (eq ../system.difficulty this.value)}}selected{{/if}}>
+              {{this.label}}
+            </option>
+          {{/each}}
+        </select>
+      </div>
+
+      <hr />
+
+      <div class="info-block">
+        <h3>Información de Extracción</h3>
+        <p><strong>Tiempo total:</strong> {{calculatedExtractionTime}} minutos</p>
+        <p><strong>Intervalos:</strong> {{calculatedIntervals}} (15min cada uno)</p>
+        <p><strong>DC Base:</strong> Dificultad + Nivel ({{system.level}})</p>
+      </div>
+
+      <hr />
+
+      <div class="form-group">
+        <label>Índice Alquímico</label>
+        <input type="number" name="system.alchemicalIndex" value="{{system.alchemicalIndex}}" min="0" />
+      </div>
+
+      <div class="form-group">
+        <label>Uso</label>
+        <select name="system.use">
+          {{#each useOptions}}
+            <option value="{{this.value}}" {{#if (eq ../system.use this.value)}}selected{{/if}}>
+              {{this.label}}
+            </option>
+          {{/each}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Costo (Shekels por unidad)</label>
+        <input type="number" name="system.cost" value="{{system.cost}}" min="0" />
+      </div>
+
+      <hr />
+
+      <div class="form-group">
+        <label>Extracciones Restantes</label>
+        <input type="number" name="system.remainingExtractions" value="{{system.remainingExtractions}}" min="0" />
+      </div>
+
+      <div class="form-group">
+        <label>Extracciones Máximas</label>
+        <input type="number" name="system.maxExtractions" value="{{system.maxExtractions}}" min="1" />
+      </div>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" name="system.depleted" {{#if system.depleted}}checked{{/if}} />
+          Agotada
+        </label>
+      </div>
+
+    </div>
+  </section>
+
+  <style>
+    .tsdc.plant-sheet {
+      padding: 10px;
+    }
+    .tsdc.plant-sheet .sheet-header {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    .tsdc.plant-sheet .profile-img {
+      width: 100px;
+      height: 100px;
+      object-fit: cover;
+      border: 2px solid #999;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .tsdc.plant-sheet .header-fields {
+      flex: 1;
+    }
+    .tsdc.plant-sheet .charname input {
+      font-size: 24px;
+      font-weight: bold;
+      border: none;
+      border-bottom: 1px solid #ccc;
+      width: 100%;
+    }
+    .tsdc.plant-sheet .resource {
+      margin-top: 10px;
+    }
+    .tsdc.plant-sheet .form-group {
+      margin-bottom: 15px;
+    }
+    .tsdc.plant-sheet .form-group label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .tsdc.plant-sheet .form-group input,
+    .tsdc.plant-sheet .form-group select {
+      width: 100%;
+      padding: 5px;
+    }
+    .tsdc.plant-sheet .form-group small {
+      display: block;
+      color: #666;
+      font-size: 11px;
+      margin-top: 3px;
+    }
+    .tsdc.plant-sheet .info-block {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      border-left: 3px solid #4CAF50;
+    }
+    .tsdc.plant-sheet .info-block h3 {
+      margin-top: 0;
+      color: #4CAF50;
+    }
+    .tsdc.plant-sheet hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 20px 0;
+    }
+  </style>
+</form>

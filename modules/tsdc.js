@@ -3,14 +3,18 @@ import * as MathUtil from "./utils/math.js";
 import * as Attr from "./features/attributes/index.js";
 import * as Evo from "./features/advantage/index.js";
 import { TSDCActor } from "./documents/actor.js";
+import { TSDCItem } from "./documents/item.js";
 import { TSDCActorSheet } from "./sheets/actor-sheet.js";
+import { PlantSheet } from "./sheets/plant-sheet.js";
+import { MineralVeinSheet } from "./sheets/mineral-vein-sheet.js";
 import "./rolls/post-eval.js";
 import { registerChatListeners } from "./chat/listeners.js";
-import { setTrackLevel } from "./progression.js";
+import { setTrackLevel, recomputeReferenceLevel } from "./progression.js";
 import { SPECIES_NATURAL_WEAPONS } from "./features/species/natural-weapons.js";
 import * as Ail from "./ailments/index.js";
 import { openCharacterWizard } from "./wizard/character-wizard.js";
 import { openCreatureWizard } from "./wizard/creature-wizard.js";
+import { openMineralVeinWizard } from "./wizard/mineral-vein-wizard.js";
 import { applyBackgroundStartingCompetences } from "./features/affinities/index.js";
 //import "./combat/loop.js";
 //import { beginNewInitiativeDay } from "./combat/initiative.js";
@@ -28,6 +32,12 @@ import * as Monsters from "./monsters/factory.js";
 import "./movement/index.js";
 import { registerAptitudeHooks } from "./features/aptitudes/runtime.js";
 import "./features/aptitudes/granting.js";
+import { CraftingWorkshop, registerWorkshopSceneControl, registerWorkshopHUD } from "./apps/crafting-workshop.js";
+import { ExtractionDialog, registerExtractionHUD } from "./apps/extraction-dialog.js";
+import { GMGrantDialog, openGrantDialog } from "./apps/gm-grant-dialog.js";
+import { registerExpirationHooks } from "./features/materials/expiration-tracker.js";
+import { registerDeathChecks } from "./health/death.js";
+import { registerHandlebarsHelpers } from "./helpers/handlebars-helpers.js";
 
 const _guardWizardOpen = new Set();
 
@@ -73,6 +83,25 @@ async function maybeOpenWizardForSheet(sheet) {
       }
       return;
     }
+
+    // MINERAL VEIN
+    if (actor.type === "mineral-vein") {
+      if (actor.flags?.tsdc?.mineralBuilt) return;
+      await actor.setFlag("tsdc", "wizardOpen", true);
+      await sheet.close({ force: true });
+      try {
+        await openMineralVeinWizard(actor);
+      } finally {
+        if (actor?.id && game.actors?.get(actor.id)) {
+          try {
+            await actor.unsetFlag("tsdc", "wizardOpen");
+          } catch (err) {
+            console.warn("TSDC | no se pudo limpiar wizardOpen en veta mineral", err);
+          }
+        }
+      }
+      return;
+    }
   } catch (err) {
     console.error("TSDC | maybeOpenWizardForSheet failed", err);
   } finally {
@@ -82,11 +111,18 @@ async function maybeOpenWizardForSheet(sheet) {
 
 Hooks.once("init", () => {
   console.log("Transcendence | init");
+
+  // Register custom Handlebars helpers
+  registerHandlebarsHelpers();
+
   foundry.applications.handlebars.loadTemplates([
     "systems/tsdc/templates/cards/action-card.hbs",
     "systems/tsdc/templates/apps/atb-tracker.hbs",
     "systems/tsdc/templates/apps/grimoire.hbs",
-    "systems/tsdc/templates/apps/vision-panel.hbs"
+    "systems/tsdc/templates/apps/vision-panel.hbs",
+    "systems/tsdc/templates/apps/crafting-workshop.hbs",
+    "systems/tsdc/templates/apps/extraction-dialog.hbs",
+    "systems/tsdc/templates/wizard/mineral-vein.hbs"
   ]);
 
   Handlebars.registerHelper("loc", (k) => game.i18n.localize(String(k ?? "")));
@@ -98,7 +134,10 @@ Hooks.once("init", () => {
 
   registerVisionPanelControl();
 
-   // Settings para iniciativa por “día”
+  // Register Workshop scene control button
+  Hooks.on('getSceneControlButtons', registerWorkshopSceneControl);
+
+   // Settings para iniciativa por "día"
   game.settings.register("tsdc", "initiative.dayId", { scope:"world", config:false, type:String, default:"" });
   game.settings.register("tsdc", "initiative.monstersDeck", { scope:"world", config:false, type:Object, default:null });
 
@@ -135,15 +174,30 @@ Hooks.once("init", () => {
     if (!H.helpers?.eq) H.registerHelper("eq", (a, b) => a === b);
   }
 
-  // Documento Actor propio
+  // Documentos propios
   CONFIG.Actor.documentClass = TSDCActor;
+  CONFIG.Item.documentClass = TSDCItem;
 
-  // Registrar hoja por defecto
+  // Registrar hojas de actores
+  // Hoja principal para character y creature
   foundry.documents.collections.Actors.registerSheet("tsdc", TSDCActorSheet, {
     types: ["character", "creature"],
     makeDefault: true
   });
-  console.log("TSDC | sheet registered");
+
+  // Hoja simplificada para plantas
+  foundry.documents.collections.Actors.registerSheet("tsdc", PlantSheet, {
+    types: ["plant"],
+    makeDefault: true
+  });
+
+  // Hoja simplificada para vetas minerales
+  foundry.documents.collections.Actors.registerSheet("tsdc", MineralVeinSheet, {
+    types: ["mineral-vein"],
+    makeDefault: true
+  });
+
+  console.log("TSDC | sheets registered");
 
   // Exponer utilidades en el namespace del juego
   game.transcendence = {
@@ -171,7 +225,11 @@ Hooks.once("ready", async () => {
     registerAtbUI,
     registerAtbTrackerButton,
     registerAtbAutoOpen,
-    registerAptitudeHooks
+    registerAptitudeHooks,
+    registerWorkshopHUD,
+    registerExtractionHUD,
+    registerExpirationHooks,
+    registerDeathChecks
   ];
   for (const fn of regs) {
     try { fn?.(); }
@@ -198,8 +256,24 @@ Hooks.once("ready", async () => {
   };
   game.transcendence.atb = ATB_API;
   game.transcendence.checkStealthOnAction = checkStealthOnAction;
+  game.transcendence.progression = {
+    setTrackLevel,
+    recomputeReferenceLevel
+  };
   game.transcendence.openVisionPanel = () => TSDCVisionPanel.open();
   game.transcendence.openGrimoire = () => window.tsdcatb?.GrimoireApp?.openForCurrentUser();
+  game.transcendence.openCraftingWorkshop = (actor) => {
+    if (!actor) {
+      ui.notifications?.warn("Debes seleccionar un actor para abrir el taller.");
+      return;
+    }
+    CraftingWorkshop.openForActor(actor.id);
+  };
+  game.transcendence.openExtractionDialog = (actor) => {
+    ExtractionDialog.open(actor);
+  };
+  game.transcendence.CraftingWorkshop = CraftingWorkshop;
+  game.transcendence.ExtractionDialog = ExtractionDialog;
 });
 
 /** Al crear un actor character → abrir wizard inmediatamente */
@@ -282,6 +356,10 @@ async function initializeReactionDataCache() {
     // Cache weapons data
     const { WEAPONS } = await import("./features/weapons/data.js");
     game.tsdc.weapons = WEAPONS;
+
+    // Register GM tools
+    game.tsdc.openGrantDialog = openGrantDialog;
+    game.tsdc.GMGrantDialog = GMGrantDialog;
 
     console.log("TSDC | Reaction data cache initialized");
   } catch (error) {

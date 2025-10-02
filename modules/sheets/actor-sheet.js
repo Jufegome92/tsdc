@@ -9,6 +9,7 @@ import { getNaturalWeaponDef } from "../features/species/natural-weapons.js";
 import { computeArmorBonusFromEquipped } from "../features/defense/index.js";
 import { trackThreshold } from "../progression.js";
 import { WEAPONS } from "../features/weapons/data.js";
+import { ATTRS } from "../features/attributes/index.js";
 
 console.log("actor-sheet import base:", import.meta.url);
 
@@ -16,6 +17,18 @@ console.log("actor-sheet import base:", import.meta.url);
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 
 const WOUND_ZONE_ORDER = ["head", "chest", "bracers", "legs", "boots"];
+
+const ATTR_LABELS = {
+  strength: "Fuerza",
+  agility: "Agilidad",
+  tenacity: "Tenacidad",
+  cunning: "Astucia",
+  wisdom: "Sabiduría",
+  intellect: "Intelecto",
+  aura: "Aura",
+  composure: "Compostura",
+  presence: "Presencia"
+};
 
 export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applications.sheets.ActorSheetV2) {
   #activeTab = "main";
@@ -341,8 +354,19 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
         bonus: Number(rollDefaults?.spec?.bonus ?? 0),
         diff:  Number(rollDefaults?.spec?.diff  ?? 0),
         mode:  String(rollDefaults?.spec?.mode  ?? "learning")
+      },
+      characteristic: {
+        bonus:   Number(rollDefaults?.characteristic?.bonus   ?? 0),
+        penalty: Number(rollDefaults?.characteristic?.penalty ?? 0),
+        attr:    String(rollDefaults?.characteristic?.attr ?? "")
       }
     };
+
+    context.referenceLevel = Number(this.actor.system?.levelRef ?? this.actor.system?.level ?? 1) || 1;
+    context.characteristicsList = ATTRS.map(key => ({
+      key,
+      label: game.i18n?.localize?.(`TSDC.Attr.${key}`) ?? ATTR_LABELS[key] ?? key
+    }));
 
     // --- Estados básicos: Aguante, Fatiga y Desgaste (no persisten todos)
     const tenacity = Number(this.actor.system?.attributes?.tenacity ?? 0);
@@ -363,7 +387,7 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       const max = Number(data?.max ?? value);
       return {
         key,
-        label: Inv.bodyPartLabel?.(key) ?? key,
+        label: data?.label || Inv.bodyPartLabel?.(key) || key,
         value,
         max,
         potency: Number(data?.potency ?? 0),
@@ -406,6 +430,55 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     };
     context.woundStatusLabel = statusLabels[woundsState.status] ?? woundsState.status ?? "";
 
+    // ---- Efectos activos (agravios) ----
+    const { listActive } = await import("../ailments/index.js");
+    const { CATALOG } = await import("../ailments/catalog.js");
+    const activeAilments = listActive(this.actor);
+
+    const zoneLabelMap = {
+      head: "Cabeza", chest: "Torso", bracers: "Brazos",
+      legs: "Piernas", boots: "Pies"
+    };
+
+    context.activeEffects = activeAilments.map(ailment => {
+      const def = CATALOG[ailment.id];
+      const effects = [];
+
+      // Textos de efecto
+      if (Array.isArray(def?.effectsText)) {
+        effects.push(...def.effectsText);
+      }
+
+      // Si tiene severidad, agregar efectos por severidad
+      if (ailment.severity && def?.effectsBySeverity) {
+        const sevEffects = def.effectsBySeverity[ailment.severity];
+        if (Array.isArray(sevEffects)) {
+          effects.push(...sevEffects);
+        }
+      }
+
+      // Información de duración
+      let durationText = "";
+      if (ailment.duration?.type === "rounds" && typeof ailment.remainingRounds === "number") {
+        durationText = `${ailment.remainingRounds} ronda${ailment.remainingRounds === 1 ? "" : "s"}`;
+      } else if (ailment.duration?.type === "untilTreated") {
+        durationText = "Hasta ser tratado";
+      } else if (ailment.duration?.type === "permanent") {
+        durationText = "Permanente";
+      }
+
+      return {
+        id: ailment.id,
+        label: ailment.label || def?.label || ailment.id,
+        severity: ailment.severity ? ailment.severity.toUpperCase() : null,
+        magnitude: ailment.magnitude != null ? `Rango ${ailment.magnitude}` : null,
+        zone: ailment.kind ? (zoneLabelMap[ailment.kind] || ailment.kind) : null,
+        effects: effects,
+        duration: durationText,
+        source: ailment.source || null,
+        group: def?.group || "unknown"
+      };
+    });
 
     console.log("TSDCActorSheet::_prepareContext OUT", { hasActor: !!this.actor, hasInv: !!context.inventory });
     return context;
@@ -469,6 +542,11 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
       if (action === "imp-roll")  return this.#onImpRoll();
       if (action === "def-roll")  return this.#onDefRoll();
       if (action === "res-roll")  return this.#onResRoll();
+      if (action === "char-roll") return this.#onCharRoll();
+      if (action === "remove-ailment") return this.#onRemoveAilment(btn);
+      if (action === "toggle-category") return this.#onToggleCategory(btn);
+      if (action === "delete-item") return this.#onDeleteBagItem(btn);
+      if (action === "delete-owned-item") return this.#onDeleteOwnedItem(btn);
     };
     el.addEventListener("click", this._rootClickHandler);
 
@@ -517,6 +595,11 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     saveDefault('input[name="resBonus"]',   "system.ui.rollDefaults.resistance.bonus");
     saveDefault('input[name="resPenalty"]', "system.ui.rollDefaults.resistance.penalty");
     saveDefault('select[name="resType"]',   "system.ui.rollDefaults.resistance.type", "string");
+
+    // Características
+    saveDefault('input[name="charBonus"]',   "system.ui.rollDefaults.characteristic.bonus");
+    saveDefault('input[name="charPenalty"]', "system.ui.rollDefaults.characteristic.penalty");
+    saveDefault('select[name="charAttr"]',   "system.ui.rollDefaults.characteristic.attr", "string");
   }
 
   // ==== Handlers ====
@@ -581,7 +664,16 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     if (!key) return;
 
     const attrs = this.actor.system?.attributes ?? {};
-    const base  = baseFromSpec(attrs, key) || 0;
+    const attrBase = baseFromSpec(attrs, key) || 0;
+
+    // Obtener nivel y rango de competencia
+    const skillData = this.actor.system?.progression?.skills?.[key] || {};
+    const skillLevel = Number(skillData.level || 0);
+    const skillRank = Number(skillData.rank || 0);
+
+    // Calcular modificador total: atributo + nivel + rango
+    const totalModifier = attrBase + skillLevel + skillRank;
+
     const title = `Tirada • ${row.querySelector("strong")?.textContent ?? key}`;
     const needs = requiresEvolutionChoice(key);
 
@@ -602,7 +694,10 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
             </select>
           </div>` : ``}
           <div class="t-row" style="gap:8px;">
-            <div class="t-field"><label>Base</label><input type="number" value="${base}" disabled></div>
+            <div class="t-field"><label>Atributo</label><input type="number" value="${attrBase}" disabled></div>
+            <div class="t-field"><label>Nivel</label><input type="number" value="${skillLevel}" disabled></div>
+            <div class="t-field"><label>Rango</label><input type="number" value="${skillRank}" disabled></div>
+            <div class="t-field"><label>Total</label><input type="number" value="${totalModifier}" disabled></div>
           </div>
           <div class="t-row" style="gap:8px;">
             <div class="t-field"><label>Bono</label><input type="number" name="bonus" value="${Number(d.bonus||0)}"></div>
@@ -628,8 +723,8 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     // Guarda lo que eligió para siguientes diálogos
     await this.actor.update({ "system.ui.rollDefaults.spec": { bonus: res.bonus, diff: res.diff, mode: res.mode } });
 
-    const formula = `1d10 + ${base} + ${res.bonus} - ${res.diff}`;
-    const rank = Number(foundry.utils.getProperty(this.actor, `system.progression.skills.${key}.rank`) || 0);
+    const formula = `1d10 + ${totalModifier} + ${res.bonus} - ${res.diff}`;
+    const rank = skillRank;
 
     const { resultRoll, otherRoll, usedPolicy } = await resolveEvolution({
       type: "specialization",
@@ -752,5 +847,82 @@ export class TSDCActorSheet extends HandlebarsApplicationMixin(foundry.applicati
     const penalty = Number(el.querySelector('input[name="resPenalty"]')?.value || 0);
     const { rollResistance } = await import("../rolls/dispatcher.js");
     await rollResistance(this.actor, { type, bonus, penalty });
+  }
+
+  async #onCharRoll() {
+    const el = this.element;
+    const attrKey = String(el.querySelector('select[name="charAttr"]')?.value || "").trim();
+    if (!attrKey) {
+      ui.notifications?.warn("Selecciona una característica antes de tirar.");
+      return;
+    }
+    const bonus   = Number(el.querySelector('input[name="charBonus"]')?.value || 0);
+    const penalty = Number(el.querySelector('input[name="charPenalty"]')?.value || 0);
+
+    const { rollCharacteristic } = await import("../rolls/dispatcher.js");
+    await rollCharacteristic(this.actor, {
+      characteristic: attrKey,
+      bonus,
+      penalty
+    });
+  }
+
+  async #onRemoveAilment(btn) {
+    const ailmentId = btn.dataset.ailmentId;
+    if (!ailmentId) return;
+
+    const { removeAilment } = await import("../ailments/index.js");
+    await removeAilment(this.actor, ailmentId);
+    this.render(false);  // re-renderizar la hoja para mostrar cambios
+  }
+
+  #onToggleCategory(btn) {
+    const category = btn.dataset.category;
+    if (!category) return;
+
+    const header = btn.closest(".category-header");
+    const content = btn.closest(".inventory-category")?.querySelector(".category-content");
+
+    if (header && content) {
+      header.classList.toggle("collapsed");
+      content.classList.toggle("collapsed");
+    }
+  }
+
+  async #onDeleteBagItem(btn) {
+    const itemId = btn.dataset.itemId;
+    if (!itemId) return;
+
+    const confirmed = await foundry.applications.api.DialogV2.confirm({
+      window: { title: "Eliminar Item" },
+      content: "<p>¿Estás seguro de que quieres eliminar este item del inventario?</p>",
+      rejectClose: false,
+      modal: true
+    });
+
+    if (!confirmed) return;
+
+    await Inv.removeItem(this.actor, itemId);
+    this.render(false);
+  }
+
+  async #onDeleteOwnedItem(btn) {
+    const itemId = btn.dataset.itemId;
+    if (!itemId) return;
+
+    const item = this.actor.items.get(itemId);
+    if (!item) return;
+
+    const confirmed = await foundry.applications.api.DialogV2.confirm({
+      window: { title: "Eliminar Item" },
+      content: `<p>¿Estás seguro de que quieres eliminar <strong>${item.name}</strong>?</p>`,
+      rejectClose: false,
+      modal: true
+    });
+
+    if (!confirmed) return;
+
+    await item.delete();
+    this.render(false);
   }
 }

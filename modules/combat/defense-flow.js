@@ -531,6 +531,41 @@ export async function runDefenseFlow({
  * Tirada de defensa
  * ====================================================== */
 async function requestDefenseRoll({ defender, defenderToken, attackerActor, attackCtx, attackResult }) {
+  const reactionDefense = defender.getFlag("tsdc", "defenseReaction");
+
+  if (reactionDefense?.active) {
+    const reactionResult = await executeReactionDefense({
+      defender,
+      defenderToken,
+      attackerActor,
+      attackCtx,
+      attackResult,
+      reactionData: reactionDefense
+    });
+
+    const margin = Number(reactionResult?.total ?? 0) - Number(attackResult?.total ?? 0);
+
+    await defender.setFlag("tsdc", "defenseReaction", {
+      ...reactionDefense,
+      active: false,
+      consumed: true,
+      defenseResult: reactionResult?.defenseResult || {
+        success: !!reactionResult?.success,
+        total: Number(reactionResult?.total ?? 0),
+        margin,
+        attackTotal: Number(attackResult?.total ?? 0)
+      }
+    });
+
+    try {
+      await defender.unsetFlag("tsdc", "maniobraEvasiva");
+    } catch (_) {
+      /* ignore */
+    }
+
+    return reactionResult;
+  }
+
   // Verificar si el defensor tiene maniobra evasiva activa
   const maniobraEvasiva = defender.getFlag("tsdc", "maniobraEvasiva");
 
@@ -862,7 +897,7 @@ async function executeReactionDefense({
       return { success: false, total: 0, evo: null, policy: "execution", hitLocation: null };
     }
 
-    const total = Number(roll.total ?? 0);
+    const total = Number(roll.patchedPrimary?.total ?? 0);
     const attackTotal = Number(attackResult?.total ?? 0);
     const success = total >= attackTotal;
     const margin = total - attackTotal;
@@ -878,8 +913,8 @@ async function executeReactionDefense({
     return {
       success,
       total,
-      evo: roll.evo || null,
-      policy: "execution",
+      evo: null,
+      policy: roll.usedPolicy ?? "execution",
       hitLocation: null,
       defenseResult
     };

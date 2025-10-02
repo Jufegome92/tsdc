@@ -54,12 +54,18 @@ async function rollSpecializationForAptitude(actor, {
   const needsPolicy = requiresEvolutionChoice(canonKey);
   let mode = forcedMode ?? (needsPolicy ? (defaults.mode || "learning") : "none");
   if (!needsPolicy && mode === "ask") mode = "none";
-
-  const modifier = baseValue + Number(defaults.bonus ?? 0) - Number(defaults.diff ?? 0) + Number(ctMod || 0);
-  const formula = `1d10 + ${modifier}`;
-
   const rankPath = `system.progression.skills.${canonKey}.rank`;
   const rank = Number(foundry.utils.getProperty(actor, rankPath) || 0);
+  const levelPath = `system.progression.skills.${canonKey}.level`;
+  const level = Number(foundry.utils.getProperty(actor, levelPath) || 0);
+
+  const modifier = baseValue
+    + level
+    + rank
+    + Number(defaults.bonus ?? 0)
+    - Number(defaults.diff ?? 0)
+    + Number(ctMod || 0);
+  const formula = `1d10 + ${modifier}`;
 
   const evo = await resolveEvolution({
     type: "specialization",

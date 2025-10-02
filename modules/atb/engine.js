@@ -36,15 +36,15 @@ function defaultState() {
 function isDriver() { return !!game.user?.isGM; }
 
 function getCombat() { return game.combat ?? null; }
-async function readState() {
+export async function readState() {
   const c = getCombat();
   return c ? (await c.getFlag(FLAG_SCOPE, FLAG_KEY)) ?? defaultState() : defaultState();
 }
-async function writeState(state) {
+export async function writeState(state) {
   const c = getCombat(); if (!c) return;
   await c.setFlag(FLAG_SCOPE, FLAG_KEY, state);
 }
-function ensureActorState(state, combatantId) {
+export function ensureActorState(state, combatantId) {
   state.actors[combatantId] ||= { queue: [], current: null, mods: {} };
   return state.actors[combatantId];
 }
@@ -275,6 +275,16 @@ function resolveQueued(desc, { actor } = {}) {
     if (!ability) return null;
     return makeAbilityAction(ability, { key: ability.key ?? desc.key, clazz: ability.clazz ?? "monster" });
   }
+  if (desc.kind === "reaction-phase") {
+    const label = desc.label || desc.aptitudeDef?.label || desc.aptitudeKey || "Reacción";
+    return {
+      key: desc.actionKey || `reaction:${desc.aptitudeKey ?? "phase"}`,
+      label,
+      init_ticks: Number(desc.initTicks || 0),
+      exec_ticks: Number(desc.execTicks || 0),
+      rec_ticks: Number(desc.recTicks || 0)
+    };
+  }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
       specKey: desc.specKey,
@@ -466,6 +476,47 @@ async function stepOnceInternal() {
       let idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick);
       while (!S.current && idx >= 0) {
         const desc = S.queue.splice(idx, 1)[0];
+        if (desc?.kind === "reaction-phase") {
+          const initTicks = Number(desc.initTicks || 0);
+          const execTicks = Number(desc.execTicks || 0);
+          const recTicks  = Number(desc.recTicks  || 0);
+          const initialPhase = initTicks > 0 ? "init" : (execTicks > 0 ? "exec" : "rec");
+          const ticksLeft = initialPhase === "init" ? initTicks : (initialPhase === "exec" ? execTicks : recTicks);
+
+          const rxCard = {
+            actor: ct.id,
+            actionKey: `reaction:${desc.aptitudeKey}:${desc.reactionPhase}`,
+            type: "reaction-phase",
+            reactionPhase: desc.reactionPhase,
+            aptitudeKey: desc.aptitudeKey,
+            aptitudeDef: desc.aptitudeDef,
+            targetTokenId: desc.targetTokenId,
+            payload: desc.payload || {},
+            combatantId: desc.combatantId ?? ct.id,
+            reactionId: desc.reactionId,
+            I: initTicks,
+            E: execTicks,
+            R: recTicks,
+            placement_tick: state.tick,
+            placement_order: ++state.placementCounter,
+            exec_order: Number(desc.execOrder ?? desc.qorder ?? state.placementCounter),
+            phase: initialPhase,
+            ticks_left: Math.max(0, ticksLeft),
+            started_this_tick: initialPhase !== "init",
+            meta: {
+              ...(desc.meta ?? {}),
+              reactionId: desc.reactionId,
+              reactionPhase: desc.reactionPhase,
+              aptitudeKey: desc.aptitudeKey,
+              aptitudeLabel: desc.aptitudeDef?.label,
+              targetTokenId: desc.targetTokenId,
+              payload: desc.payload || {}
+            }
+          };
+
+          S.current = rxCard;
+          break;
+        }
         const rawDef  = resolveQueued(desc, { actor: ct.actor });
         if (!rawDef) { idx = S.queue.findIndex(d => Number(d.targetTick||0) <= state.tick); continue; }
 
@@ -877,74 +928,9 @@ async function checkForReactionsBeforeExecution(state, combat) {
     }
   }
 
-  // Para cada acción a punto de ejecutarse, verificar si hay reacciones antes del ataque
-  for (const execution of aboutToExecute) {
-    const { combatant, action, token } = execution;
-
-    // Si es un ataque, verificar reacciones del objetivo antes del ataque
-    if (action.actionKey === "attack" && token) {
-      const actorState = ensureActorState(state, combatant.id);
-      const targetTokenId = actorState.current?.meta?.targetTokenId;
-
-      if (targetTokenId) {
-        const targetToken = canvas.tokens.get(targetTokenId);
-        if (targetToken?.actor) {
-          const targetCombatant = combat.combatants.find(ct => ct.token?.object?.id === targetToken.id);
-
-          if (targetCombatant) {
-            const reactions = checkAvailableReactionsForCombatant(
-              targetCombatant.id,
-              "incoming-attack",
-              "before-attack"
-            );
-
-            if (reactions.length > 0) {
-              // El objetivo puede reaccionar antes del ataque
-              const reactionChoice = await promptReactionDialog({
-                reactorToken: targetToken,
-                provokerToken: token,
-                reason: "incoming-attack",
-                timing: "before-attack",
-                timeoutMs: 6000,
-                title: "Reacción antes del ataque"
-              });
-
-              if (reactionChoice) {
-                // Buscar el combatant del reactor para sustituir su acción en ATB
-                const reactorCombatant = combat.combatants.find(ct => ct.token?.object?.id === targetToken.id);
-
-                if (reactorCombatant) {
-                  // Sustituir la acción programada con la reacción
-                  const reactionResult = await substituteActionWithReaction({
-                    combatantId: reactorCombatant.id,
-                    reactionChoice,
-                    targetToken: token,
-                    payload: { reason: "incoming-attack", timing: "before-attack" }
-                  });
-
-                  if (reactionResult.success) {
-                    console.log(`TSDC | ${targetToken.name} sustituye su acción con reacción: ${reactionChoice.label}`);
-                  }
-                } else {
-                  // Fallback: ejecutar sin sustituir si no se encuentra el combatant
-                  const reactionResult = await executeReaction({
-                    reactorToken: targetToken,
-                    targetToken: token,
-                    reactionChoice,
-                    payload: { reason: "incoming-attack", timing: "before-attack" }
-                  });
-
-                  if (reactionResult.success) {
-                    console.log(`TSDC | ${targetToken.name} ejecutó reacción: ${reactionChoice.label}`);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  // Espacio reservado para futuras verificaciones antes de ejecutar acciones.
+  // Actualmente los ataques gestionan sus propias ventanas de reacción.
+  void aboutToExecute;
 }
 
 /* ===== Ejecución de fases de reacción ===== */
@@ -960,7 +946,16 @@ async function performReactionPhase(state, combat, ci, phaseCard) {
     return;
   }
 
-  const { phase, aptitudeKey, aptitudeDef, targetTokenId, payload } = phaseCard;
+  const {
+    reactionPhase,
+    aptitudeKey,
+    aptitudeDef,
+    targetTokenId,
+    payload,
+    combatantId,
+    reactionId
+  } = phaseCard;
+  const phase = reactionPhase ?? phaseCard.phase;
   const targetToken = targetTokenId ? canvas.tokens.get(targetTokenId) : null;
 
   console.log(`TSDC | Executing ${aptitudeDef.label} phase: ${phase} for ${actor.name}`);
@@ -968,15 +963,42 @@ async function performReactionPhase(state, combat, ci, phaseCard) {
   try {
     switch (phase) {
       case "init":
-        await performReactionInitPhase(actor, token, aptitudeDef, targetToken, payload);
+        await performReactionInitPhase({
+          actor,
+          token,
+          aptitudeKey,
+          aptitudeDef,
+          targetToken,
+          payload,
+          combatantId: combatantId ?? ct.id,
+          reactionId
+        });
         break;
 
       case "exec":
-        await performReactionExecPhase(actor, token, aptitudeDef, targetToken, payload);
+        await performReactionExecPhase({
+          actor,
+          token,
+          aptitudeKey,
+          aptitudeDef,
+          targetToken,
+          payload,
+          combatantId: combatantId ?? ct.id,
+          reactionId
+        });
         break;
 
       case "recovery":
-        await performReactionRecoveryPhase(actor, token, aptitudeDef, targetToken, payload);
+        await performReactionRecoveryPhase({
+          actor,
+          token,
+          aptitudeKey,
+          aptitudeDef,
+          targetToken,
+          payload,
+          combatantId: combatantId ?? ct.id,
+          reactionId
+        });
         break;
 
       default:
@@ -988,37 +1010,92 @@ async function performReactionPhase(state, combat, ci, phaseCard) {
 }
 
 /** Execute init phase of reaction */
-async function performReactionInitPhase(actor, token, aptitudeDef, targetToken, payload) {
+export async function performReactionInitPhase({
+  actor,
+  token,
+  aptitudeKey,
+  aptitudeDef,
+  targetToken,
+  payload,
+  combatantId,
+  reactionId
+}) {
   const initPhase = aptitudeDef.phases?.init;
   if (!initPhase) return;
 
+  if (!payload) payload = {};
+  if (payload?.reactionInitApplied) return;
+
   if (initPhase.effect === "substitute_defense_roll") {
-    // Marcar que esta reacción debe sustituir la tirada de defensa
-    payload.defenseSubstitution = {
-      aptitudeKey: initPhase.aptitudeKey,
+    const substitutionData = {
+      active: true,
+      consumed: false,
+      aptitudeKey: initPhase.aptitudeKey || aptitudeKey,
       specKey: initPhase.specKey,
-      active: true
+      label: aptitudeDef.label,
+      reactionId,
+      combatantId,
+      targetTokenId: targetToken?.id ?? null,
+      payload: payload || {},
+      usePhaseSystem: true
     };
 
+    try {
+      await actor.setFlag("tsdc", "defenseReaction", substitutionData);
+    } catch (error) {
+      console.error("TSDC | No se pudo marcar defensa por reacción", error);
+    }
+
+    // Compatibilidad legacy con maniobra evasiva
+    if ((aptitudeKey || "") === "maniobra_evasiva") {
+      try {
+        await actor.setFlag("tsdc", "maniobraEvasiva", {
+          ...substitutionData,
+          aptitudeKey: initPhase.aptitudeKey || aptitudeKey
+        });
+      } catch (error) {
+        console.warn("TSDC | No se pudo establecer flag legacy de maniobra evasiva", error);
+      }
+    }
+
     await ChatMessage.create({
-      content: `<p>🎭 <b>${actor.name}</b>: ${initPhase.description}</p>`,
+      content: `<p><b>${actor.name}</b>: ${initPhase.description}</p>`,
       speaker: ChatMessage.getSpeaker({ actor })
     });
+    payload.reactionInitApplied = true;
   } else if (initPhase.effect === "defense_bonus") {
     // Aplicar bonificador de defensa
     payload.defenseBonus = initPhase.bonus;
 
     await ChatMessage.create({
-      content: `<p>⚡ <b>${actor.name}</b>: ${initPhase.description} (+${initPhase.bonus})</p>`,
+      content: `<p><b>${actor.name}</b>: ${initPhase.description} (+${initPhase.bonus})</p>`,
       speaker: ChatMessage.getSpeaker({ actor })
     });
+    payload.reactionInitApplied = true;
   }
 }
 
 /** Execute exec phase of reaction */
-async function performReactionExecPhase(actor, token, aptitudeDef, targetToken, payload) {
+export async function performReactionExecPhase({
+  actor,
+  token,
+  aptitudeKey,
+  aptitudeDef,
+  targetToken,
+  payload,
+  combatantId,
+  reactionId
+}) {
   const execPhase = aptitudeDef.phases?.exec;
   if (!execPhase || !execPhase.effects) return;
+
+  if (!payload) payload = {};
+  const reactionState = actor.getFlag("tsdc", "defenseReaction");
+  if (reactionState?.reactionId === reactionId) {
+    if (reactionState.defenseResult) {
+      payload.defenseResult = reactionState.defenseResult;
+    }
+  }
 
   // Verificar condición para ejecutar efectos
   const condition = execPhase.condition;
@@ -1027,25 +1104,55 @@ async function performReactionExecPhase(actor, token, aptitudeDef, targetToken, 
       content: `<p>💭 <b>${actor.name}</b>: ${aptitudeDef.label} - Condición no cumplida</p>`,
       speaker: ChatMessage.getSpeaker({ actor })
     });
+    if (reactionState?.reactionId === reactionId) {
+      await actor.unsetFlag("tsdc", "defenseReaction");
+    }
     return;
   }
 
   await ChatMessage.create({
-    content: `<p>🎬 <b>${actor.name}</b>: ${execPhase.description}</p>`,
+    content: `<p><b>${actor.name}</b>: ${execPhase.description}</p>`,
     speaker: ChatMessage.getSpeaker({ actor })
   });
 
   for (const effect of execPhase.effects) {
-    await applyReactionEffect(actor, token, targetToken, effect);
+    await applyReactionEffect({
+      actor,
+      token,
+      targetToken,
+      effect,
+      defenseResult: payload.defenseResult,
+      aptitudeDef,
+      reactionId
+    });
+  }
+
+  if (reactionState?.reactionId === reactionId) {
+    await actor.unsetFlag("tsdc", "defenseReaction");
   }
 }
 
 /** Execute recovery phase of reaction */
-async function performReactionRecoveryPhase(actor, token, aptitudeDef, targetToken, payload) {
+export async function performReactionRecoveryPhase({
+  actor,
+  token,
+  aptitudeKey,
+  aptitudeDef,
+  targetToken,
+  payload,
+  combatantId,
+  reactionId
+}) {
+  if (!payload) payload = {};
   await ChatMessage.create({
     content: `<p>🔄 <b>${actor.name}</b>: ${aptitudeDef.label} - Recuperación</p>`,
     speaker: ChatMessage.getSpeaker({ actor })
   });
+
+  const reactionState = actor.getFlag("tsdc", "defenseReaction");
+  if (reactionState?.reactionId === reactionId) {
+    await actor.unsetFlag("tsdc", "defenseReaction");
+  }
 }
 
 /** Check if reaction condition is met */
@@ -1063,26 +1170,56 @@ function checkReactionCondition(condition, payload) {
 }
 
 /** Apply a reaction effect */
-async function applyReactionEffect(actor, token, targetToken, effect) {
+async function applyReactionEffect({
+  actor,
+  token,
+  targetToken,
+  effect,
+  defenseResult,
+  aptitudeDef,
+  reactionId
+}) {
   switch (effect.type) {
     case "free_movement":
-      await ChatMessage.create({
-        content: `<p>🏃 <b>${actor.name}</b> puede moverse libremente sin provocar reacciones.</p>`,
-        speaker: ChatMessage.getSpeaker({ actor })
-      });
+      {
+        const distance = effect.distance ?? "libremente";
+        const multiplier = Number(effect.multiplier ?? effect.factor ?? effect.ratio ?? 1);
+        let descriptor = "libremente";
+        if (distance === "speed") {
+          descriptor = multiplier && multiplier !== 1
+            ? `hasta ${Math.round(multiplier * 100)}% de su velocidad`
+            : "hasta su velocidad";
+        } else if (distance === "half-speed") {
+          descriptor = "hasta la mitad de su velocidad";
+        } else if (typeof distance === "number") {
+          descriptor = `hasta ${distance} casillas`;
+        } else if (typeof distance === "string") {
+          descriptor = distance;
+        }
+        const note = effect.note ? ` ${effect.note}` : "";
+        await ChatMessage.create({
+          content: `<p>🏃 <b>${actor.name}</b> puede moverse ${descriptor}${note ? ` (${note})` : ""}.</p>`,
+          speaker: ChatMessage.getSpeaker({ actor })
+        });
+      }
       break;
 
     case "bonus_attack":
-      await ChatMessage.create({
-        content: `<p>⚔️ <b>${actor.name}</b> puede realizar un contraataque con +${effect.bonus} de bonificación.</p>`,
-        speaker: ChatMessage.getSpeaker({ actor })
+      await executeBonusAttack({
+        actor,
+        token,
+        targetToken,
+        effect,
+        defenseResult,
+        aptitudeDef,
+        reactionId
       });
       break;
 
     case "disarm_attacker":
       if (targetToken?.actor) {
         await ChatMessage.create({
-          content: `<p>💥 <b>${actor.name}</b> desarma a <b>${targetToken.name}</b>! ${effect.note}</p>`,
+          content: `<p>💥 <b>${actor.name}</b> desarma a <b>${targetToken.name}</b>! ${effect.note ?? ""}</p>`,
           speaker: ChatMessage.getSpeaker({ actor })
         });
       }
@@ -1098,7 +1235,7 @@ async function applyReactionEffect(actor, token, targetToken, effect) {
     case "debuff_attacker":
       if (targetToken?.actor) {
         await ChatMessage.create({
-          content: `<p>😵 <b>${targetToken.name}</b> sufre -${effect.penalty} a su próximo ataque. ${effect.note}</p>`,
+          content: `<p>😵 <b>${targetToken.name}</b> sufre -${effect.penalty} a su próximo ataque. ${effect.note ?? ""}</p>`,
           speaker: ChatMessage.getSpeaker({ actor })
         });
       }
@@ -1106,6 +1243,90 @@ async function applyReactionEffect(actor, token, targetToken, effect) {
 
     default:
       console.warn(`TSDC | Unknown reaction effect type: ${effect.type}`);
+  }
+}
+
+async function executeBonusAttack({
+  actor,
+  token,
+  targetToken,
+  effect = {},
+  defenseResult,
+  aptitudeDef,
+  reactionId
+}) {
+  if (!actor || !token) return;
+
+  if (!targetToken?.actor) {
+    await ChatMessage.create({
+      content: `<p>⚔️ <b>${actor.name}</b> intenta contraatacar, pero no hay un objetivo válido.</p>`,
+      speaker: ChatMessage.getSpeaker({ actor })
+    });
+    return;
+  }
+
+  try {
+    const [rolls, defense, perception, inventory] = await Promise.all([
+      import("../rolls/dispatcher.js"),
+      import("../combat/defense-flow.js"),
+      import("../perception/index.js"),
+      import("../features/inventory/index.js")
+    ]);
+
+    const { rollAttack } = rolls;
+    const { runDefenseFlow } = defense;
+    const { buildPerceptionPackage, packageToRollContext } = perception;
+    const { getEquippedWeaponKey } = inventory;
+
+    const pkg = buildPerceptionPackage({ actorToken: token, targetToken });
+    const ctx = packageToRollContext(pkg);
+
+    const extraTags = new Set(ctx.extraTags ?? []);
+    extraTags.add("reaction");
+    extraTags.add("counterattack");
+
+    const attackCtx = {
+      ...ctx,
+      phase: "attack",
+      extraTags: Array.from(extraTags),
+      immediate: true,
+      reactionSource: aptitudeDef?.key ?? aptitudeDef?.label ?? "reaction",
+      defenseResult,
+      reactionId
+    };
+
+    const weaponKey = effect.weaponKey
+      ?? getEquippedWeaponKey?.(actor, "main")
+      ?? getEquippedWeaponKey?.(actor, "off")
+      ?? null;
+
+    const bonus = Number(effect.bonus ?? 0) || 0;
+    const flavor = `${aptitudeDef?.label ?? "Reacción"} • Contraataque`;
+
+    const attackResult = await rollAttack(actor, {
+      key: weaponKey ?? undefined,
+      bonus,
+      flavor,
+      context: attackCtx,
+      opposed: true
+    });
+
+    if (!attackResult) return;
+
+    await runDefenseFlow({
+      attackerActor: actor,
+      attackerToken: token,
+      targetToken,
+      attackCtx,
+      attackResult
+    });
+
+  } catch (error) {
+    console.error("TSDC | Error ejecutando contraataque de reacción:", error);
+    await ChatMessage.create({
+      content: `<p>⚠️ <b>${actor.name}</b> no pudo ejecutar el contraataque (${error.message}).</p>`,
+      speaker: ChatMessage.getSpeaker({ actor })
+    });
   }
 }
 

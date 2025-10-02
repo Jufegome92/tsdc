@@ -1,0 +1,232 @@
+<form class="tsdc mineral-vein-sheet" autocomplete="off">
+  <header class="sheet-header">
+    <img class="profile-img" src="{{actor.img}}" data-edit="img" title="{{actor.name}}" />
+    <div class="header-fields">
+      <h1 class="charname">
+        <input name="name" type="text" value="{{actor.name}}" placeholder="Nombre de la veta" />
+      </h1>
+      <div class="resource">
+        <label>Nivel</label>
+        <input type="number" name="system.level" value="{{system.level}}" min="1" />
+      </div>
+    </div>
+  </header>
+
+  <section class="sheet-body">
+    <section class="card material-overview">
+      <div class="card-header">
+        <h2>{{materialInfo.label}}</h2>
+        <span class="tag">{{materialInfo.typeLabel}}</span>
+      </div>
+      <p class="description">{{materialInfo.description}}</p>
+      <dl class="stats">
+        <div><dt>Clave</dt><dd>{{materialInfo.key}}</dd></div>
+        <div>
+          <dt>Calidad</dt>
+          <dd>Grado {{materialInfo.quality.grade}} — {{materialInfo.quality.label}} {{#if materialInfo.qualityRoll}}(1d100={{materialInfo.qualityRoll}}){{/if}}</dd>
+        </div>
+        <div><dt>Durabilidad</dt><dd>{{materialInfo.durability}}</dd></div>
+        <div><dt>Potencia</dt><dd>{{materialInfo.potency}}</dd></div>
+        <div><dt>Costo base</dt><dd>{{materialInfo.cost}} Shekels/{{materialInfo.unit}}</dd></div>
+      </dl>
+      <button type="button" class="wizard-button" data-action="reopen-wizard">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        Abrir asistente
+      </button>
+    </section>
+
+    <section class="card extraction-overview">
+      <h3>Extracción</h3>
+      <dl class="stats">
+        <div><dt>Accesibilidad</dt><dd>{{accessibilityInfo.label}}</dd></div>
+        <div><dt>Dificultad</dt><dd>{{extraction.difficulty}}</dd></div>
+        <div><dt>Kit requerido</dt><dd>{{toolInfo.label}}</dd></div>
+        <div><dt>Intervalos</dt><dd>{{extraction.intervals}} × {{extraction.intervalDuration}} min</dd></div>
+        <div><dt>Duración total</dt><dd>{{richnessInfo.durationHours}} h ({{richnessInfo.durationMinutes}} min)</dd></div>
+        <div><dt>Tiempo restante</dt><dd>{{richnessInfo.remainingDisplay}}</dd></div>
+        <div><dt>Producción</dt><dd>{{richnessInfo.dice}} kg por intervalo</dd></div>
+        <div><dt>Mano de obra</dt><dd>{{#if laborCost}}{{laborCost}} Shekels/kg{{else}}—{{/if}}</dd></div>
+      </dl>
+      {{#if extraction.note}}
+        <p class="note">{{extraction.note}}</p>
+      {{/if}}
+    </section>
+
+    <section class="card controls">
+      <h3>Controles</h3>
+      <div class="grid">
+        <label class="t-col">
+          <span class="muted">Riqueza</span>
+          <select name="system.veinRichness">
+            {{#each richnessOptions}}
+              <option value="{{this.value}}" {{#if (eq ../system.veinRichness this.value)}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </label>
+        <label class="t-col">
+          <span class="muted">Calidad</span>
+          <select name="system.quality">
+            {{#each qualityOptions}}
+              <option value="{{this.value}}" {{#if (eq ../materialInfo.quality.grade this.value)}}selected{{/if}}>{{this.label}}</option>
+            {{/each}}
+          </select>
+        </label>
+        <label class="t-col">
+          <span class="muted">Tiempo restante (min)</span>
+          <input type="number" name="system.remainingTime" value="{{system.remainingTime}}" min="0" />
+        </label>
+        <label class="t-col">
+          <span class="muted">Duración total (min)</span>
+          <input type="number" name="system.veinDuration" value="{{extraction.veinDuration}}" min="0" />
+        </label>
+        <label class="t-col">
+          <span class="muted">Durabilidad</span>
+          <input type="number" name="system.durability" value="{{materialInfo.durability}}" min="0" />
+        </label>
+        <label class="t-col">
+          <span class="muted">Potencia</span>
+          <input type="number" name="system.potency" value="{{materialInfo.potency}}" min="0" />
+        </label>
+        <label class="t-col">
+          <span class="muted">Costo base (Shekels/{{materialInfo.unit}})</span>
+          <input type="number" step="0.01" name="system.cost" value="{{materialInfo.costRaw}}" min="0" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="system.depleted" {{#if system.depleted}}checked{{/if}} />
+          Agotada
+        </label>
+      </div>
+    </section>
+  </section>
+
+  <style>
+    .tsdc.mineral-vein-sheet {
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .tsdc.mineral-vein-sheet .sheet-header {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+    .tsdc.mineral-vein-sheet .profile-img {
+      width: 100px;
+      height: 100px;
+      object-fit: cover;
+      border: 2px solid #999;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .tsdc.mineral-vein-sheet .header-fields {
+      flex: 1;
+    }
+    .tsdc.mineral-vein-sheet .charname input {
+      font-size: 24px;
+      font-weight: bold;
+      border: none;
+      border-bottom: 1px solid #ccc;
+      width: 100%;
+    }
+    .tsdc.mineral-vein-sheet .resource {
+      margin-top: 10px;
+    }
+    .tsdc.mineral-vein-sheet .sheet-body {
+      display: grid;
+      gap: 12px;
+    }
+    .tsdc.mineral-vein-sheet .card {
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .tsdc.mineral-vein-sheet .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .tsdc.mineral-vein-sheet .card-header h2 {
+      margin: 0;
+    }
+    .tsdc.mineral-vein-sheet .tag {
+      font-size: 11px;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 999px;
+      letter-spacing: 0.05em;
+    }
+    .tsdc.mineral-vein-sheet .description {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-text-light-5);
+    }
+    .tsdc.mineral-vein-sheet dl.stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px;
+      margin: 0;
+    }
+    .tsdc.mineral-vein-sheet dl.stats div {
+      background: rgba(0,0,0,0.15);
+      border-radius: 6px;
+      padding: 6px;
+    }
+    .tsdc.mineral-vein-sheet dl.stats dt {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-light-5);
+      margin-bottom: 2px;
+    }
+    .tsdc.mineral-vein-sheet dl.stats dd {
+      margin: 0;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .tsdc.mineral-vein-sheet .wizard-button {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: var(--color-primary-4);
+      color: white;
+    }
+    .tsdc.mineral-vein-sheet .note {
+      font-size: 12px;
+      font-style: italic;
+      color: var(--color-text-light-5);
+      margin: 0;
+    }
+    .tsdc.mineral-vein-sheet .controls .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .tsdc.mineral-vein-sheet .controls label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .tsdc.mineral-vein-sheet .controls input,
+    .tsdc.mineral-vein-sheet .controls select {
+      padding: 5px;
+      border-radius: 6px;
+    }
+    .tsdc.mineral-vein-sheet .controls .checkbox {
+      flex-direction: row;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+  </style>
+</form>

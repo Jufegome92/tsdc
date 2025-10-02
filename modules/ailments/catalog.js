@@ -26,13 +26,13 @@ export const CATALOG = {
     duration: { type: "rounds", value: "1d4" },
     effectsText: [
       "-1 PA por ronda.",
-      "Las T.E de movimiento aumentan su dificultad en +2.",
+      "Penalizador a T.E de movimiento según rango del atacante.",
       "+1 tick al Inicio de tus acciones mientras dure."
     ],
     mechanics: {
       ctAdjust: { init: 1 },
       rollModifiers: [
-        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Electrizado" }
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, useMagnitude: true, label: "Electrizado" }
       ]
     }
   },
@@ -41,14 +41,14 @@ export const CATALOG = {
     label: "Atrapado",
     duration: { type: "untilTreated" },
     effectsText: [
-      "Velocidad 0. -2 a T.A, T.I, T.D y T.E físicas.",
+      "Velocidad 0. Penalizador a T.A, T.I, T.D y T.E físicas según rango.",
       "Acción de escape: CT 2 (I1/E1/R0) para intentar liberarse (T.R Alteración o T.E Destreza, según la situación)."
     ],
     mechanics: {
       movementBlocked: true,
       rollModifiers: [
-        { phases: ["attack", "defense", "impact"], value: -2, label: "Atrapado" },
-        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Atrapado" }
+        { phases: ["attack", "defense", "impact"], value: -2, useMagnitude: true, label: "Atrapado" },
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, useMagnitude: true, label: "Atrapado" }
       ],
       escape: {
         ct: { init: 1, exec: 1, rec: 0 },
@@ -61,14 +61,14 @@ export const CATALOG = {
     label: "Congelado",
     duration: { type: "rounds", value: "1d4" },
     effectsText: [
-      "-2 a T.E de Destreza y T.C de Agilidad.",
+      "Penalizador a T.E de Destreza y T.C de Agilidad según rango.",
       "Movimiento a la mitad."
     ],
     mechanics: {
       ctAdjust: { init: 1 },
       rollModifiers: [
-        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Congelado" },
-        { phases: ["resistance"], resTypes: ["composure"], value: -2, label: "Congelado" }
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, useMagnitude: true, label: "Congelado" },
+        { phases: ["resistance"], resTypes: ["composure"], value: -2, useMagnitude: true, label: "Congelado" }
       ]
     }
   },
@@ -77,12 +77,12 @@ export const CATALOG = {
     label: "Derribado",
     duration: { type: "untilTreated" },
     effectsText: [
-      "-2 a T.D. Los oponentes tienen un avance de dado contra ti.",
+      "Penalizador a T.D según rango del atacante. Los oponentes tienen un avance de dado contra ti.",
       "Tu primera acción de movimiento se usa para levantarte."
     ],
     mechanics: {
       rollModifiers: [
-        { phases: ["defense"], value: -2, label: "Derribado" }
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Derribado" }
       ]
     }
   },
@@ -90,31 +90,46 @@ export const CATALOG = {
     id: "DESANGRADO", group: AILMENT_GROUP.ALTERATION,
     label: "Desangrado",
     duration: { type: "untilTreated" },
-    severable: true, // admite severidad: leve|grave|critico
-    effectsBySeverity: {
-      leve:   ["-1 a T.C de Fuerza y Tenacidad."],
-      grave:  ["-3 a T.C de Fuerza y Tenacidad, -1 PA. +1 tick a la Recuperación de tus acciones. Requiere vendaje rápido."],
-      critico:["-3 a T.C de Fuerza y Tenacidad, -2 PA. +1 tick a Inicio y Recuperación. La zona afectada queda inmovilizada."]
-    },
+    effectsText: [
+      "Cada vez que ejecutas una acción, la herida se agrava.",
+      "Añade 1 casilla de daño a la zona afectada por acción ejecutada.",
+      "Requiere tratamiento para detener el sangrado."
+    ],
     mechanics: {
-      severity: {
-        leve: {
-          rollModifiers: [
-            { phases: ["resistance"], resTypes: ["poison", "infection"], value: -1, label: "Desangrado (Leve)" }
-          ]
-        },
-        grave: {
-          rollModifiers: [
-            { phases: ["resistance"], resTypes: ["poison", "infection"], value: -3, label: "Desangrado (Grave)" }
-          ],
-          ctAdjust: { rec: 1 }
-        },
-        critico: {
-          rollModifiers: [
-            { phases: ["resistance"], resTypes: ["poison", "infection"], value: -3, label: "Desangrado (Crítico)" }
-          ],
-          ctAdjust: { init: 1, rec: 1 }
-        }
+      onActionExecuted: {
+        type: "addWoundSlot",
+        targetZone: "source",  // la zona donde se aplicó originalmente
+        amount: 1
+      }
+    }
+  },
+  HERIDA_PERFORANTE: {
+    id: "HERIDA_PERFORANTE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida Perforante",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "La herida perforante reduce el bloqueo de la zona afectada.",
+      "Penalización al bloqueo igual al rango de competencia del ataque."
+    ],
+    mechanics: {
+      blockingPenalty: {
+        usesMagnitude: true,
+        targetZone: "source"  // solo en la zona donde se aplicó
+      }
+    }
+  },
+  HERIDA_CONTUNDENTE: {
+    id: "HERIDA_CONTUNDENTE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida Contundente",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "El impacto contundente dificulta las acciones físicas.",
+      "+1 tick de Recuperación en acciones físicas (ataque, maniobras, aptitudes físicas, poderes de reliquia)."
+    ],
+    mechanics: {
+      ctAdjust: {
+        rec: 1,
+        actionTypes: ["attack", "maneuver", "physical_aptitude", "relic_power"]
       }
     }
   },
@@ -122,11 +137,11 @@ export const CATALOG = {
     id: "CONMOCIONADO", group: AILMENT_GROUP.ALTERATION,
     label: "Conmocionado",
     duration: { type: "rounds", value: "1d4" },
-    effectsText: ["+2 a la dificultad de T.E/T.C relacionadas con enfoque."],
+    effectsText: ["Penalizador a T.E/T.C relacionadas con enfoque según rango."],
     mechanics: {
       rollModifiers: [
-        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, label: "Conmocionado" },
-        { phases: ["resistance"], resTypes: ["composure"], value: -2, label: "Conmocionado" }
+        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, useMagnitude: true, label: "Conmocionado" },
+        { phases: ["resistance"], resTypes: ["composure"], value: -2, useMagnitude: true, label: "Conmocionado" }
       ]
     }
   },
@@ -135,13 +150,13 @@ export const CATALOG = {
     label: "Aterrorizado",
     duration: { type: "untilTreated" },
     effectsText: [
-      "Debe huir de la fuente del miedo o sufre -2 a T.A y T.D.",
+      "Debe huir de la fuente del miedo o sufre penalizador a T.A y T.D según rango.",
       "Puede gastar 1 PA para T.R Alteraciones vs (dif. inicial +2)."
     ],
     mechanics: {
       rollModifiers: [
-        { phases: ["attack"], value: -2, label: "Aterrorizado" },
-        { phases: ["defense"], value: -2, label: "Aterrorizado" }
+        { phases: ["attack"], value: -2, useMagnitude: true, label: "Aterrorizado" },
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Aterrorizado" }
       ]
     }
   },
@@ -156,8 +171,8 @@ export const CATALOG = {
     mechanics: {
       movementBlocked: true,
       rollModifiers: [
-        { phases: ["attack"], value: -99, label: "Paralizado" },
-        { phases: ["defense"], value: -5, label: "Paralizado" }
+        { phases: ["attack"], value: -99, useMagnitude: true, label: "Paralizado" },
+        { phases: ["defense"], value: -5, useMagnitude: true, label: "Paralizado" }
       ]
     }
   },
@@ -175,13 +190,13 @@ export const CATALOG = {
     label: "Cegado",
     duration: { type: "rounds", value: "1d4" },
     effectsText: [
-      "-5 a T.A y T.D.",
+      "Penalizador a T.A y T.D según rango.",
       "No puede realizar T.E que requieran visión."
     ],
     mechanics: {
       rollModifiers: [
-        { phases: ["attack"], value: -5, label: "Cegado" },
-        { phases: ["defense"], value: -5, label: "Cegado" }
+        { phases: ["attack"], value: -5, useMagnitude: true, label: "Cegado" },
+        { phases: ["defense"], value: -5, useMagnitude: true, label: "Cegado" }
       ]
     }
   },
@@ -202,8 +217,8 @@ export const CATALOG = {
     mechanics: {
       movementBlocked: true,
       rollModifiers: [
-        { phases: ["attack"], value: -5, label: "Inmovilizado" },
-        { phases: ["defense"], value: -5, label: "Inmovilizado" }
+        { phases: ["attack"], value: -5, useMagnitude: true, label: "Inmovilizado" },
+        { phases: ["defense"], value: -5, useMagnitude: true, label: "Inmovilizado" }
       ],
       escape: {
         ct: { init: 1, exec: 1, rec: 0 },
@@ -215,11 +230,11 @@ export const CATALOG = {
     id: "DESEQUILIBRADO", group: AILMENT_GROUP.ALTERATION,
     label: "Desequilibrado",
     duration: { type: "untilTreated" },
-    effectsText: ["-2 a T.D y T.E de Destreza/Acrobacias/Saltar/Trepar."],
+    effectsText: ["Penalizador a T.D y T.E de Destreza/Acrobacias/Saltar/Trepar según rango."],
     mechanics: {
       rollModifiers: [
-        { phases: ["defense"], value: -2, label: "Desequilibrado" },
-        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, label: "Desequilibrado" }
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Desequilibrado" },
+        { phases: ["skill"], tagsAny: ["spec:physical"], value: -2, useMagnitude: true, label: "Desequilibrado" }
       ]
     }
   },
@@ -227,12 +242,12 @@ export const CATALOG = {
     id: "ATURDIDO", group: AILMENT_GROUP.ALTERATION,
     label: "Aturdido",
     duration: { type: "rounds", value: 1 },
-    effectsText: ["Pierde su próxima ronda. -2 a T.R, T.C y T.D."],
+    effectsText: ["Pierde su próxima ronda. Penalizador a T.R, T.C y T.D según rango."],
     mechanics: {
       ctAdjust: { init: 1 },
       rollModifiers: [
-        { phases: ["defense"], value: -2, label: "Aturdido" },
-        { phases: ["resistance"], value: -2, label: "Aturdido" }
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Aturdido" },
+        { phases: ["resistance"], value: -2, useMagnitude: true, label: "Aturdido" }
       ]
     }
   },
@@ -241,12 +256,12 @@ export const CATALOG = {
     label: "Desorientado",
     duration: { type: "rounds", value: "1d4" },
     effectsText: [
-      "-2 a T.E ligadas a Intelecto/Sabiduría.",
-      "-2 a Preparación (temporal)."
+      "Penalizador a T.E ligadas a Intelecto/Sabiduría según rango.",
+      "Penalizador a Preparación (temporal)."
     ],
     mechanics: {
       rollModifiers: [
-        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, label: "Desorientado" }
+        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, useMagnitude: true, label: "Desorientado" }
       ]
     }
   },
@@ -260,7 +275,7 @@ export const CATALOG = {
     mechanics: {
       ctAdjust: { rec: 1 },
       rollModifiers: [
-        { phases: ["resistance"], resTypes: ["alteration", "poison", "air"], value: -1, label: "Asfixiado" }
+        { phases: ["resistance"], resTypes: ["alteration", "poison", "air"], value: -1, useMagnitude: true, label: "Asfixiado" }
       ]
     }
   },
@@ -270,14 +285,14 @@ export const CATALOG = {
     duration: { type: "rounds", value: "1d4" },
     effectsText: [
       "No puede ejecutar habilidades que requieran Enfoque.",
-      "-2 a todas las tiradas."
+      "Penalizador a todas las tiradas según rango del atacante."
     ],
     mechanics: {
       rollModifiers: [
-        { phases: ["attack"], value: -2, label: "Impedido" },
-        { phases: ["defense"], value: -2, label: "Impedido" },
-        { phases: ["skill"], value: -2, label: "Impedido" },
-        { phases: ["resistance"], value: -2, label: "Impedido" }
+        { phases: ["attack"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["skill"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["resistance"], value: -2, useMagnitude: true, label: "Impedido" }
       ]
     }
   },
@@ -285,11 +300,11 @@ export const CATALOG = {
     id: "SOBRECARGADO", group: AILMENT_GROUP.ALTERATION,
     label: "Sobrecargado",
     duration: { type: "rounds", value: "1d6" },
-    effectsText: ["-2 a todas las T.R y T.D."],
+    effectsText: ["Penalizador a todas las T.R y T.D según rango."],
     mechanics: {
       rollModifiers: [
-        { phases: ["defense"], value: -2, label: "Sobrecargado" },
-        { phases: ["resistance"], value: -2, label: "Sobrecargado" }
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Sobrecargado" },
+        { phases: ["resistance"], value: -2, useMagnitude: true, label: "Sobrecargado" }
       ]
     }
   },
@@ -304,6 +319,107 @@ export const CATALOG = {
     label: "Desplazado",
     duration: { type: "instant" },
     effectsText: ["Movimiento forzado. Vulnerable a Reacciones Instintivas durante el desplazamiento."]
+  },
+
+  // =========================
+  // EFECTOS ELEMENTALES
+  // =========================
+  HERIDA_AGUA: {
+    id: "HERIDA_AGUA", group: AILMENT_GROUP.ELEMENTAL,
+    label: "Congelación Elemental (Agua)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "El frío elemental ralentiza el movimiento.",
+      "Reduce la velocidad de movimiento según rango de competencia del ataque."
+    ],
+    mechanics: {
+      movementPenalty: {
+        usesMagnitude: true  // resta X metros de velocidad donde X = rango
+      }
+    }
+  },
+  HERIDA_LUZ: {
+    id: "HERIDA_LUZ", group: AILMENT_GROUP.ELEMENTAL,
+    label: "Sobrecarga de Luz",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "La luz sobrecarga tus sentidos.",
+      "No puedes llevar a cabo reacciones.",
+      "Penalizador a todas las tiradas según rango."
+    ],
+    mechanics: {
+      reactionsBlocked: true,
+      rollModifiers: [
+        { phases: ["attack"], value: -2, useMagnitude: true, label: "Sobrecarga de Luz" },
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Sobrecarga de Luz" },
+        { phases: ["skill"], value: -2, useMagnitude: true, label: "Sobrecarga de Luz" },
+        { phases: ["resistance"], value: -2, useMagnitude: true, label: "Sobrecarga de Luz" }
+      ]
+    }
+  },
+  HERIDA_OSCURIDAD: {
+    id: "HERIDA_OSCURIDAD", group: AILMENT_GROUP.ELEMENTAL,
+    label: "Ceguera de Oscuridad",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "La oscuridad elemental reduce tu visión.",
+      "El rango de visión efectivo se reduce a la mitad (después de todos los cálculos)."
+    ],
+    mechanics: {
+      visionMultiplier: 0.5
+    }
+  },
+  HERIDA_VIENTO: {
+    id: "HERIDA_VIENTO", group: AILMENT_GROUP.ELEMENTAL,
+    label: "Laceración de Viento",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "El viento te desplaza y desestabiliza.",
+      "Desplazado X metros según rango de competencia.",
+      "Penalizador a defensa según rango de competencia."
+    ],
+    mechanics: {
+      forcedMovement: {
+        usesMagnitude: true  // desplaza X metros donde X = rango
+      },
+      rollModifiers: [
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Laceración de Viento" }
+      ]
+    }
+  },
+  HERIDA_TIERRA: {
+    id: "HERIDA_TIERRA", group: AILMENT_GROUP.ELEMENTAL,
+    label: "Aplastamiento de Tierra",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "El impacto de tierra daña la estructura de la parte afectada.",
+      "Reduce la durabilidad de la zona en 2× el rango de competencia del ataque."
+    ],
+    mechanics: {
+      durabilityDamage: {
+        usesMagnitude: true,
+        multiplier: 2,  // 2 × rango
+        targetZone: "source"
+      }
+    }
+  },
+  HERIDA_FUEGO: {
+    id: "HERIDA_FUEGO", group: AILMENT_GROUP.ELEMENTAL,
+    label: "Quemadura Elemental",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Las quemaduras causan dolor, hinchazón y dificultan el movimiento.",
+      "Penalizador a T.R de Infección según rango de competencia.",
+      "+1 tick al Inicio en TODAS las acciones debido al dolor."
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["resistance"], resTypes: ["infection"], value: -2, useMagnitude: true, label: "Quemadura" }
+      ],
+      ctAdjust: {
+        init: 1  // aplica a TODAS las acciones
+      }
+    }
   },
   QUEMADO: {
     id: "QUEMADO", group: AILMENT_GROUP.ALTERATION,
@@ -758,6 +874,242 @@ export const CATALOG = {
           ]
         }
       }
+    }
+  },
+
+  // ==========================================
+  // HERIDAS POR ZONA (con severidad dinámica)
+  // ==========================================
+
+  // === CABEZA ===
+  HERIDA_CABEZA_LEVE: {
+    id: "HERIDA_CABEZA_LEVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Cabeza (Leve)",
+    duration: { type: "untilTreated" },
+    effectsText: ["Desequilibrado: penalizador a T.D y T.E de equilibrio/acrobacias."],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Desequilibrado" },
+        { phases: ["skill"], tagsAny: ["spec:acrobacias", "spec:equilibrio"], value: -2, useMagnitude: true, label: "Desequilibrado" }
+      ]
+    }
+  },
+  HERIDA_CABEZA_GRAVE: {
+    id: "HERIDA_CABEZA_GRAVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Cabeza (Grave)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Desequilibrado + Conmocionado",
+      "Penalizador a T.D y T.E de equilibrio/acrobacias",
+      "Penalizador a T.E/T.C relacionadas con enfoque"
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Desequilibrado" },
+        { phases: ["skill"], tagsAny: ["spec:acrobacias", "spec:equilibrio"], value: -2, useMagnitude: true, label: "Desequilibrado" },
+        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, useMagnitude: true, label: "Conmocionado" },
+        { phases: ["resistance"], resTypes: ["composure"], value: -2, useMagnitude: true, label: "Conmocionado" }
+      ]
+    }
+  },
+  HERIDA_CABEZA_CRITICA: {
+    id: "HERIDA_CABEZA_CRITICA", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Cabeza (Crítica)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Desequilibrado + Conmocionado + Riesgo de inconsciencia",
+      "Requiere T.C de Tenacidad o Compostura para evitar colapso",
+      "Si falla: Inconsciente hasta ser tratado"
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Desequilibrado" },
+        { phases: ["skill"], tagsAny: ["spec:acrobacias", "spec:equilibrio"], value: -2, useMagnitude: true, label: "Desequilibrado" },
+        { phases: ["skill"], tagsAny: ["spec:mental", "spec:knowledge"], value: -2, useMagnitude: true, label: "Conmocionado" },
+        { phases: ["resistance"], resTypes: ["composure"], value: -2, useMagnitude: true, label: "Conmocionado" }
+      ],
+      deathSave: { characteristic: ["tenacity", "composure"], dc: 12 }
+    }
+  },
+
+  // === TORSO ===
+  HERIDA_TORSO_LEVE: {
+    id: "HERIDA_TORSO_LEVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Torso (Leve)",
+    duration: { type: "untilTreated" },
+    effectsText: ["-1 al Aguante Máximo hasta ser tratado"],
+    mechanics: {
+      staminaPenalty: 1
+    }
+  },
+  HERIDA_TORSO_GRAVE: {
+    id: "HERIDA_TORSO_GRAVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Torso (Grave)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "-1 al Aguante Máximo",
+      "Impedido: penalizador a todas las tiradas"
+    ],
+    mechanics: {
+      staminaPenalty: 1,
+      rollModifiers: [
+        { phases: ["attack"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["skill"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["resistance"], value: -2, useMagnitude: true, label: "Impedido" }
+      ]
+    }
+  },
+  HERIDA_TORSO_CRITICA: {
+    id: "HERIDA_TORSO_CRITICA", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Torso (Crítica)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "-1 al Aguante Máximo + Impedido",
+      "Antes de cada acción: T.C de Tenacidad (DC 12) o la acción no se ejecuta"
+    ],
+    mechanics: {
+      staminaPenalty: 1,
+      rollModifiers: [
+        { phases: ["attack"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["skill"], value: -2, useMagnitude: true, label: "Impedido" },
+        { phases: ["resistance"], value: -2, useMagnitude: true, label: "Impedido" }
+      ],
+      actionCheck: { characteristic: "tenacity", dc: 12 }
+    }
+  },
+
+  // === BRAZOS ===
+  HERIDA_BRAZOS_LEVE: {
+    id: "HERIDA_BRAZOS_LEVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Brazos (Leve)",
+    duration: { type: "untilTreated" },
+    effectsText: ["Penalizador a T.A y T.I con armas"],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["attack"], value: -2, useMagnitude: true, label: "Herida en Brazos" },
+        { phases: ["impact"], value: -2, useMagnitude: true, label: "Herida en Brazos" }
+      ]
+    }
+  },
+  HERIDA_BRAZOS_GRAVE: {
+    id: "HERIDA_BRAZOS_GRAVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Brazos (Grave)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Penalizador a T.A y T.I",
+      "No puede usar armas flexibles ni armas de dos manos"
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["attack"], value: -2, useMagnitude: true, label: "Herida en Brazos" },
+        { phases: ["impact"], value: -2, useMagnitude: true, label: "Herida en Brazos" }
+      ],
+      weaponRestriction: ["flexible", "twoHanded"]
+    }
+  },
+  HERIDA_BRAZOS_CRITICA: {
+    id: "HERIDA_BRAZOS_CRITICA", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Brazos (Crítica)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "No puede usar armas, ni siquiera naturales",
+      "No puede sostener objetos con esa extremidad"
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["attack"], value: -99, useMagnitude: true, label: "Brazos inutilizados" },
+        { phases: ["impact"], value: -99, useMagnitude: true, label: "Brazos inutilizados" }
+      ],
+      weaponRestriction: ["all"]
+    }
+  },
+
+  // === PIERNAS ===
+  HERIDA_PIERNAS_LEVE: {
+    id: "HERIDA_PIERNAS_LEVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Piernas (Leve)",
+    duration: { type: "untilTreated" },
+    effectsText: ["Velocidad de movimiento reducida a la mitad"],
+    mechanics: {
+      movementMultiplier: 0.5
+    }
+  },
+  HERIDA_PIERNAS_GRAVE: {
+    id: "HERIDA_PIERNAS_GRAVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Piernas (Grave)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Velocidad reducida a la mitad",
+      "T.R de Alteración cada vez que se mueve o queda Derribado"
+    ],
+    mechanics: {
+      movementMultiplier: 0.5,
+      movementCheck: { type: "resistance", subtype: "alteration", dc: 10 }
+    }
+  },
+  HERIDA_PIERNAS_CRITICA: {
+    id: "HERIDA_PIERNAS_CRITICA", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Piernas (Crítica)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "No puede moverse normalmente",
+      "Solo puede arrastrarse (movimiento muy limitado)"
+    ],
+    mechanics: {
+      movementBlocked: true,
+      crawlOnly: true
+    }
+  },
+
+  // === PIES ===
+  HERIDA_PIES_LEVE: {
+    id: "HERIDA_PIES_LEVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Pies (Leve)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Penalización en T.C de Agilidad y T.E de Equilibrio/Acrobacias",
+      "Penalizador a tiradas relacionadas con equilibrio"
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["skill"], tagsAny: ["characteristic:agility", "spec:equilibrio", "spec:acrobacias"], value: -2, useMagnitude: true, label: "Herida en Pies" }
+      ]
+    }
+  },
+  HERIDA_PIES_GRAVE: {
+    id: "HERIDA_PIES_GRAVE", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Pies (Grave)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Penalizador a T.C de Agilidad y T.E de equilibrio",
+      "+1 tick al Inicio de acciones de movimiento (saltar, acrobacias, correr, etc.)"
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["skill"], tagsAny: ["characteristic:agility", "spec:equilibrio", "spec:acrobacias"], value: -2, useMagnitude: true, label: "Herida en Pies" }
+      ],
+      ctAdjust: { init: 1, onlyForMovement: true }
+    }
+  },
+  HERIDA_PIES_CRITICA: {
+    id: "HERIDA_PIES_CRITICA", group: AILMENT_GROUP.ALTERATION,
+    label: "Herida en Pies (Crítica)",
+    duration: { type: "untilTreated" },
+    effectsText: [
+      "Permanentemente Derribado",
+      "Movimiento arrastrándose: máximo 2 casillas por acción",
+      "Penalizador a T.D constantemente"
+    ],
+    mechanics: {
+      rollModifiers: [
+        { phases: ["defense"], value: -2, useMagnitude: true, label: "Derribado (Pies)" },
+        { phases: ["skill"], tagsAny: ["characteristic:agility", "spec:equilibrio", "spec:acrobacias"], value: -2, useMagnitude: true, label: "Herida en Pies" }
+      ],
+      movementBlocked: true,
+      crawlOnly: true,
+      maxCrawlDistance: 2
     }
   }
 };

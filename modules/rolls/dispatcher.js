@@ -9,12 +9,41 @@ import { triggerFumbleReactions } from "../atb/reactions.js";
 const TSDC_ATB = { opposedContext: false };
 // 🔗 Context tags
 import { buildContextTags } from "./context-tags.js";
+import { toCanonAttr } from "../features/attributes/index.js";
 
 /** === Helpers locales === */
 function primaryTokenOf(actor) {
   return actor?.getActiveTokens?.(true)?.[0]
       || canvas.tokens.placeables.find(t => t.actor?.id === actor?.id)
       || null;
+}
+
+/**
+ * Calcula el bonus de armadura para una zona específica
+ * Ligero: grado, Intermedio: grado * 2, Pesado: grado * 3
+ */
+function getArmorBonusForZone(actor, zone) {
+  if (!actor || !zone) return 0;
+
+  // Obtener la pieza equipada en la zona
+  const inventory = actor.system?.inventory || {};
+  const piece = inventory[zone];
+
+  if (!piece || !piece.equipped) return 0;
+
+  const grade = Number(piece.grade || 0);
+  const category = String(piece.category || "").toLowerCase();
+
+  // Calcular bonus según categoría
+  if (category === "light" || category === "ligero") {
+    return grade;
+  } else if (category === "medium" || category === "intermedio" || category === "medio") {
+    return grade * 2;
+  } else if (category === "heavy" || category === "pesado") {
+    return grade * 3;
+  }
+
+  return 0;
 }
 
 /** Tarjeta “Solo GM” para evaluar (restaurada) */
@@ -370,9 +399,9 @@ export async function rollDefense(actor, {
   context = {},
   opposed = false
 } = {}) {
-  const { formula } = buildDefenseFormula(actor, { armorBonus, bonus, penalty });
   const rank = Number(foundry.utils.getProperty(actor, `system.progression.defense.evasion.rank`) || 0);
 
+  // Primero determinar la zona golpeada
   const d100 = new Roll("1d100"); await d100.evaluate();
   const r = d100.total;
   let bodyPart = "chest";
@@ -384,6 +413,12 @@ export async function rollDefense(actor, {
   else if (r <= 85) bodyPart = "legs";
   else if (r <= 95) bodyPart = "legs";
   else bodyPart = "chest";
+
+  // Calcular armor bonus según la zona golpeada
+  const zoneArmorBonus = getArmorBonusForZone(actor, bodyPart);
+  const finalArmorBonus = armorBonus || zoneArmorBonus;
+
+  const { formula } = buildDefenseFormula(actor, { armorBonus: finalArmorBonus, bonus, penalty });
 
   if (opposed) _tsdcSetOpposedContext(true);
   const evo = await resolveEvolution({
@@ -460,6 +495,106 @@ export async function rollResistance(actor, {
   });
 
   return { total: patched.total, tags, evo };
+}
+
+/** ─────────── CARACTERÍSTICA ─────────── */
+export async function rollCharacteristic(actor, {
+  characteristic,
+  bonus = 0,
+  penalty = 0,
+  flavor,
+  extraTags = [],
+  context = {},
+  toChat = true
+} = {}) {
+  if (!actor) return null;
+  const attrKey = toCanonAttr(characteristic);
+  if (!attrKey) {
+    ui.notifications?.warn?.("Característica no reconocida para tirada.");
+    return null;
+  }
+
+  const attrLabel = game.i18n?.localize?.(`TSDC.Attr.${attrKey}`) ?? attrKey;
+  const baseAttr = Number(foundry.utils.getProperty(actor, `system.attributes.${attrKey}`) || 0);
+  const levelRef = Number(context.levelRef ?? actor.system?.levelRef ?? actor.system?.level ?? 1);
+
+  const fixedBonus = Number(bonus || 0);
+  const fixedPenalty = Number(penalty || 0);
+
+  const parts = ["1d10"];
+  if (baseAttr !== 0) parts.push(String(baseAttr));
+  if (levelRef !== 0) parts.push(String(levelRef));
+  if (fixedBonus) parts.push(String(fixedBonus));
+  if (fixedPenalty) parts.push(String(-Math.abs(fixedPenalty)));
+  const formula = parts.join(" + ");
+
+  const evo = await resolveEvolution({
+    type: "attribute",
+    mode: "none",
+    formula,
+    rank: 0,
+    flavor: flavor ?? `Característica • ${attrLabel}`,
+    actor,
+    toChat,
+    meta: {
+      characteristic: attrKey,
+      levelRef,
+      bonus: fixedBonus,
+      penalty: fixedPenalty
+    }
+  });
+
+  const { resultRoll } = evo || {};
+  if (!resultRoll || typeof resultRoll.total !== "number") return null;
+
+  const normalizedExtra = Array.isArray(extraTags)
+    ? extraTags.map(t => String(t || "").toLowerCase().trim()).filter(Boolean)
+    : [];
+
+  const tags = Array.from(new Set([
+    "phase:skill",
+    "roll:tc",
+    `characteristic:${attrKey}`,
+    ...normalizedExtra
+  ]));
+
+  const ctxExtras = { ...context };
+  delete ctxExtras.tags;
+
+  const patched = makeRollTotal(actor, resultRoll.total, {
+    phase: "skill",
+    tag: "TC",
+    rollType: "TC",
+    tags,
+    characteristic: attrKey,
+    levelRef,
+    ...ctxExtras
+  });
+
+  await emitModInspector(actor, { phase: "skill", tag: "TC" }, patched.breakdown);
+
+  await gmEvalCard({
+    actor,
+    kind: "attribute",
+    payload: {
+      actorId: actor.id ?? actor._id ?? null,
+      characteristic: attrKey,
+      totalShown: patched.total,
+      tags,
+      levelRef,
+      bonus: fixedBonus,
+      penalty: fixedPenalty
+    }
+  });
+
+  return {
+    total: patched.total,
+    roll: resultRoll,
+    tags,
+    levelRef,
+    attribute: attrKey,
+    evo
+  };
 }
 
 export function _tsdcSetOpposedContext(v=true) { TSDC_ATB.opposedContext = !!v; }

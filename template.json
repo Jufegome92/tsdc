@@ -1,6 +1,184 @@
 {
+  "Item": {
+    "types": ["material", "tool", "formula", "diagram", "blueprint", "design", "consumable", "generic", "tauma"],
+
+    "material": {
+      "key": "",
+      "category": "minerales",
+      "materialType": "",
+      "quality": 1,
+      "quantity": 0,
+      "unit": "kg",
+      "weight": 0,
+      "extractedFrom": "",
+      "extractedAt": null,
+      "extractionMethod": "",
+      "perishable": false,
+      "expiresAt": null,
+      "conservationKit": null,
+      "conservationAppliedAt": null,
+      "durability": 0,
+      "potency": 0,
+      "costPerUnit": 0,
+      "notes": "",
+      "source": "extracted"
+    },
+
+    "tool": {
+      "key": "",
+      "art": "herreria",
+      "toolType": "individual",
+      "grade": "basico",
+      "weight": 0,
+      "uses": null,
+      "maxUses": null,
+      "extractionBonus": 0,
+      "craftingBonus": 0,
+      "timeReduction": 0,
+      "conservationType": null,
+      "conservationSlots": 0,
+      "conservedItems": [],
+      "notes": ""
+    },
+
+    "formula": {
+      "key": "",
+      "formulaType": "elixir",
+      "rarity": "comun",
+      "alchemicalIndex": 0,
+      "requiredReagent": {
+        "quality": 1,
+        "type": "any"
+      },
+      "requiredPlants": [],
+      "difficulty": "fundamentos",
+      "baseTime": 0,
+      "doses": "1d4",
+      "effect": "",
+      "duration": "",
+      "sideEffects": "",
+      "notes": "",
+      "learned": true,
+      "learnedAt": null
+    },
+
+    "diagram": {
+      "key": "",
+      "trapType": "mecanica",
+      "rarity": "comun",
+      "requiredMaterials": [],
+      "requiredTools": [],
+      "difficulty": "fundamentos",
+      "baseTime": 0,
+      "complexity": 1,
+      "damage": "",
+      "range": 0,
+      "area": 0,
+      "effect": "",
+      "notes": "",
+      "learned": true,
+      "learnedAt": null
+    },
+
+    "blueprint": {
+      "key": "",
+      "art": "ingenieria",
+      "blueprintType": "mecanismo",
+      "complexity": 1,
+      "requiredMaterials": [],
+      "requiredTools": [],
+      "difficulty": "fundamentos",
+      "baseTime": 0,
+      "resultStats": {},
+      "notes": "",
+      "learned": true,
+      "learnedAt": null
+    },
+
+    "design": {
+      "key": "",
+      "designType": "weapon",
+      "art": "herreria",
+      "requiredMaterials": [],
+      "requiredTools": [],
+      "difficulty": "fundamentos",
+      "baseTime": 0,
+      "complexity": 1,
+      "resultTemplate": {
+        "durability": 0,
+        "power": 0,
+        "defense": 0,
+        "tags": []
+      },
+      "notes": "",
+      "learned": true,
+      "learnedAt": null
+    },
+
+    "consumable": {
+      "key": "",
+      "consumableType": "elixir",
+      "quality": 1,
+      "quantity": 1,
+      "weight": 0,
+      "effect": "",
+      "duration": "",
+      "uses": 1,
+      "craftedBy": "",
+      "craftedAt": null,
+      "recipeKey": "",
+      "notes": ""
+    },
+
+    "generic": {
+      "itemType": "mundane",
+      "quantity": 1,
+      "weight": 0,
+      "material": "",
+      "materialQuality": null,
+      "durability": null,
+      "potency": null,
+      "value": 0,
+      "description": "",
+      "notes": ""
+    },
+
+    "tauma": {
+      "taumaType": "artifact",
+      "rarity": "comun",
+      "taumaLevel": 1,
+      "element": "none",
+      "quantity": 1,
+      "weight": 0,
+      "material": "",
+      "materialQuality": null,
+      "baseDurability": null,
+      "basePotency": null,
+      "charges": null,
+      "maxCharges": null,
+      "resonance": 0,
+      "attunement": {
+        "required": false,
+        "attunedTo": null,
+        "attunedAt": null
+      },
+      "powers": [],
+      "passiveEffects": [],
+      "awakened": false,
+      "evolution": {
+        "stage": 1,
+        "xp": 0,
+        "maxStage": 5
+      },
+      "origin": "",
+      "description": "",
+      "lore": "",
+      "notes": ""
+    }
+  },
+
   "Actor": {
-    "types": ["character", "creature"],
+    "types": ["character", "creature", "plant", "mineral-vein"],
     "character": {
       "background": "martial", 
       "inventory": {
@@ -89,7 +267,51 @@
         "presence": 0
       },
       "derived": { "preparation": 0, "resilience": 0 },
-      "progression": { }                   
+      "progression": { }
+    },
+
+    "plant": {
+      "plantKey": "",
+      "accessibility": "general",
+      "alchemicalIndex": 0,
+      "use": "elixir",
+      "cost": 0,
+      "extractionTime": 15,
+      "difficulty": "fundamentos",
+      "remainingExtractions": 1,
+      "maxExtractions": 1,
+      "depleted": false,
+      "level": 1
+    },
+
+    "mineral-vein": {
+      "mineralKey": "",
+      "mineralLabel": "",
+      "materialType": "metal",
+      "materialTypeLabel": "",
+      "accessibility": "general",
+      "accessibilityLabel": "",
+      "quality": 1,
+      "qualityKey": "comun",
+      "qualityLabel": "",
+      "qualityRoll": null,
+      "veinRichness": "moderada",
+      "veinRichnessLabel": "",
+      "richnessDice": "2d10",
+      "veinDuration": 240,
+      "intervalDuration": 120,
+      "difficulty": "fundamentos",
+      "remainingTime": 240,
+      "depleted": false,
+      "level": 1,
+      "durability": 0,
+      "potency": 0,
+      "cost": 0,
+      "unit": "kg",
+      "description": "",
+      "toolRequirement": "basico",
+      "toolRequirementLabel": "",
+      "extractionNote": ""
     }
   }
 }

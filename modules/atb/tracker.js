@@ -116,6 +116,16 @@ function resolveQueued(desc, { actor } = {}) {
     const ct = ab.ct || {};
     return { key:`monster:${ab.key||desc.key}`, label: ab.label || desc.key, init_ticks:ct.init||0, exec_ticks:ct.exec||1, rec_ticks:ct.rec||0 };
   }
+  if (desc.kind === "reaction-phase") {
+    const label = desc.label || desc.aptitudeDef?.label || desc.aptitudeKey || "Reacción";
+    return {
+      key: desc.actionKey || `reaction:${desc.aptitudeKey ?? "phase"}`,
+      label,
+      init_ticks: Number(desc.initTicks || 0),
+      exec_ticks: Number(desc.execTicks || 0),
+      rec_ticks: Number(desc.recTicks || 0)
+    };
+  }
   if (desc.kind === "spec") {
     return makeSpecializationAction({
       specKey: desc.specKey,

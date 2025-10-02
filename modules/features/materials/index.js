@@ -1,17 +1,209 @@
 // modules/features/materials/index.js
 // Catálogo unificado de materiales y utilidades para calcular
-// Durabilidad, Potencia y Costos en función del “Grado de calidad”.
+// Durabilidad, Potencia y Costos en función del "Grado de calidad".
 
 /**
  * Convenciones:
- * - quality: “Grado de calidad” (entero >=1 normalmente).
- * - Para costos: por defecto “kg” (kilogramo). Algunos usan “unidad” o “litro”.
+ * - quality: "Grado de calidad" (entero >=1 normalmente).
+ *   Grado 1 = Común, Grado 2 = Raro, Grado 3 = Excepcional
+ * - Para costos: por defecto "kg" (kilogramo). Algunos usan "unidad" o "litro".
  * - durability / potency: pueden ser número fijo o función (q) => número.
  * - costPerUnit: función (q, qty=1) => número total (en Shekels).
  * - unit: "kg" | "unidad" | "litro"
  */
 
+// Importar módulos complementarios
+import { getMaterialWeakness, calculateWeaknessDamage } from "./weaknesses.js";
+import { getMaterialAccessibility, calculateLaborCost, ACCESSIBILITY_LEVELS } from "./accessibility.js";
+import { getPlant, listPlantsByAccessibility, listPlantsByUse, getExtractionDifficulty } from "./plants.js";
+import {
+  TOOL_GRADES,
+  CREATURE_EXTRACTION,
+  MINERAL_EXTRACTION,
+  PLANT_EXTRACTION,
+  CONSERVATION_TIME,
+  getMaxExtractableGrade,
+  calculateExtractionTime,
+  isSensitivePart,
+  getCreatureExtractionInfo,
+  getMineralExtractionInfo,
+  getPlantExtractionInfo,
+  getConservationInfo,
+  canExtractGrade
+} from "./extraction.js";
+
+export const MATERIAL_DESCRIPTIONS = {
+  bronce: "Aleación resistente de cobre y estaño, apreciada por su durabilidad y facilidad de trabajo.",
+  hierro: "Metal ferroso, duro y magnético. Utilizado en construcción y fabricación de herramientas.",
+  acero: "Metal reforzado a partir del hierro, ideal para armas y armaduras por su dureza y maleabilidad.",
+  jade: "Piedra preciosa de color verde intenso, valorada por su belleza y dureza.",
+  carbon: "Combustible fósil negro y poroso, esencial en la forja y fundición de metales.",
+  lapislazuli: "Roca metamórfica azul y vibrante, usada en joyería y pigmentos raros.",
+  vidrio: "Material vítreo translúcido, útil para ornamentos, lentes y recipientes.",
+  peltre: "Aleación gris plateada, maleable y económica, común en utensilios y adornos.",
+  oro: "Metal precioso amarillo, maleable y resistente a la oxidación, símbolo de riqueza.",
+  estano: "Metal blando y dúctil, imprescindible en aleaciones como el bronce.",
+  cobre: "Metal rojizo, excelente conductor, usado en cables, tuberías y aleaciones.",
+  cristales: "Sólidos transparentes de estructura ordenada, variados en color y composición.",
+  piedra: "Material natural sólido, usado en construcción y escultura por su resistencia.",
+  roca: "Bloques minerales crudos empleados como base en múltiples aplicaciones.",
+  obsidiana: "Vidrio volcánico negro y afilado, ideal para filos y artefactos ceremoniales.",
+  mithril: "Metal legendario, ligero y tan resistente como el acero más puro.",
+  adamantium: "Metal casi indestructible, extremadamente raro y codiciado.",
+  titanio: "Metal ligero con enorme resistencia a la corrosión, preferido en equipos durables.",
+  plata: "Metal precioso blanco brillante, utilizado en joyería y artefactos rituales.",
+  platino: "Metal precioso grisáceo, estable y resistente al desgaste extremo.",
+  cuarzo: "Cristal duro y común, empleado en joyería y mecanismos de precisión.",
+  ambar: "Resina fósil translúcida, famosa por encapsular restos orgánicos.",
+  marfil: "Material blanco denso proveniente de colmillos, utilizado en tallas finas.",
+  coral: "Estructuras calcáreas marinas, apreciadas por sus colores para joyería.",
+  ebano: "Madera oscura y muy densa, símbolo de lujo y longevidad.",
+  roble: "Madera robusta y resistente, ideal para construcciones perdurables.",
+  caoba: "Madera rojiza de acabado fino, popular en muebles y artesanías de lujo.",
+  pino: "Madera ligera y versátil, útil en carpintería cotidiana.",
+  arce: "Madera dura de grano atractivo, perfecta para instrumentos y detalles decorativos.",
+  secoya: "Madera resistente y monumental, reservada para proyectos de gran escala.",
+  rubi: "Gema roja intensa, una de las piedras más duras y codiciadas.",
+  esmeralda: "Gema verde vibrante, apreciada por su claridad y simbolismo.",
+  zafiro: "Gema de azul profundo, segunda en dureza tras el diamante.",
+  diamante: "La gema más dura, de brillo incomparable usada en lujo y corte industrial.",
+  topacio: "Gema que presenta múltiples colores y un brillo cálido distintivo.",
+  cromo: "Metal gris acerado, brillante y resistente a la corrosión extrema.",
+  plomo: "Metal pesado maleable, útil para protecciones especiales y contrapesos.",
+  oricalco: "Metal mítico rojizo con propiedades elementales excepcionales.",
+  seda_arakhel: "Fibra sobrenatural resistente y elástica, ideal para armaduras ligeras.",
+  lana: "Fibra cálida y aislante obtenida de animales lanudos.",
+  algodon: "Fibra suave vegetal, omnipresente en textiles de uso diario.",
+  seda: "Fibra lujosa y resistente con brillo natural característico.",
+  lino: "Fibra fresca y resistente proveniente del tallo de lino.",
+  yute: "Fibra vegetal robusta, usada en cuerdas y textiles rústicos.",
+  nailon: "Fibra sintética elástica y duradera con innumerables aplicaciones.",
+  poliester: "Fibra sintética versátil, apreciada por su resistencia y bajo mantenimiento."
+};
+
+export const MATERIAL_TYPE_LABELS = {
+  metal: "Metal",
+  "piedra-preciosa": "Piedra Preciosa",
+  roca: "Roca",
+  madera: "Madera",
+  fibra: "Fibra",
+  cuero: "Cuero",
+  "parte-criatura": "Parte de criatura",
+  "cuero": "Cuero"
+};
+
+export const MATERIAL_QUALITY_LEVELS = {
+  1: { grade: 1, key: "comun", label: "Común", min: 1, max: 50 },
+  2: { grade: 2, key: "raro", label: "Raro", min: 51, max: 80 },
+  3: { grade: 3, key: "excepcional", label: "Excepcional", min: 81, max: 100 }
+};
+
+export const MATERIAL_QUALITY_BY_KEY = {
+  comun: MATERIAL_QUALITY_LEVELS[1],
+  raro: MATERIAL_QUALITY_LEVELS[2],
+  excepcional: MATERIAL_QUALITY_LEVELS[3]
+};
+
+export const VEIN_RICHNESS_LEVELS = {
+  pobre: {
+    key: "pobre",
+    label: "Pobre",
+    dice: "1d10",
+    description: "Depósitos pequeños y dispersos. Ideal para recolecciones rápidas.",
+    durationMinutes: 120
+  },
+  moderada: {
+    key: "moderada",
+    label: "Moderada",
+    dice: "2d10",
+    description: "Veta estable con recursos suficientes para un grupo de mineros.",
+    durationMinutes: 240
+  },
+  rica: {
+    key: "rica",
+    label: "Rica",
+    dice: "3d10",
+    description: "Abundante suministro con gran rentabilidad.",
+    durationMinutes: 360
+  },
+  muy_rica: {
+    key: "muy_rica",
+    label: "Muy Rica",
+    dice: "4d10",
+    description: "Descubrimiento excepcional, requiere logística y protección.",
+    durationMinutes: 480
+  }
+};
+
+export function normalizeMaterialQuality(value) {
+  if (value == null) return 1;
+  if (typeof value === "string") {
+    const lower = value.toLowerCase();
+    const byKey = MATERIAL_QUALITY_BY_KEY[lower];
+    if (byKey) return byKey.grade;
+    const num = Number(lower);
+    if (Number.isFinite(num)) return Math.min(3, Math.max(1, num));
+    return 1;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? Math.min(3, Math.max(1, Math.round(num))) : 1;
+}
+
+export function getMaterialQualityInfo(value) {
+  const grade = normalizeMaterialQuality(value);
+  return MATERIAL_QUALITY_LEVELS[grade];
+}
+
+export function getMaterialTypeLabel(value) {
+  const raw = typeof value === "string" ? value : value?.type;
+  const key = String(raw ?? "").toLowerCase().replace(/_/g, "-");
+  return MATERIAL_TYPE_LABELS[key] ?? "Material";
+}
+
+export function getVeinRichnessInfo(value) {
+  if (!value) return VEIN_RICHNESS_LEVELS.moderada;
+  const key = String(value).toLowerCase();
+  return VEIN_RICHNESS_LEVELS[key] ?? VEIN_RICHNESS_LEVELS.moderada;
+}
+
+export function getMaterialQualityFromRoll(rollValue) {
+  const total = Number(rollValue) || 0;
+  if (total <= 50) return { ...MATERIAL_QUALITY_LEVELS[1], roll: total };
+  if (total <= 80) return { ...MATERIAL_QUALITY_LEVELS[2], roll: total };
+  return { ...MATERIAL_QUALITY_LEVELS[3], roll: total };
+}
+
 function numOrFn(v, q) { return (typeof v === "function") ? v(Number(q||1)) : Number(v||0); }
+
+// Re-exportar funciones de módulos complementarios
+export {
+  // Weaknesses
+  getMaterialWeakness,
+  calculateWeaknessDamage,
+  // Accessibility
+  getMaterialAccessibility,
+  calculateLaborCost,
+  ACCESSIBILITY_LEVELS,
+  // Plants
+  getPlant,
+  listPlantsByAccessibility,
+  listPlantsByUse,
+  getExtractionDifficulty,
+  // Extraction
+  TOOL_GRADES,
+  CREATURE_EXTRACTION,
+  MINERAL_EXTRACTION,
+  PLANT_EXTRACTION,
+  CONSERVATION_TIME,
+  getMaxExtractableGrade,
+  calculateExtractionTime,
+  isSensitivePart,
+  getCreatureExtractionInfo,
+  getMineralExtractionInfo,
+  getPlantExtractionInfo,
+  getConservationInfo,
+  canExtractGrade
+};
 
 export const MATERIALS = {
   // -------------------------
@@ -82,10 +274,20 @@ export const MATERIALS = {
   // MINERALES / METALES / ROCAS / PIEDRAS PRECIOSAS / MADERAS / FIBRAS
   // (Aquí los que traen valores fijos, no dependientes de quality)
   // -------------------------
+  bronce: {
+    key: "bronce", label: "Bronce", type: "metal", unit: "kg",
+    durability: 12, potency: 22,
+    costPerUnit: (q, qty=1) => 15*q*qty
+  },
   hierro: {
     key: "hierro", label: "Hierro", type: "metal", unit: "kg",
     durability: 15, potency: 25,
     costPerUnit: (q, qty=1) => 10*q*qty
+  },
+  acero: {
+    key: "acero", label: "Acero", type: "metal", unit: "kg",
+    durability: 18, potency: 30,
+    costPerUnit: (q, qty=1) => 30*q*qty
   },
   jade: {
     key: "jade", label: "Jade", type: "piedra-preciosa", unit: "kg",
@@ -101,6 +303,16 @@ export const MATERIALS = {
     key: "lapislazuli", label: "Lapislázuli", type: "piedra-preciosa", unit: "kg",
     durability: 8, potency: 14,
     costPerUnit: (q, qty=1) => 30*q*qty
+  },
+  vidrio: {
+    key: "vidrio", label: "Vidrio", type: "roca", unit: "kg",
+    durability: 3, potency: 6,
+    costPerUnit: (q, qty=1) => 15*q*qty
+  },
+  peltre: {
+    key: "peltre", label: "Peltre", type: "metal", unit: "kg",
+    durability: 8, potency: 15,
+    costPerUnit: (q, qty=1) => 18*q*qty
   },
   oro: {
     key: "oro", label: "Oro", type: "metal", unit: "kg",
@@ -297,14 +509,76 @@ export const MATERIALS = {
     key: "poliester", label: "Poliéster", type: "fibra", unit: "kg",
     durability: q => 2*q, potency: q => 3*q,
     costPerUnit: (q, qty=1) => 9*q*qty
+  },
+
+  // Cuero y Pieles procesadas
+  cuero: {
+    key: "cuero", label: "Cuero", type: "cuero", unit: "kg",
+    durability: q => 5*q, potency: q => 6*q,
+    costPerUnit: (q, qty=1) => 18*q*qty
+  },
+  escamado: {
+    key: "escamado", label: "Cuero Escamado", type: "cuero", unit: "kg",
+    durability: q => 7*q, potency: q => 8*q,
+    costPerUnit: (q, qty=1) => 25*q*qty
+  },
+  acorazado: {
+    key: "acorazado", label: "Cuero Acorazado", type: "cuero", unit: "kg",
+    durability: q => 9*q, potency: q => 10*q,
+    costPerUnit: (q, qty=1) => 35*q*qty
+  },
+  tela: {
+    key: "tela", label: "Tela", type: "fibra", unit: "kg",
+    durability: q => 1*q, potency: q => 2*q,
+    costPerUnit: (q, qty=1) => 5*q*qty
   }
 };
+
+for (const [key, description] of Object.entries(MATERIAL_DESCRIPTIONS)) {
+  if (MATERIALS[key]) {
+    MATERIALS[key].description = description;
+  }
+}
 
 // -------------------------
 // Helpers de acceso
 // -------------------------
 export function getMaterial(key) {
   return MATERIALS[String(key||"").toLowerCase()] ?? null;
+}
+
+export function getMaterialSummary(materialKey, grade = 1) {
+  const material = getMaterial(materialKey);
+  if (!material) return null;
+
+  const normalizedGrade = normalizeMaterialQuality(grade);
+  const resolveValue = (value) =>
+    typeof value === "function" ? Number(value(normalizedGrade) || 0) : Number(value || 0);
+
+  const durability = resolveValue(material.durability);
+  const potency = resolveValue(material.potency);
+  const unit = material.unit || "kg";
+  const cost = typeof material.costPerUnit === "function"
+    ? Number(material.costPerUnit(normalizedGrade, 1) || 0)
+    : resolveValue(material.costPerUnit);
+
+  const accessibility = getMaterialAccessibility(material.key ?? materialKey);
+  const qualityInfo = getMaterialQualityInfo(normalizedGrade);
+
+  return {
+    key: material.key ?? materialKey,
+    label: material.label ?? materialKey,
+    type: material.type ?? "material",
+    typeLabel: getMaterialTypeLabel(material.type ?? "material"),
+    unit,
+    description: material.description ?? MATERIAL_DESCRIPTIONS[material.key ?? materialKey] ?? "",
+    grade: normalizedGrade,
+    quality: qualityInfo,
+    durability,
+    potency,
+    cost,
+    accessibility
+  };
 }
 
 export function listMaterialsByType(type) {
@@ -336,4 +610,52 @@ export function materialCost(key, quality=1, qty=1) {
   const m = getMaterial(key);
   if (!m) return 0;
   return Number(m.costPerUnit(Number(quality||1), Number(qty||1)) || 0);
+}
+
+/**
+ * Obtiene información completa del material incluyendo debilidades y accesibilidad
+ * @param {string} key - clave del material
+ * @param {number} quality - grado de calidad (1-3)
+ * @returns {object} - información completa del material
+ */
+export function getMaterialFullInfo(key, quality=1) {
+  const material = getMaterial(key);
+  if (!material) return null;
+
+  const stats = getMaterialStats(key, quality);
+  const weakness = getMaterialWeakness(key);
+  const accessibility = getMaterialAccessibility(key);
+
+  return {
+    ...material,
+    quality,
+    qualityLabel: quality === 1 ? "Común" : quality === 2 ? "Raro" : "Excepcional",
+    durability: stats.durability,
+    potency: stats.potency,
+    weakness: weakness,
+    accessibility: accessibility,
+    laborCostPerKg: accessibility.laborCostPerKg(quality),
+    fabricationTime: accessibility.fabricationTime
+  };
+}
+
+/**
+ * Calcula el costo total de fabricación (material + mano de obra)
+ * @param {string} key - clave del material
+ * @param {number} quality - grado de calidad
+ * @param {number} kgs - kilogramos necesarios
+ * @returns {object} - {materialCost, laborCost, totalCost}
+ */
+export function calculateTotalFabricationCost(key, quality=1, kgs=1) {
+  const matCost = materialCost(key, quality, kgs);
+  const laborCost = calculateLaborCost(key, quality, kgs);
+
+  return {
+    materialCost: matCost,
+    laborCost: laborCost,
+    totalCost: matCost + laborCost,
+    kgs,
+    quality,
+    qualityLabel: quality === 1 ? "Común" : quality === 2 ? "Raro" : "Excepcional"
+  };
 }

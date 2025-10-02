@@ -46,6 +46,7 @@ async function ensureBag(actor) {
  * - notes?: string
  * - source?: string  (p.ej. "resistance:poison")
  * - kind?: string    (metadato opcional)
+ * - magnitude?: number  (rango/nivel del atacante para escalar penalizadores)
  */
 export async function addAilment(actor, id, opts={}) {
   if (!actor || !id) return null;
@@ -88,7 +89,8 @@ export async function addAilment(actor, id, opts={}) {
       appliedAt: Date.now(),
       notes: opts.notes ?? existing.notes ?? null,
       source: opts.source ?? existing.source ?? null,
-      kind: opts.kind ?? existing.kind ?? null
+      kind: opts.kind ?? existing.kind ?? null,
+      magnitude: opts.magnitude != null ? Number(opts.magnitude) : existing.magnitude ?? null
     };
 
     active[def.id] = updated;
@@ -127,7 +129,8 @@ export async function addAilment(actor, id, opts={}) {
     appliedAt: Date.now(),
     notes: opts.notes || null,
     source: opts.source || null,
-    kind: opts.kind || null
+    kind: opts.kind || null,
+    magnitude: opts.magnitude != null ? Number(opts.magnitude) : null
   };
 
   active[def.id] = state;
@@ -397,7 +400,18 @@ if (globalThis?.Hooks && !globalThis.__tsdcAilmentModsHooked) {
         if (mech?.rollModifiers) {
           for (const mod of mech.rollModifiers) {
             if (!modMatchesContext(mod, ctx, loweredTags)) continue;
-            const value = Number(mod.value || 0);
+
+            // Calcular el valor del modificador
+            let value = Number(mod.value || 0);
+
+            // Si el modificador es dinámico (usa magnitude) y el agravio tiene magnitud
+            if (mod.useMagnitude && ailment.magnitude != null) {
+              // Rango de competencia = penalizador directo
+              // Rango 1 → -1, Rango 2 → -2, Rango 3 → -3, etc.
+              const rank = Number(ailment.magnitude);
+              value = -Math.abs(rank);
+            }
+
             if (!Number.isFinite(value) || value === 0) continue;
             push({
               id: `ailment:${ailment.id.toLowerCase()}`,

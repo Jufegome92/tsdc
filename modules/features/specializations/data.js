@@ -219,18 +219,6 @@ export const SPECIALIZATIONS = {
     usesCalc: true,
     failureLearnBonus: true
   },
-  robo: {
-    label: "Robo",
-    category: "mental",
-    attribute: "cunning",
-    dcFamily: "environment",
-    reactions: true,
-    retries: false,
-    actionType: "action",
-    aptitudes: [],
-    usesCalc: true,
-    failureLearnBonus: true
-  },
   intuicion: {
     label: "Intuición",
     category: "mental",
@@ -259,6 +247,18 @@ export const SPECIALIZATIONS = {
   // ===============================
   // SOCIALES
   // ===============================
+  robo: {
+    label: "Robo",
+    category: "social",
+    attribute: "presence",
+    dcFamily: "environment",
+    reactions: true,
+    retries: false,
+    actionType: "action",
+    aptitudes: [],
+    usesCalc: true,
+    failureLearnBonus: true
+  },
   engano: {
     label: "Engaño",
     category: "social",

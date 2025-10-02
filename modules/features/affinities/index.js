@@ -1,5 +1,5 @@
 // modules/features/affinities/index.js
-import { setTrackLevel } from "../../progression.js";
+import { setTrackLevel, recomputeReferenceLevel } from "../../progression.js";
 
 /**
  * Catálogo de trasfondos
@@ -16,10 +16,11 @@ export const BACKGROUNDS = {
     picks: [
       { category: "physical", count: 2 },
       { category: "mental",  count: 1 },
+      { category: "knowledge",  count: 1 },
     ],
     flags: { martialCanSwapNaturalWeaponsForFabricated: true },
     notes:
-      "Competencias iniciales: 2 Físicas + 1 Mental. Puede sustituir competencias iniciales en armas naturales de su especie por armas fabricadas.",
+      "Competencias iniciales: 2 Físicas + 1 Mental + 1 Saber. Puede sustituir competencias iniciales en armas naturales de su especie por armas fabricadas.",
   },
 
   artisan: {
@@ -30,8 +31,9 @@ export const BACKGROUNDS = {
       { category: "arts", count: 2 },
       // “+ 1 de Saberes o 1 Social”: lo modelamos como un cupo flexible (ver wizard)
       { category: "flex:knowledge|social", count: 1 },
+      { category: "mental",  count: 1 },
     ],
-    notes: "Competencias iniciales: 2 de Artes/Oficios + 1 de Saberes o 1 Social.",
+    notes: "Competencias iniciales: 2 de Artes/Oficios + 1 de Saberes o 1 Social + 1 Mental.",
   },
 
   wanderer: {
@@ -41,32 +43,34 @@ export const BACKGROUNDS = {
     picks: [
       { category: "mental",  count: 2 },
       { category: "physical", count: 1 },
+      { category: "arts", count: 1 },
     ],
-    notes: "Competencias iniciales: 2 Mentales + 1 Física.",
+    notes: "Competencias iniciales: 2 Mentales + 1 Física + 1 Arte y Oficio.",
   },
 
   warden: {
     key: "warden",
     label: "Custodio",
     affinityMajor: "knowledge",
-    // “2 Saberes + 1 Social o 1 Mental” → flex
+    // “2 Saberes + 1 Social + 1 Mental” 
     picks: [
       { category: "knowledge", count: 2 },
-      { category: "flex:mental|social", count: 1 },
+      { category: "mental", count: 1 },
+      { category: "social", count: 1 },
     ],
-    notes: "Competencias iniciales: 2 Saberes + 1 Social o 1 Mental.",
+    notes: "Competencias iniciales: 2 Saberes + 1 Social + 1 Mental.",
   },
 
   noble: {
     key: "noble",
     label: "Noble",
     affinityMajor: "social",
-    // “1 Social + 2 de cualquier otra categoría (a elección)”
+    // “1 Social + 3 de cualquier otra categoría (a elección)”
     picks: [
       { category: "social", count: 1 },
-      { category: "any",    count: 2 },
+      { category: "any",    count: 3 },
     ],
-    notes: "Competencias iniciales: 1 Social + 2 de cualquier categoría.",
+    notes: "Competencias iniciales: 1 Social + 3 de cualquier categoría.",
   },
 
   none: {
@@ -133,6 +137,12 @@ export async function applyBackgroundStartingCompetences(actor, backgroundKey, s
   // Asigna RANGO 1 en cada especialización elegida
   for (const pick of totalToApply) {
     await setTrackLevel(actor, "skills", pick.specKey, 1);
+  }
+
+  const startingKeys = Array.from(new Set(totalToApply.map(p => p.specKey).filter(Boolean)));
+  if (startingKeys.length) {
+    await actor.update({ "system.background.startingSkills": startingKeys });
+    await recomputeReferenceLevel(actor);
   }
 
   // Regla especial (solo deja nota; la sustitución de armas naturales requiere

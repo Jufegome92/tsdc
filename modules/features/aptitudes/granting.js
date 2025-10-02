@@ -4,6 +4,7 @@
 import { APTITUDES } from "./data.js";
 
 const SPECIALIZATION_MAPPINGS = {
+  // FÍSICAS
   "saltar": "saltar",
   "acrobacias": "acrobacias",
   "destreza": "destreza",
@@ -12,8 +13,74 @@ const SPECIALIZATION_MAPPINGS = {
   "equitación": "equitacion",
   "equitacion": "equitacion",
   "vigor": "vigor",
+
+  // MENTALES
+  "identificación": "identificacion",
+  "identificacion": "identificacion",
+  "interpretación": "interpretacion",
+  "interpretacion": "interpretacion",
+  "lingüística": "linguistica",
+  "linguistica": "linguistica",
+  "percepción": "percepcion",
+  "percepcion": "percepcion",
+  "orientación": "orientacion",
+  "orientacion": "orientacion",
+  "rastreo": "rastreo",
+  "supervivencia": "supervivencia",
+  "intuición": "intuicion",
+  "intuicion": "intuicion",
+  "enfoque": "enfoque",
+
+  // SOCIALES
+  "engaño": "engano",
+  "engano": "engano",
+  "domesticación": "domesticacion",
+  "domesticacion": "domesticacion",
+  "liderazgo": "liderazgo",
+  "negociación": "negociacion",
+  "negociacion": "negociacion",
+  "imitación": "imitacion",
+  "imitacion": "imitacion",
+  "empatía": "empatia",
+  "empatia": "empatia",
+  "intimidación": "intimidacion",
+  "intimidacion": "intimidacion",
   "sigilo": "sigilo",
-  // Añadir más mapeos según sea necesario
+  "robo": "robo",
+
+  // ARTES Y OFICIOS
+  "herrería": "herreria",
+  "herreria": "herreria",
+  "sastrería": "sastreria",
+  "sastreria": "sastreria",
+  "joyería": "joyeria",
+  "joyeria": "joyeria",
+  "alquimia": "alquimia",
+  "ingeniería": "ingenieria",
+  "ingenieria": "ingenieria",
+  "trampas": "trampas",
+  "minería": "mineria",
+  "mineria": "mineria",
+  "herboristería": "herboristeria",
+  "herboristeria": "herboristeria",
+  "medicina": "medicina",
+
+  // SABERES
+  "taumaturgia": "taumaturgia",
+  "geografía": "geografia",
+  "geografia": "geografia",
+  "astronomía": "astronomia",
+  "astronomia": "astronomia",
+  "teología": "teologia",
+  "teologia": "teologia",
+  "historia": "historia",
+  "criptología": "criptologia",
+  "criptologia": "criptologia",
+  "arqueología": "arqueologia",
+  "arqueologia": "arqueologia",
+  "arquitectura": "arquitectura",
+  "belicología": "belicologia",
+  "belicologia": "belicologia"
 };
 
 /**

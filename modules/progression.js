@@ -2,6 +2,46 @@
 import { TSDC } from "./config.js";
 import { getBackground, getThresholdForSpec } from "./features/affinities/index.js";
 
+function uniqueStrings(list = []) {
+  return Array.from(new Set((Array.isArray(list) ? list : []).map(k => String(k || "").trim()).filter(Boolean)));
+}
+
+function startingSkillKeys(actor) {
+  const stored = actor?.system?.background?.startingSkills;
+  if (Array.isArray(stored) && stored.length) return uniqueStrings(stored);
+  return [];
+}
+
+function computeReferenceFromSkills(actor) {
+  if (!actor) return 1;
+  const skills = actor.system?.progression?.skills ?? {};
+  const starting = startingSkillKeys(actor).filter(k => skills[k]);
+  let keys = starting;
+  if (!keys.length) {
+    keys = Object.keys(skills || {});
+  }
+  if (!keys.length) {
+    const fallback = Number(actor.system?.level ?? 1);
+    return Number.isFinite(fallback) && fallback > 0 ? fallback : 1;
+  }
+  const totals = keys.map(k => Number(skills[k]?.level ?? 0)).filter(Number.isFinite);
+  if (!totals.length) return 1;
+  const sum = totals.reduce((a, b) => a + b, 0);
+  const avg = sum / totals.length;
+  const clamped = Number.isFinite(avg) ? Math.max(1, avg) : 1;
+  return Number(clamped.toFixed(2));
+}
+
+export async function recomputeReferenceLevel(actor) {
+  if (!actor || actor.type !== "character") return null;
+  const value = computeReferenceFromSkills(actor);
+  const current = Number(actor.system?.levelRef ?? actor.system?.level ?? 1);
+  if (!Number.isFinite(value)) return current;
+  if (Math.abs(value - current) < 0.01) return current;
+  await actor.update({ "system.levelRef": value });
+  return value;
+}
+
 const CATEGORY_ATTR_INFO = {
   physical: {
     attrs: ["strength", "agility", "tenacity"],
@@ -152,6 +192,12 @@ export async function setTrackLevel(actor, trackType, key, level = 1) {
   };
 
   await actor.update({ [path]: next });
+  if (trackType === "skills") {
+    const starting = startingSkillKeys(actor);
+    if (!starting.length || starting.includes(String(key))) {
+      await recomputeReferenceLevel(actor);
+    }
+  }
 }
 
 /** Suma fallos (misma semántica que ya tenías) */
@@ -204,6 +250,12 @@ export async function addProgress(actor, trackType, key, amount = 1) {
   const rankUps = Math.max(0, data.rank - prevRank);
   if (trackType === "skills" && rankUps > 0) {
     await promptAttributeIncreaseForSpec(actor, key, data.category, rankUps);
+  }
+  if (trackType === "skills" && leveled) {
+    const starting = startingSkillKeys(actor);
+    if (!starting.length || starting.includes(String(key))) {
+      await recomputeReferenceLevel(actor);
+    }
   }
 
   return { leveled, level: data.level, rank: data.rank, progress: data.progress };

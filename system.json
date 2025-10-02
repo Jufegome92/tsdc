@@ -40,10 +40,17 @@
       "units": "Meter"
     },
     "documentTypes": {
-    "Actor": {
+      "Actor": {
         "character": {},
         "creature": {}
-        }
+      },
+      "Item": {
+        "material": {},
+        "tool": {},
+        "consumable": {},
+        "generic": {},
+        "tauma": {}
+      }
     },
     "packs": [
     { "name": "tsdc-monsters", "label": "TSDC • Monstruos", "path": "packs/tsdc-monsters.db", "type": "Actor", "system": "tsdc" },

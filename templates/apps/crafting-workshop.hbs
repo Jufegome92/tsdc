@@ -1,0 +1,539 @@
+<div class="crafting-workshop-container">
+
+  {{#unless wizardActive}}
+  <!-- Header with tabs -->
+  <nav class="tabs" data-group="primary-tabs">
+    <a class="tab {{#if (eq activeTab 'inventory')}}active{{/if}}" data-tab="inventory">
+      <i class="fas fa-boxes"></i> Inventario
+    </a>
+    <a class="tab {{#if (eq activeTab 'knowledge')}}active{{/if}}" data-tab="knowledge">
+      <i class="fas fa-book"></i> Conocimientos
+    </a>
+    <a class="tab {{#if (eq activeTab 'progress')}}active{{/if}}" data-tab="progress">
+      <i class="fas fa-tasks"></i> En Progreso
+    </a>
+    <a class="tab {{#if (eq activeTab 'history')}}active{{/if}}" data-tab="history">
+      <i class="fas fa-scroll"></i> Bitácora
+    </a>
+  </nav>
+
+  <!-- Main content area -->
+  <div class="content">
+
+    <!-- INVENTARIO TAB -->
+    {{#if (eq activeTab 'inventory')}}
+    <div class="tab-content inventory-tab">
+      <div class="workshop-layout">
+
+        <!-- Left panel: Materials & Tools -->
+        <div class="left-panel">
+
+          <!-- Materials Section -->
+          <section class="materials-panel">
+            <h3><i class="fas fa-cubes"></i> Materiales</h3>
+
+            <div class="filter-bar">
+              <select class="material-filter">
+                <option value="all">Todos</option>
+                <option value="minerales">🪨 Minerales</option>
+                <option value="plantas">🌿 Plantas</option>
+                <option value="partes">🦴 Partes</option>
+                <option value="fibras">🧵 Fibras</option>
+                <option value="reagentes">⚗️ Reagentes</option>
+              </select>
+            </div>
+
+            <div class="materials-list">
+              {{#each materials.minerales}}
+                <div class="material-item" data-material-key="{{key}}" data-material-type="minerales">
+                  <div class="material-icon">🪨</div>
+                  <div class="material-info">
+                    <div class="material-name">{{name}}</div>
+                    <div class="material-meta">
+                      <span class="quality grade-{{quality}}">G{{quality}}</span>
+                      <span class="quantity">×{{quantity}}</span>
+                      {{#if perishable}}
+                        <span class="perishable" title="Material perecedero">
+                          <i class="fas fa-clock"></i>
+                        </span>
+                      {{/if}}
+                    </div>
+                  </div>
+                </div>
+              {{/each}}
+
+              {{#each materials.plantas}}
+                <div class="material-item" data-material-key="{{key}}" data-material-type="plantas">
+                  <div class="material-icon">🌿</div>
+                  <div class="material-info">
+                    <div class="material-name">{{name}}</div>
+                    <div class="material-meta">
+                      <span class="quantity">×{{quantity}}</span>
+                      {{#if perishable}}
+                        <span class="perishable" title="Material perecedero">
+                          <i class="fas fa-clock"></i>
+                        </span>
+                      {{/if}}
+                    </div>
+                  </div>
+                </div>
+              {{/each}}
+
+              {{#each materials.partes}}
+                <div class="material-item" data-material-key="{{key}}" data-material-type="partes">
+                  <div class="material-icon">🦴</div>
+                  <div class="material-info">
+                    <div class="material-name">{{name}}</div>
+                    <div class="material-meta">
+                      <span class="quality grade-{{quality}}">G{{quality}}</span>
+                      <span class="quantity">×{{quantity}}</span>
+                    </div>
+                  </div>
+                </div>
+              {{/each}}
+
+              {{#each materials.fibras}}
+                <div class="material-item" data-material-key="{{key}}" data-material-type="fibras">
+                  <div class="material-icon">🧵</div>
+                  <div class="material-info">
+                    <div class="material-name">{{name}}</div>
+                    <div class="material-meta">
+                      <span class="quality grade-{{quality}}">G{{quality}}</span>
+                      <span class="quantity">×{{quantity}}</span>
+                    </div>
+                  </div>
+                </div>
+              {{/each}}
+
+              {{#each materials.reagentes}}
+                <div class="material-item" data-material-key="{{key}}" data-material-type="reagentes">
+                  <div class="material-icon">⚗️</div>
+                  <div class="material-info">
+                    <div class="material-name">{{name}}</div>
+                    <div class="material-meta">
+                      <span class="quality grade-{{quality}}">G{{quality}}</span>
+                      <span class="quantity">×{{quantity}}</span>
+                    </div>
+                  </div>
+                </div>
+              {{/each}}
+            </div>
+          </section>
+
+          <!-- Tools Section -->
+          <section class="tools-panel">
+            <h3><i class="fas fa-tools"></i> Herramientas</h3>
+
+            <div class="tools-list">
+              {{#each tools.herreria}}
+                <div class="tool-item" data-tool-key="{{key}}">
+                  <div class="tool-icon">🔨</div>
+                  <div class="tool-info">
+                    <div class="tool-name">{{name}}</div>
+                    {{#if uses}}
+                      <div class="tool-uses">
+                        <div class="uses-bar">
+                          <div class="uses-fill" style="width: {{math uses '/' maxUses '*' 100}}%"></div>
+                        </div>
+                        <span class="uses-text">{{uses}}/{{maxUses}}</span>
+                      </div>
+                    {{/if}}
+                  </div>
+                </div>
+              {{/each}}
+
+              {{#each tools.sastreria}}
+                <div class="tool-item" data-tool-key="{{key}}">
+                  <div class="tool-icon">✂️</div>
+                  <div class="tool-info">
+                    <div class="tool-name">{{name}}</div>
+                    {{#if uses}}
+                      <div class="tool-uses">
+                        <div class="uses-bar">
+                          <div class="uses-fill" style="width: {{math uses '/' maxUses '*' 100}}%"></div>
+                        </div>
+                        <span class="uses-text">{{uses}}/{{maxUses}}</span>
+                      </div>
+                    {{/if}}
+                  </div>
+                </div>
+              {{/each}}
+
+              {{#each tools.alquimia}}
+                <div class="tool-item" data-tool-key="{{key}}">
+                  <div class="tool-icon">⚗️</div>
+                  <div class="tool-info">
+                    <div class="tool-name">{{name}}</div>
+                    {{#if uses}}
+                      <div class="tool-uses">
+                        <div class="uses-bar">
+                          <div class="uses-fill" style="width: {{math uses '/' maxUses '*' 100}}%"></div>
+                        </div>
+                        <span class="uses-text">{{uses}}/{{maxUses}}</span>
+                      </div>
+                    {{/if}}
+                  </div>
+                </div>
+              {{/each}}
+            </div>
+          </section>
+
+        </div>
+
+        <!-- Right panel: Workspace -->
+        <div class="right-panel workspace">
+          <div class="empty-workspace">
+            <i class="fas fa-hammer fa-3x"></i>
+            <h2>Espacio de Trabajo</h2>
+            <p>Selecciona un proyecto o crea uno nuevo</p>
+            <button class="new-project-btn">
+              <i class="fas fa-plus"></i> Nuevo Proyecto
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    {{/if}}
+
+    <!-- CONOCIMIENTOS TAB -->
+    {{#if (eq activeTab 'knowledge')}}
+    <div class="tab-content knowledge-tab">
+      <div class="knowledge-grid">
+
+        <!-- Fórmulas Alquímicas -->
+        <section class="knowledge-section">
+          <h3><i class="fas fa-flask"></i> Fórmulas Alquímicas</h3>
+          <div class="knowledge-list">
+            {{#each knowledge.formulas}}
+              <div class="knowledge-item formula-item">
+                <div class="item-header">
+                  <span class="item-name">{{name}}</span>
+                  <span class="item-rarity rarity-{{rarity}}">{{rarity}}</span>
+                </div>
+                <div class="item-details">
+                  <span class="item-type">{{type}}</span>
+                  <span class="item-index">IA: {{alchemicalIndex}}</span>
+                </div>
+              </div>
+            {{/each}}
+          </div>
+        </section>
+
+        <!-- Diagramas de Trampas -->
+        <section class="knowledge-section">
+          <h3><i class="fas fa-spider"></i> Diagramas de Trampas</h3>
+          <div class="knowledge-list">
+            {{#each knowledge.diagrams}}
+              <div class="knowledge-item diagram-item">
+                <div class="item-header">
+                  <span class="item-name">{{name}}</span>
+                  <span class="item-rarity rarity-{{rarity}}">{{rarity}}</span>
+                </div>
+                <div class="item-details">
+                  <span class="item-type">{{trapType}}</span>
+                </div>
+              </div>
+            {{/each}}
+          </div>
+        </section>
+
+        <!-- Planos de Herramientas -->
+        <section class="knowledge-section">
+          <h3><i class="fas fa-wrench"></i> Planos de Herramientas</h3>
+          <div class="knowledge-list">
+            {{#each knowledge.blueprints}}
+              <div class="knowledge-item blueprint-item">
+                <div class="item-header">
+                  <span class="item-name">{{name}}</span>
+                  <span class="item-complexity complexity-{{complexity}}">{{complexity}}</span>
+                </div>
+                <div class="item-details">
+                  <span class="item-art">{{art}}</span>
+                </div>
+              </div>
+            {{/each}}
+          </div>
+        </section>
+
+        <!-- Diseños de Equipo -->
+        <section class="knowledge-section">
+          <h3><i class="fas fa-shield-alt"></i> Diseños de Equipo</h3>
+          <div class="knowledge-list">
+            {{#each knowledge.designs}}
+              <div class="knowledge-item design-item">
+                <div class="item-header">
+                  <span class="item-name">{{name}}</span>
+                </div>
+                <div class="item-details">
+                  <span class="item-type">{{designType}}</span>
+                </div>
+              </div>
+            {{/each}}
+          </div>
+        </section>
+
+      </div>
+    </div>
+    {{/if}}
+
+    <!-- EN PROGRESO TAB -->
+    {{#if (eq activeTab 'progress')}}
+    <div class="tab-content progress-tab">
+      {{#if activeProjects.length}}
+        <div class="projects-list">
+          {{#each activeProjects}}
+            <div class="project-card {{#if (eq status 'completed')}}completed{{/if}}">
+              <div class="project-header">
+                <h3>{{name}}</h3>
+                <span class="project-status status-{{status}}">{{status}}</span>
+              </div>
+
+              <div class="project-progress">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: {{math hoursCompleted '/' totalHours '*' 100}}%"></div>
+                </div>
+                <div class="progress-info">
+                  <span>{{hoursCompleted}}/{{totalHours}} horas</span>
+                  <span>{{math hoursCompleted '/' totalHours '*' 100 round=0}}%</span>
+                </div>
+              </div>
+
+              <div class="project-meta">
+                <div class="meta-item">
+                  <i class="fas fa-clock"></i>
+                  <span>{{math totalHours '-' hoursCompleted}} horas restantes</span>
+                </div>
+                <div class="meta-item">
+                  <i class="fas fa-calendar"></i>
+                  <span>Iniciado: {{formatDate startDate}}</span>
+                </div>
+                {{#if lastWorkDate}}
+                  <div class="meta-item">
+                    <i class="fas fa-history"></i>
+                    <span>Última sesión: {{formatDate lastWorkDate}}</span>
+                  </div>
+                {{/if}}
+              </div>
+
+              {{#if (eq status 'in_progress')}}
+                <div class="project-actions">
+                  <button class="work-on-project" data-project-id="{{id}}">
+                    <i class="fas fa-hammer"></i> Trabajar
+                  </button>
+                  <button class="pause-project" data-project-id="{{id}}">
+                    <i class="fas fa-pause"></i> Pausar
+                  </button>
+                  <button class="cancel-project" data-project-id="{{id}}">
+                    <i class="fas fa-times"></i> Cancelar
+                  </button>
+                </div>
+              {{/if}}
+
+              {{#if (eq status 'completed')}}
+                <div class="project-completed-banner">
+                  <i class="fas fa-check-circle"></i>
+                  ¡Proyecto Completado!
+                </div>
+              {{/if}}
+            </div>
+          {{/each}}
+        </div>
+      {{else}}
+        <div class="empty-state">
+          <i class="fas fa-inbox fa-3x"></i>
+          <h2>No hay proyectos activos</h2>
+          <p>Crea un nuevo proyecto para comenzar a fabricar</p>
+          <button class="new-project-btn">
+            <i class="fas fa-plus"></i> Nuevo Proyecto
+          </button>
+        </div>
+      {{/if}}
+    </div>
+    {{/if}}
+
+    <!-- BITÁCORA TAB -->
+    {{#if (eq activeTab 'history')}}
+    <div class="tab-content history-tab">
+      {{#if history.length}}
+        <div class="history-list">
+          {{#each history}}
+            <div class="history-entry">
+              <div class="entry-date">{{formatDate date}}</div>
+              <div class="entry-content">
+                <h4>{{itemName}}</h4>
+                <p>{{description}}</p>
+                {{#if success}}
+                  <span class="entry-status success">
+                    <i class="fas fa-check"></i> Éxito
+                  </span>
+                {{else}}
+                  <span class="entry-status failure">
+                    <i class="fas fa-times"></i> Fallo
+                  </span>
+                {{/if}}
+              </div>
+            </div>
+          {{/each}}
+        </div>
+      {{else}}
+        <div class="empty-state">
+          <i class="fas fa-book-open fa-3x"></i>
+          <h2>Bitácora Vacía</h2>
+          <p>Aquí se registrarán tus proyectos completados</p>
+        </div>
+      {{/if}}
+    </div>
+    {{/if}}
+
+  </div>
+  {{/unless}}
+
+  <!-- WIZARD MODE -->
+  {{#if wizardActive}}
+    <div class="wizard-container">
+
+      <!-- Step Indicator -->
+      <div class="wizard-steps">
+        <div class="step {{#if (eq wizardStep 1)}}active{{/if}} {{#if (gt wizardStep 1)}}completed{{/if}}">
+          <span class="step-number">1</span>
+          <span class="step-label">Tipo</span>
+        </div>
+        <div class="step {{#if (eq wizardStep 2)}}active{{/if}} {{#if (gt wizardStep 2)}}completed{{/if}}">
+          <span class="step-number">2</span>
+          <span class="step-label">Diseño</span>
+        </div>
+        <div class="step {{#if (eq wizardStep 3)}}active{{/if}} {{#if (gt wizardStep 3)}}completed{{/if}}">
+          <span class="step-number">3</span>
+          <span class="step-label">Materiales</span>
+        </div>
+        <div class="step {{#if (eq wizardStep 4)}}active{{/if}}">
+          <span class="step-number">4</span>
+          <span class="step-label">Confirmar</span>
+        </div>
+      </div>
+
+      <!-- Step Content -->
+      <div class="wizard-content">
+
+        <!-- STEP 1: Select Type -->
+        {{#if (eq wizardStep 1)}}
+          <div class="wizard-step step-select-type">
+            <h2>¿Qué deseas fabricar?</h2>
+            <div class="fabrication-types">
+              <div class="fabrication-type-card" data-type="equipment">
+                <i class="fas fa-sword fa-3x"></i>
+                <h3>Equipo</h3>
+                <p>Armas, armaduras, escudos</p>
+              </div>
+              <div class="fabrication-type-card" data-type="alchemy">
+                <i class="fas fa-flask fa-3x"></i>
+                <h3>Alquimia</h3>
+                <p>Elixires y venenos</p>
+              </div>
+              <div class="fabrication-type-card" data-type="trap">
+                <i class="fas fa-spider fa-3x"></i>
+                <h3>Trampa</h3>
+                <p>Dispositivos y mecanismos</p>
+              </div>
+              <div class="fabrication-type-card" data-type="tool">
+                <i class="fas fa-wrench fa-3x"></i>
+                <h3>Herramienta</h3>
+                <p>Kits y equipo artesanal</p>
+              </div>
+            </div>
+          </div>
+        {{/if}}
+
+        <!-- STEP 2: Select Recipe/Design -->
+        {{#if (eq wizardStep 2)}}
+          <div class="wizard-step step-select-recipe">
+            <h2>Selecciona una {{#if (eq wizardData.type 'alchemy')}}fórmula{{else if (eq wizardData.type 'trap')}}diagrama{{else if (eq wizardData.type 'tool')}}plano{{else}}diseño{{/if}}</h2>
+
+            <div class="recipe-list-container">
+              <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input type="text" class="recipe-search" placeholder="Buscar...">
+              </div>
+
+              <div class="recipe-list">
+                <!-- This would be populated dynamically based on wizardData.type -->
+                <!-- Placeholder for now -->
+                <div class="recipe-item" data-recipe-key="elixir_curativo">
+                  <div class="recipe-name">Elixir Curativo</div>
+                  <div class="recipe-meta">
+                    <span class="recipe-rarity">Común</span>
+                    <span class="recipe-time">12h</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        {{/if}}
+
+        <!-- STEP 3: Configure Materials -->
+        {{#if (eq wizardStep 3)}}
+          <div class="wizard-step step-configure-materials">
+            <h2>{{wizardData.recipe.label}}</h2>
+
+            <!-- Material configuration based on type -->
+            <!-- This is a placeholder, actual implementation would be more complex -->
+            <div class="material-configuration">
+              <p>Configura los materiales necesarios...</p>
+            </div>
+          </div>
+        {{/if}}
+
+        <!-- STEP 4: Confirm -->
+        {{#if (eq wizardStep 4)}}
+          <div class="wizard-step step-confirm">
+            <h2>Resumen del Proyecto</h2>
+
+            <div class="project-summary">
+              <div class="summary-section">
+                <h3>Objeto</h3>
+                <p>{{wizardData.recipe.label}}</p>
+              </div>
+
+              <div class="summary-section">
+                <h3>Tiempo Total</h3>
+                <p>{{wizardData.totalHours}} horas</p>
+              </div>
+
+              <div class="summary-section">
+                <h3>Costos</h3>
+                <p>Total: {{wizardData.totalCost}} Sh</p>
+              </div>
+            </div>
+
+            <button class="confirm-project-btn">
+              <i class="fas fa-check"></i> Comenzar Proyecto
+            </button>
+          </div>
+        {{/if}}
+
+      </div>
+
+      <!-- Wizard Navigation -->
+      <div class="wizard-navigation">
+        {{#if (gt wizardStep 1)}}
+          <button class="wizard-back">
+            <i class="fas fa-arrow-left"></i> Atrás
+          </button>
+        {{/if}}
+
+        <button class="wizard-cancel">
+          <i class="fas fa-times"></i> Cancelar
+        </button>
+
+        {{#if (lt wizardStep 4)}}
+          <button class="wizard-next">
+            Siguiente <i class="fas fa-arrow-right"></i>
+          </button>
+        {{/if}}
+      </div>
+
+    </div>
+  {{/if}}
+
+</div>

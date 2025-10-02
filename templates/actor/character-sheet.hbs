@@ -10,6 +10,7 @@
     <a class="item" data-tab="specs">Especializaciones</a>
     <a class="item" data-tab="competences">Competencias</a>
     <a class="item" data-tab="equipment">Equipo</a>
+    <a class="item" data-tab="inventory">Inventario</a>
     <a class="item" data-tab="journal">Journal</a>
   </nav>
 
@@ -55,7 +56,7 @@
           </div>
         </div>
 
-        {{#if woundZones.length}}
+        {{#if (and woundZones.length (eq actor.type "character"))}}
         <div class="t-card t-col">
           <h3 style="margin:0 0 6px 0;">Heridas por zona</h3>
           {{#if woundStatusLabel}}<span class="muted">Estado general: {{woundStatusLabel}}</span>{{/if}}
@@ -69,6 +70,66 @@
                   {{/each}}
                 </div>
                 <span class="muted">{{this.used}} / {{this.max}}</span>
+              </div>
+            {{/each}}
+          </div>
+        </div>
+        {{/if}}
+
+        {{!-- HP por partes (para criaturas) --}}
+        {{#if (and healthParts.length (eq actor.type "creature"))}}
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">HP por Parte del Cuerpo</h3>
+          <div class="t-col" style="gap:6px;">
+            {{#each healthParts}}
+              <div class="t-row" style="justify-content:space-between; gap:8px; align-items:center; {{#if this.disabled}}opacity: 0.5;{{/if}}">
+                <div style="min-width:110px;">
+                  <strong>{{this.label}}</strong>
+                  {{#if this.disabled}}
+                    <span class="muted" style="color: #e53e3e;"> (Destruida)</span>
+                  {{/if}}
+                </div>
+                <div class="t-row" style="gap:4px; align-items:center;">
+                  {{#if this.material}}
+                    <span class="muted" style="font-size: 0.85em;">{{this.material}}</span>
+                  {{/if}}
+                  <div class="tsdc-hp-bar" style="width: 100px; height: 20px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden; position: relative;">
+                    <div style="width: {{#if (gt this.max 0)}}{{multiply (divide this.value this.max) 100}}{{else}}0{{/if}}%; height: 100%; background: {{#if (gt this.value (multiply this.max 0.5))}}#48bb78{{else if (gt this.value 0)}}#ed8936{{else}}#e53e3e{{/if}}; transition: width 0.3s;"></div>
+                    <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.85em; font-weight: bold; color: white; text-shadow: 0 0 2px black;">{{this.value}} / {{this.max}}</span>
+                  </div>
+                </div>
+              </div>
+            {{/each}}
+          </div>
+        </div>
+        {{/if}}
+
+        {{!-- Efectos activos --}}
+        {{#if activeEffects.length}}
+        <div class="t-card t-col">
+          <h3 style="margin:0 0 6px 0;">Efectos Activos</h3>
+          <div class="t-col" style="gap:8px;">
+            {{#each activeEffects}}
+              <div class="t-col" style="border-left: 3px solid {{#if (eq this.group 'elemental')}}#8b5cf6{{else}}#f59e0b{{/if}}; padding-left: 8px; background: rgba(0,0,0,0.1); padding: 8px; border-radius: 4px;">
+                <div class="t-row" style="justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong>{{this.label}}</strong>
+                    {{#if this.severity}}<span class="muted"> ({{this.severity}})</span>{{/if}}
+                    {{#if this.magnitude}}<span class="muted"> • {{this.magnitude}}</span>{{/if}}
+                    {{#if this.zone}}<span class="muted"> • {{this.zone}}</span>{{/if}}
+                  </div>
+                  <button type="button" class="t-btn-icon" data-action="remove-ailment" data-ailment-id="{{this.id}}" title="Remover efecto">✖</button>
+                </div>
+                {{#if this.duration}}
+                  <div class="muted" style="font-size: 0.85em;">Duración: {{this.duration}}</div>
+                {{/if}}
+                {{#if this.effects.length}}
+                  <ul style="margin: 4px 0 0 0; padding-left: 20px; font-size: 0.9em;">
+                    {{#each this.effects}}
+                      <li>{{this}}</li>
+                    {{/each}}
+                  </ul>
+                {{/if}}
               </div>
             {{/each}}
           </div>
@@ -314,6 +375,32 @@
           <button type="button" class="t-btn" data-action="def-roll">Tirar Defensa</button>
         </div>
         <span class="muted">El bono de armadura se calcula automáticamente desde tus piezas equipadas y el escudo.</span>
+      </div>
+
+      {{!-- CARACTERÍSTICAS --}}
+      <div class="t-card t-col">
+        <h3 style="margin:0 0 6px 0;">Tirada de Característica</h3>
+        <div class="t-row" style="gap:12px; align-items:flex-end; flex-wrap:wrap;">
+          <div class="t-field" style="min-width:200px;">
+            <label>Característica</label>
+            <select name="charAttr">
+              <option value="">— Seleccionar —</option>
+              {{#each characteristicsList}}
+                <option value="{{this.key}}" {{#if (eq ../rollDefaults.characteristic.attr this.key)}}selected{{/if}}>{{this.label}}</option>
+              {{/each}}
+            </select>
+          </div>
+          <div class="t-field" style="width:100px;">
+            <label>Bono</label>
+            <input type="number" name="charBonus" value="{{rollDefaults.characteristic.bonus}}"/>
+          </div>
+          <div class="t-field" style="width:100px;">
+            <label>Penal.</label>
+            <input type="number" name="charPenalty" value="{{rollDefaults.characteristic.penalty}}"/>
+          </div>
+          <button type="button" class="t-btn" data-action="char-roll">Tirar Característica</button>
+        </div>
+        <span class="muted">Formula: 1d10 + característica + nivel de referencia ({{referenceLevel}}) + bono − penal.</span>
       </div>
 
       {{!-- RESISTENCIAS --}}
@@ -708,6 +795,403 @@
       {{/if}}
 
     </div> {{!-- /tab equipment --}}
+
+    {{!-- ================================
+          TAB: INVENTARIO
+          ================================ --}}
+    <div class="tab t-col" data-group="primary" data-tab="inventory" style="gap:12px;">
+
+      {{!-- Categorías del Inventario --}}
+      <div class="inventory-categories">
+        <h2 style="margin: 0 0 12px 0; border-bottom: 2px solid #8b6f47; padding-bottom: 6px;">
+          <i class="fas fa-backpack"></i> Inventario Completo
+        </h2>
+
+        {{!-- Armas --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="weapons">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-sword"></i> Armas
+          </h3>
+          <div class="category-content" data-category="weapons">
+            <div class="items-list">
+              {{#if (getBagItemsByType actor "weapon")}}
+                {{#each (getBagItemsByType actor "weapon")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <span class="item-qty">x{{this.qty}}</span>
+                    <button class="item-delete" data-action="delete-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay armas en el inventario</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Armaduras --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="armor">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-shield"></i> Armaduras
+          </h3>
+          <div class="category-content" data-category="armor">
+            <div class="items-list">
+              {{#if (getBagItemsByType actor "armor")}}
+                {{#each (getBagItemsByType actor "armor")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <span class="item-qty">x{{this.qty}}</span>
+                    <button class="item-delete" data-action="delete-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay armaduras en el inventario</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Joyas --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="jewelry">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-ring"></i> Joyas
+          </h3>
+          <div class="category-content" data-category="jewelry">
+            <div class="items-list">
+              {{#if (getBagItemsByType actor "jewel")}}
+                {{#each (getBagItemsByType actor "jewel")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <span class="item-qty">x{{this.qty}}</span>
+                    <button class="item-delete" data-action="delete-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay joyas en el inventario</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Diseños --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="designs">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-scroll"></i> Diseños
+          </h3>
+          <div class="category-content" data-category="designs">
+            <div class="items-list">
+              {{#if (getItemsByType actor "design")}}
+                {{#each (getItemsByType actor "design")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <button class="item-delete" data-action="delete-owned-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay diseños aprendidos</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Fórmulas --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="formulas">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-flask"></i> Fórmulas
+          </h3>
+          <div class="category-content" data-category="formulas">
+            <div class="items-list">
+              {{#if (getItemsByType actor "formula")}}
+                {{#each (getItemsByType actor "formula")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <button class="item-delete" data-action="delete-owned-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay fórmulas aprendidas</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Planos --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="blueprints">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-drafting-compass"></i> Planos
+          </h3>
+          <div class="category-content" data-category="blueprints">
+            <div class="items-list">
+              {{#if (getItemsByType actor "blueprint")}}
+                {{#each (getItemsByType actor "blueprint")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <button class="item-delete" data-action="delete-owned-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay planos aprendidos</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Diagramas --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="diagrams">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-project-diagram"></i> Diagramas
+          </h3>
+          <div class="category-content" data-category="diagrams">
+            <div class="items-list">
+              {{#if (getItemsByType actor "diagram")}}
+                {{#each (getItemsByType actor "diagram")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <button class="item-delete" data-action="delete-owned-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay diagramas aprendidos</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Materiales --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="materials">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-gem"></i> Materiales
+          </h3>
+          <div class="category-content" data-category="materials">
+            <div class="items-list">
+              {{#if (getBagItemsByType actor "material")}}
+                {{#each (getBagItemsByType actor "material")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <span class="item-qty">{{this.quantity}} {{this.unit}}</span>
+                    <button class="item-delete" data-action="delete-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay materiales en el inventario</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Consumibles --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="consumables">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-cookie-bite"></i> Consumibles
+          </h3>
+          <div class="category-content" data-category="consumables">
+            <div class="items-list">
+              {{#if (getBagItemsByType actor "consumable")}}
+                {{#each (getBagItemsByType actor "consumable")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <span class="item-qty">x{{this.qty}}</span>
+                    <button class="item-delete" data-action="delete-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay consumibles en el inventario</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Kits y Herramientas --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="tools">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-toolbox"></i> Kits y Herramientas
+          </h3>
+          <div class="category-content" data-category="tools">
+            <div class="items-list">
+              {{#if (getBagItemsByType actor "tool")}}
+                {{#each (getBagItemsByType actor "tool")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    {{#if this.uses}}
+                      <span class="item-uses">{{this.uses}}/{{this.maxUses}} usos</span>
+                    {{/if}}
+                    <button class="item-delete" data-action="delete-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay herramientas en el inventario</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+        {{!-- Reliquias --}}
+        <div class="inventory-category">
+          <h3 class="category-header" data-action="toggle-category" data-category="relics">
+            <i class="fas fa-chevron-down"></i>
+            <i class="fas fa-star"></i> Reliquias
+          </h3>
+          <div class="category-content" data-category="relics">
+            <div class="items-list">
+              {{#if (getItemsByType actor "tauma")}}
+                {{#each (getItemsByType actor "tauma")}}
+                  <div class="inventory-item">
+                    <span class="item-name">{{this.name}}</span>
+                    <span class="item-level">Nivel {{this.system.taumaLevel}}</span>
+                    <button class="item-delete" data-action="delete-owned-item" data-item-id="{{this.id}}">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </div>
+                {{/each}}
+              {{else}}
+                <p class="empty-category">No hay reliquias en el inventario</p>
+              {{/if}}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <style>
+        .inventory-categories {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .inventory-category {
+          background: rgba(139, 111, 71, 0.1);
+          border: 1px solid #8b6f47;
+          border-radius: 6px;
+          overflow: hidden;
+        }
+
+        .category-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          margin: 0;
+          background: rgba(139, 111, 71, 0.2);
+          color: #d4af77;
+          cursor: pointer;
+          user-select: none;
+          transition: background 0.2s;
+        }
+
+        .category-header:hover {
+          background: rgba(139, 111, 71, 0.3);
+        }
+
+        .category-header i.fa-chevron-down {
+          transition: transform 0.2s;
+          font-size: 0.8em;
+        }
+
+        .category-header.collapsed i.fa-chevron-down {
+          transform: rotate(-90deg);
+        }
+
+        .category-content {
+          padding: 8px;
+          max-height: 500px;
+          overflow-y: auto;
+          transition: max-height 0.3s ease-out;
+        }
+
+        .category-content.collapsed {
+          max-height: 0;
+          padding: 0;
+          overflow: hidden;
+        }
+
+        .items-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .inventory-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 8px;
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 4px;
+          transition: background 0.2s;
+        }
+
+        .inventory-item:hover {
+          background: rgba(0, 0, 0, 0.3);
+        }
+
+        .inventory-item .item-name {
+          flex: 1;
+          color: #e8d7c3;
+        }
+
+        .inventory-item .item-qty,
+        .inventory-item .item-uses,
+        .inventory-item .item-level {
+          color: #b8a58f;
+          font-size: 0.85em;
+        }
+
+        .inventory-item .item-delete {
+          padding: 4px 8px;
+          background: rgba(139, 71, 71, 0.3);
+          border: 1px solid #8b4747;
+          border-radius: 4px;
+          color: #d47777;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .inventory-item .item-delete:hover {
+          background: rgba(139, 71, 71, 0.5);
+          border-color: #d47777;
+        }
+
+        .empty-category {
+          color: #b8a58f;
+          font-style: italic;
+          text-align: center;
+          padding: 12px;
+          margin: 0;
+        }
+      </style>
+
+    </div> {{!-- /tab inventory --}}
 
     {{!-- ================================
           TAB: JOURNAL

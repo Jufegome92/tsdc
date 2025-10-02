@@ -1,0 +1,515 @@
+<section class="tsdc-wizard mineral-vein" data-step="{{step}}">
+  <header class="wizard-header">
+    <h1>Configurar Veta Mineral</h1>
+    <nav class="wizard-steps">
+      {{#each steps}}
+        <span class="wizard-step {{#if (eq ../step this.key)}}is-active{{/if}}">
+          <span class="step-index">{{this.display}}</span>
+          <span class="step-label">{{this.label}}</span>
+        </span>
+      {{/each}}
+    </nav>
+  </header>
+
+  {{#if (eq step "material")}}
+    <section class="wizard-body">
+      <div class="wizard-search">
+        <label>
+          <span>Buscar material</span>
+          <input type="search" name="material-search" value="{{search}}" placeholder="Hierro, jade, oro..." />
+        </label>
+      </div>
+
+      {{#if hasMaterials}}
+        <div class="material-layout">
+          <div class="material-groups">
+            {{#each materialGroups}}
+              <section class="material-group">
+                <header class="group-header">
+                  <h2>{{typeLabel}}</h2>
+                  <span class="count">{{materials.length}} opciones</span>
+                </header>
+                <div class="material-list">
+                  <div class="material-header-row">
+                    <span class="col name">Material</span>
+                    <span class="col stat">Dur</span>
+                    <span class="col stat">Pot</span>
+                    <span class="col cost">Costo</span>
+                    <span class="col access">Acceso</span>
+                  </div>
+                  {{#each materials}}
+                    <button type="button" class="material-row {{#if isSelected}}is-selected{{/if}}" data-action="select-material" data-key="{{key}}">
+                      <span class="col name">
+                        <span class="label">{{label}}</span>
+                        <span class="tag">{{typeLabel}}</span>
+                      </span>
+                      <span class="col stat">{{durability}}</span>
+                      <span class="col stat">{{potency}}</span>
+                      <span class="col cost">{{cost}}/{{unit}}</span>
+                      <span class="col access {{accessibilityKey}}">{{accessibilityLabel}}</span>
+                    </button>
+                  {{/each}}
+                </div>
+              </section>
+            {{/each}}
+          </div>
+
+          <aside class="material-preview">
+            {{#if selectedMaterial}}
+              <header>
+                <h3>{{selectedMaterial.label}}</h3>
+                <span class="tag">{{selectedMaterial.typeLabel}}</span>
+              </header>
+              <p class="description">{{selectedMaterial.description}}</p>
+              <dl>
+                <div><dt>Durabilidad</dt><dd>{{selectedMaterial.durability}}</dd></div>
+                <div><dt>Potencia</dt><dd>{{selectedMaterial.potency}}</dd></div>
+                <div><dt>Costo base</dt><dd>{{selectedMaterialCost}} Shekels/{{selectedMaterial.unit}}</dd></div>
+                <div><dt>Accesibilidad</dt><dd>{{accessibility.label}}</dd></div>
+                <div><dt>Dificultad</dt><dd>{{accessibility.extractionDifficulty}}</dd></div>
+                <div><dt>Kit necesario</dt><dd>{{toolInfo.label}}</dd></div>
+              </dl>
+            {{else}}
+              <div class="empty-preview">
+                <p>Selecciona un material para ver sus detalles.</p>
+              </div>
+            {{/if}}
+          </aside>
+        </div>
+      {{else}}
+        <p class="empty">No hay materiales que coincidan con la búsqueda.</p>
+      {{/if}}
+    </section>
+  {{/if}}
+
+  {{#if (eq step "setup")}}
+    <section class="wizard-body setup">
+      {{#if selectedMaterial}}
+        <article class="selected-material">
+          <header>
+            <h2>{{selectedMaterial.label}}</h2>
+            <span class="tag">{{selectedMaterial.typeLabel}}</span>
+          </header>
+          <p class="description">{{selectedMaterial.description}}</p>
+          <dl class="summary">
+            <div><dt>Durabilidad</dt><dd>{{selectedMaterial.durability}}</dd></div>
+            <div><dt>Potencia</dt><dd>{{selectedMaterial.potency}}</dd></div>
+            <div><dt>Costo (grado {{quality.grade}})</dt><dd>{{selectedMaterialCost}} Shekels/{{selectedMaterial.unit}}</dd></div>
+            <div><dt>Accesibilidad</dt><dd>{{accessibility.label}}</dd></div>
+            <div><dt>Dificultad de extracción</dt><dd>{{accessibility.extractionDifficulty}}</dd></div>
+            <div><dt>Kit requerido</dt><dd>{{toolInfo.label}}</dd></div>
+          </dl>
+        </article>
+      {{/if}}
+
+      <section class="richness">
+        <h3>Tamaño de la veta</h3>
+        <div class="richness-grid">
+          {{#each richnessOptions}}
+            <button type="button" class="richness-card {{#if isSelected}}is-selected{{/if}}" data-action="select-richness" data-key="{{key}}">
+              <header>
+                <h4>{{label}}</h4>
+                <span class="dice">{{dice}} kg</span>
+              </header>
+              <p>{{description}}</p>
+              <footer>{{hours}} h de trabajo</footer>
+            </button>
+          {{/each}}
+        </div>
+      </section>
+
+      <section class="quality">
+        <h3>Calidad del depósito</h3>
+        <div class="quality-box">
+          <div>
+            <p class="grade">Grado {{quality.grade}} — {{quality.label}}</p>
+            <p class="range">1d100: {{quality.roll}} ({{quality.min}}–{{quality.max}})</p>
+          </div>
+          <button type="button" class="reroll" data-action="reroll-quality">
+            <i class="fa-solid fa-dice"></i> Volver a tirar
+          </button>
+        </div>
+      </section>
+
+      <section class="overview">
+        <h3>Resumen</h3>
+        <ul>
+          <li><strong>Extracción:</strong> {{extractionHours}} h ({{extractionMinutes}} min totales)</li>
+          <li><strong>Riqueza:</strong> {{richness.label}} — produce {{richness.dice}} kg por intervalo</li>
+          <li><strong>Herramienta:</strong> {{toolInfo.label}} (cubre hasta grado {{toolInfo.canExtractGrade}})</li>
+          <li><strong>Accesibilidad:</strong> {{accessibility.label}} {{#if laborCost}}(Costo mano de obra {{laborCost}} Shekels/kg){{/if}}</li>
+        </ul>
+      </section>
+    </section>
+  {{/if}}
+
+  <footer class="wizard-footer">
+    <div class="left">
+      {{#if (eq step "setup")}}
+        <button type="button" class="back" data-action="goto-step" data-step="material">← Volver</button>
+      {{/if}}
+    </div>
+    <div class="right">
+      {{#if (eq step "material")}}
+        <button type="button" class="primary" data-action="goto-step" data-step="setup" {{#unless canContinue}}disabled{{/unless}}>
+          Siguiente →
+        </button>
+      {{/if}}
+      {{#if (eq step "setup")}}
+        <button type="button" class="primary" data-action="finish" {{#unless canFinish}}disabled{{/unless}}>
+          Crear veta
+        </button>
+      {{/if}}
+    </div>
+  </footer>
+
+  <style>
+    .mineral-vein .wizard-header {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mineral-vein .wizard-steps {
+      display: flex;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .mineral-vein .wizard-step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.05);
+      color: var(--color-text-light-6);
+    }
+    .mineral-vein .wizard-step.is-active {
+      background: var(--color-primary-4);
+      color: white;
+    }
+    .mineral-vein .wizard-step .step-index {
+      font-weight: 600;
+    }
+    .mineral-vein .wizard-body {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-height: 60vh;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .mineral-vein .wizard-search label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .mineral-vein .wizard-search input {
+      padding: 6px 8px;
+      border-radius: 6px;
+    }
+    .mineral-vein .material-layout {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      align-items: start;
+    }
+    .mineral-vein .material-groups {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .mineral-vein .material-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .mineral-vein .material-group .group-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .mineral-vein .material-group h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .mineral-vein .material-group .count {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .material-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(15, 15, 20, 0.45);
+      border-radius: 12px;
+      padding: 6px;
+    }
+    .mineral-vein .material-header-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) repeat(2, 60px) minmax(0, 1fr) minmax(0, 1fr);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-light-5);
+      padding: 4px 10px;
+    }
+    .mineral-vein .material-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) repeat(2, 60px) minmax(0, 1fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: rgba(0,0,0,0.25);
+      text-align: left;
+      color: inherit;
+      cursor: pointer;
+      transition: border-color 150ms ease, background 150ms ease;
+    }
+    .mineral-vein .material-row .col.name {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .mineral-vein .material-row .label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .mineral-vein .material-row .tag {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .material-row .col.stat,
+    .mineral-vein .material-row .col.cost,
+    .mineral-vein .material-row .col.access {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .mineral-vein .material-row .col.cost {
+      color: var(--color-text-light-5);
+      font-size: 11px;
+    }
+    .mineral-vein .material-row .col.access {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .mineral-vein .material-row .col.access.general { color: #8dd8ff; }
+    .mineral-vein .material-row .col.access.limitado { color: #ffc37b; }
+    .mineral-vein .material-row .col.access.singular { color: #ff8fcb; }
+    .mineral-vein .material-row:hover {
+      border-color: var(--color-primary-4);
+      background: rgba(15, 15, 20, 0.65);
+    }
+    .mineral-vein .material-row.is-selected {
+      border-color: var(--color-primary-4);
+      background: rgba(15, 15, 20, 0.75);
+    }
+    .mineral-vein .material-row:focus-visible {
+      outline: 2px solid var(--color-primary-4);
+      outline-offset: 2px;
+    }
+    .mineral-vein .material-preview {
+      position: sticky;
+      top: 0;
+      align-self: flex-start;
+      background: rgba(10, 10, 18, 0.85);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 200px;
+    }
+    .mineral-vein .material-preview header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .mineral-vein .material-preview h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+    .mineral-vein .material-preview .tag {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .material-preview .description {
+      font-size: 12px;
+      color: var(--color-text-light-5);
+      margin: 0;
+      line-height: 1.5;
+    }
+    .mineral-vein .material-preview dl {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0;
+    }
+    .mineral-vein .material-preview dl div {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .mineral-vein .material-preview dt {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .material-preview dd {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .mineral-vein .empty-preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--color-text-light-5);
+      text-align: center;
+      padding: 12px;
+    }
+    .mineral-vein .empty {
+      text-align: center;
+      font-style: italic;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .selected-material {
+      padding: 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .mineral-vein .selected-material header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .mineral-vein .selected-material h2 {
+      margin: 0;
+    }
+    .mineral-vein .selected-material .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin: 0;
+    }
+    .mineral-vein .selected-material .summary div {
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+      padding: 6px;
+    }
+    .mineral-vein .selected-material dt {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .selected-material dd {
+      margin: 0;
+      font-weight: 600;
+    }
+    .mineral-vein .richness-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .mineral-vein .richness-card {
+      text-align: left;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: rgba(255,255,255,0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .mineral-vein .richness-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .mineral-vein .richness-card h4 {
+      margin: 0;
+    }
+    .mineral-vein .richness-card .dice {
+      font-size: 11px;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .richness-card footer {
+      font-size: 11px;
+      color: var(--color-text-light-5);
+    }
+    .mineral-vein .richness-card.is-selected {
+      border-color: var(--color-primary-4);
+    }
+    .mineral-vein .quality-box {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 12px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .mineral-vein .quality-box .grade {
+      font-weight: 600;
+    }
+    .mineral-vein .quality-box .reroll {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+    }
+    .mineral-vein .overview ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .mineral-vein .wizard-footer {
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .mineral-vein .wizard-footer button {
+      padding: 8px 14px;
+      border-radius: 6px;
+    }
+    .mineral-vein .wizard-footer .primary {
+      background: var(--color-primary-4);
+      color: white;
+    }
+  </style>
+</section>

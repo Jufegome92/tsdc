@@ -1,0 +1,1267 @@
+{{!-- templates/apps/extraction-dialog.hbs --}}
+<div class="extraction-dialog-container">
+
+  {{#if error}}
+    <div class="error-message">
+      <i class="fas fa-exclamation-triangle"></i>
+      <p>{{error}}</p>
+    </div>
+  {{else}}
+
+    {{!-- Medicine Check Step --}}
+    {{#if (eq step "medicine")}}
+      <div class="extraction-step step-medicine-check">
+        {{#if medicineCheckData.error}}
+          {{!-- Show error if no aptitude/rank --}}
+          <div class="medicine-error">
+            <h3>⚠️ Requisito no cumplido</h3>
+            <div class="error-content">
+              <i class="fas fa-exclamation-circle"></i>
+              <p>{{medicineCheckData.message}}</p>
+              <p class="hint">La aptitud "Extracción de Criaturas" se obtiene automáticamente al alcanzar Rango 1 en la especialización Medicina (Artes y Oficios).</p>
+            </div>
+            <div class="dialog-buttons">
+              <button data-action="close">Cerrar</button>
+            </div>
+          </div>
+        {{else if medicineRollResult}}
+          {{!-- Show result after roll --}}
+          <div class="medicine-result {{#if medicinePassed}}success{{else}}failure{{/if}}">
+            <h3>Examen de Medicina</h3>
+            <div class="check-details">
+              <p><strong>Resultado:</strong> {{medicineRollResult.total}}{{#if isGM}} vs DC {{medicineRollResult.dc}}{{/if}}</p>
+              {{#if isGM}}
+              <p class="margin {{#if medicinePassed}}positive{{else}}negative{{/if}}">
+                <strong>Margen:</strong> {{#if medicinePassed}}+{{/if}}{{medicineRollResult.margin}}
+              </p>
+              {{/if}}
+            </div>
+            {{#if medicinePassed}}
+              <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <p>¡Éxito! Has examinado la criatura y revelado información sobre ella.</p>
+              </div>
+
+              {{!-- Información revelada de la criatura --}}
+              <div class="creature-revealed-info">
+                <h4><i class="fas fa-book"></i> Información Revelada</h4>
+                <div class="revealed-box">
+                  <div class="info-row">
+                    <span class="label">Categoría:</span>
+                    <span class="value">{{medicineCheckData.categoryLabel}}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">Tamaño:</span>
+                    <span class="value">{{medicineCheckData.sizeLabel}}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">Naturaleza:</span>
+                    <span class="value">{{medicineCheckData.natureLabel}}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="label">Nivel:</span>
+                    <span class="value">{{medicineCheckData.level}}</span>
+                  </div>
+                  {{#if medicineCheckData.anatomy}}
+                  <div class="anatomy-info">
+                    <span class="label">Anatomía:</span>
+                    <p class="anatomy-desc">{{medicineCheckData.anatomy}}</p>
+                  </div>
+                  {{/if}}
+                  {{#if medicineCheckData.weaknesses}}
+                  <div class="weaknesses-info">
+                    <span class="label">Debilidades conocidas:</span>
+                    <p class="weaknesses-desc">{{medicineCheckData.weaknesses}}</p>
+                  </div>
+                  {{/if}}
+                </div>
+                <p class="bestiary-note"><em>Has identificado las características de esta criatura.</em></p>
+              </div>
+
+              <button class="primary" data-action="select-extraction-type" data-type="creature">
+                <i class="fas fa-hand-sparkles"></i> Proceder con la Extracción
+              </button>
+            {{else}}
+              <div class="failure-message">
+                <i class="fas fa-times-circle"></i>
+                <p>No pudiste determinar qué partes son útiles o cómo extraerlas de manera segura.</p>
+                <button data-action="close">Cerrar</button>
+              </div>
+            {{/if}}
+          </div>
+        {{else}}
+          {{!-- Show check UI before roll --}}
+          <div class="medicine-check-ui">
+            <h3>Tirada de Medicina</h3>
+            <p class="intro-text">
+              Para identificar las partes extraíbles de <strong>{{medicineCheckData.creatureName}}</strong>,
+              debes pasar una tirada de <strong>Artes y Oficios (Medicina)</strong>.
+            </p>
+
+            <div class="creature-info-box">
+              <div class="info-row">
+                <span class="label">Criatura:</span>
+                <span class="value">Criatura Desconocida</span>
+              </div>
+              <p class="hint"><em>Debes pasar la tirada de medicina para identificar la criatura y sus partes extraíbles.</em></p>
+            </div>
+
+            {{#if isGM}}
+            <div class="check-calculation gm-only">
+              <h4>Cálculo de Dificultad <span class="gm-badge">(Solo GM)</span></h4>
+              <div class="calc-row">
+                <span>Dificultad Base ({{medicineCheckData.baseDifficulty}}):</span>
+                <span class="value">{{medicineCheckData.baseDC}}</span>
+              </div>
+              <div class="calc-row">
+                <span>Nivel de Criatura:</span>
+                <span class="value">+{{medicineCheckData.level}}</span>
+              </div>
+              <div class="calc-row total">
+                <span><strong>DC Total:</strong></span>
+                <span class="value"><strong>{{medicineCheckData.finalDC}}</strong></span>
+              </div>
+            </div>
+            {{/if}}
+
+            <div class="your-modifier">
+              <h4>Tu Modificador</h4>
+              <div class="calc-row">
+                <span>Mod. Atributo (Sabiduría):</span>
+                <span class="value">{{#if (gt medicineCheckData.attributeMod 0)}}+{{/if}}{{medicineCheckData.attributeMod}}</span>
+              </div>
+              <div class="calc-row">
+                <span>Nivel Medicina:</span>
+                <span class="value">+{{medicineCheckData.medicineLevel}}</span>
+              </div>
+              <div class="calc-row">
+                <span>Rango Medicina:</span>
+                <span class="value">+{{medicineCheckData.medicineRank}}</span>
+              </div>
+              <div class="calc-row total">
+                <span><strong>Total:</strong></span>
+                <span class="value"><strong>{{#if (gt medicineCheckData.totalModifier 0)}}+{{/if}}{{medicineCheckData.totalModifier}}</strong></span>
+              </div>
+            </div>
+
+            <div class="roll-formula">
+              <p><strong>Fórmula:</strong> {{medicineCheckData.formula}}{{#if isGM}} vs DC {{medicineCheckData.finalDC}}{{/if}}</p>
+            </div>
+
+            <div class="roll-mode-selection">
+              <h4>Modo de Tirada</h4>
+              <div class="mode-options">
+                <label class="mode-option">
+                  <input type="radio" name="roll-mode" value="normal" checked>
+                  <div class="mode-card">
+                    <i class="fas fa-dice"></i>
+                    <span class="mode-name">Normal</span>
+                    <span class="mode-desc">1d10 estándar</span>
+                  </div>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="roll-mode" value="ejecucion">
+                  <div class="mode-card">
+                    <i class="fas fa-bullseye"></i>
+                    <span class="mode-name">Ejecución</span>
+                    <span class="mode-desc">2d10, tomar el mayor</span>
+                  </div>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="roll-mode" value="aprender">
+                  <div class="mode-card">
+                    <i class="fas fa-book-open"></i>
+                    <span class="mode-name">Aprender</span>
+                    <span class="mode-desc">2d10, tomar el menor</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="dialog-buttons">
+              <button data-action="close">Cancelar</button>
+              <button class="primary" data-action="roll-medicine">
+                <i class="fas fa-dice-d20"></i> Tirar Medicina
+              </button>
+            </div>
+          </div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{!-- Extraction Summary (después de medicina exitosa) --}}
+    {{#if isExtractionSummary}}
+      <div class="extraction-step extraction-summary-step">
+        <h3>Resumen de Extracción</h3>
+
+        {{#if extractionSummary}}
+          <div class="summary-header">
+            <p><strong>Tamaño:</strong> {{extractionSummary.size}}</p>
+            <p><strong>Calidad base:</strong> Grado {{extractionSummary.quality}}</p>
+            {{#if extractionSummary.selectedKit}}
+              <p><strong>Kit de Extracción:</strong> {{extractionSummary.selectedKit.name}}</p>
+            {{else}}
+              <p class="warning"><i class="fas fa-exclamation-triangle"></i> No tienes kit de extracción</p>
+            {{/if}}
+          </div>
+
+          <div class="parts-summary">
+            <h4>Partes Extraíbles ({{extractionSummary.totalParts}})</h4>
+            {{#if extractionSummary.parts.length}}
+              <div class="parts-list">
+                {{#each extractionSummary.parts}}
+                  <div class="part-summary-card">
+                    <div class="part-header">
+                      <span class="part-name">{{label}}</span>
+                      {{#if sensitive}}
+                        <span class="sensitive-badge" title="Parte sensible">
+                          <i class="fas fa-flask"></i> Sensible
+                        </span>
+                      {{/if}}
+                    </div>
+                    <div class="part-details">
+                      <span><i class="fas fa-balance-scale"></i> {{quantity}} {{unit}}</span>
+                      <span><i class="fas fa-chart-line"></i> {{difficulty}}</span>
+                    </div>
+                    {{#if conservationInfo.requiresKit}}
+                      <div class="conservation-req">
+                        <i class="fas fa-box"></i> Requiere: {{conservationInfo.requiresKit}}
+                        <span class="duration">({{conservationInfo.extendedTime}})</span>
+                      </div>
+                    {{/if}}
+                  </div>
+                {{/each}}
+              </div>
+            {{else}}
+              <p class="no-parts">No hay partes extraíbles con tu kit actual.</p>
+            {{/if}}
+          </div>
+
+          <div class="summary-footer">
+            <div class="time-total">
+              <i class="fas fa-hourglass-half"></i>
+              <strong>Tiempo total estimado:</strong> {{extractionSummary.timeDisplay}}
+            </div>
+
+            {{#if extractionSummary.conservationKitsNeeded.length}}
+              <div class="conservation-kits-required">
+                <h4>Kits de Conservación Necesarios:</h4>
+                <ul>
+                  {{#each extractionSummary.conservationKitsNeeded}}
+                    <li>
+                      {{this}}
+                      {{#if (lookup ../extractionSummary.conservationKitsAvailable this)}}
+                        <i class="fas fa-check success" title="Disponible"></i>
+                      {{else}}
+                        <i class="fas fa-times warning" title="No disponible"></i>
+                      {{/if}}
+                    </li>
+                  {{/each}}
+                </ul>
+                {{#unless extractionSummary.hasAllConservationKits}}
+                  <p class="warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    No tienes todos los kits de conservación. Los materiales sin kit se perderán rápidamente.
+                  </p>
+                {{/unless}}
+              </div>
+            {{/if}}
+          </div>
+
+          <div class="dialog-buttons">
+            <button data-action="close">Cancelar</button>
+            {{#if extractionSummary.totalParts}}
+              <button class="primary" data-action="begin-extraction">
+                <i class="fas fa-hand-sparkles"></i> Comenzar Extracción
+              </button>
+            {{else}}
+              <button class="primary" disabled title="No hay partes extraíbles">
+                <i class="fas fa-hand-sparkles"></i> Comenzar Extracción
+              </button>
+            {{/if}}
+          </div>
+        {{else}}
+          <p>Error: No se pudo cargar el resumen de extracción.</p>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{!-- Step 1: Select Extraction Type --}}
+    {{#if (eq step 1)}}
+      <div class="extraction-step step-type-selection">
+        <h3>¿Qué deseas extraer?</h3>
+        <div class="extraction-types">
+          {{#each extractionTypes}}
+            <button class="extraction-type-card" data-action="select-extraction-type" data-type="{{key}}">
+              <i class="{{icon}}"></i>
+              <h4>{{label}}</h4>
+              <p>{{description}}</p>
+            </button>
+          {{/each}}
+        </div>
+      </div>
+    {{/if}}
+
+    {{!-- Step 2: Select Target (Creature/Plant/Mineral) --}}
+    {{#if (eq step 2)}}
+      <div class="extraction-step step-target-selection">
+
+        {{!-- Creature Selection --}}
+        {{#if (eq extractionData.type "creature")}}
+          <h3>Selecciona una criatura muerta</h3>
+          {{#if availableCreatures.length}}
+            <div class="creatures-list">
+              {{#each availableCreatures}}
+                <div class="creature-card">
+                  <img src="{{img}}" alt="{{name}}">
+                  <h4>{{name}}</h4>
+                  <div class="parts-list">
+                    <p>Partes extraíbles:</p>
+                    {{#each parts}}
+                      <button class="part-button"
+                              data-action="select-creature"
+                              data-creature-id="{{../id}}"
+                              data-part-key="{{key}}"
+                              data-part-label="{{label}}"
+                              data-required-grade="{{requiredGrade}}"
+                              data-required-grade-label="{{requiredGradeLabel}}"
+                              data-part-quantity="{{quantity}}"
+                              data-part-quality="{{quality}}">
+                        {{label}}
+                        {{#if sensitive}}<i class="fas fa-flask" title="Sensible"></i>{{/if}}
+                        <span class="quality-badge">G{{quality}}</span>
+                      </button>
+                    {{/each}}
+                  </div>
+                </div>
+              {{/each}}
+            </div>
+          {{else}}
+            <div class="empty-state">
+              <i class="fas fa-paw"></i>
+              <p>No hay criaturas muertas disponibles en la escena.</p>
+            </div>
+          {{/if}}
+        {{/if}}
+
+        {{!-- Plant Selection --}}
+        {{#if (eq extractionData.type "plant")}}
+          <h3>Selecciona una planta para recolectar</h3>
+          {{#if availablePlants.length}}
+            <div class="plants-list">
+              {{#each availablePlants}}
+                <button class="plant-card"
+                        data-action="select-material"
+                        data-material-key="{{key}}"
+                        data-quality="1">
+                  <div class="plant-header">
+                    <h4>{{label}}</h4>
+                    <span class="accessibility-badge {{accessibility}}">{{accessibility}}</span>
+                  </div>
+                  <div class="plant-info">
+                    <span><i class="fas fa-flask"></i> ÍA: {{alchemicalIndex}}</span>
+                    <span><i class="fas fa-clock"></i> {{extractionTime}}min</span>
+                  </div>
+                  <p class="plant-use">{{use}}</p>
+                </button>
+              {{/each}}
+            </div>
+          {{else}}
+            <div class="empty-state">
+              <i class="fas fa-leaf"></i>
+              <p>No hay plantas disponibles.</p>
+            </div>
+          {{/if}}
+        {{/if}}
+
+        {{!-- Mineral Selection --}}
+        {{#if (eq extractionData.type "mineral")}}
+          <h3>Selecciona un mineral para extraer</h3>
+          <div class="quality-selector">
+            <label>Calidad deseada:</label>
+            <div class="quality-buttons">
+              <button class="quality-btn active" data-quality="1">Común (1)</button>
+              <button class="quality-btn" data-quality="2">Raro (2)</button>
+              <button class="quality-btn" data-quality="3">Excepcional (3)</button>
+            </div>
+          </div>
+          {{#if availableMinerals.length}}
+            <div class="minerals-list">
+              {{#each availableMinerals}}
+                <button class="mineral-card"
+                        data-action="select-material"
+                        data-material-key="{{key}}"
+                        data-quality="1">
+                  <h4>{{label}}</h4>
+                  <span class="mineral-type">{{type}}</span>
+                  <span class="accessibility-badge {{accessibility}}">{{accessibility}}</span>
+                </button>
+              {{/each}}
+            </div>
+          {{/if}}
+        {{/if}}
+
+        <div class="dialog-buttons">
+          <button data-action="back"><i class="fas fa-arrow-left"></i> Volver</button>
+        </div>
+      </div>
+    {{/if}}
+
+    {{!-- Step 3: Select Tool --}}
+    {{#if (eq step 3)}}
+      <div class="extraction-step step-tool-selection">
+        <h3>Selecciona una herramienta</h3>
+        {{#if toolRequirement}}
+          <p class="tool-requirement">Requiere kit <strong>{{toolRequirement.requiredLabel}}</strong>.</p>
+        {{/if}}
+        {{#if availableTools.length}}
+          <div class="tools-list">
+            {{#each availableTools}}
+              <button class="tool-card" data-action="select-tool" data-tool-id="{{id}}">
+                <h4>{{name}}</h4>
+                <div class="tool-info">
+                  <span class="tool-grade grade-{{gradeKey}}">{{gradeLabel}}</span>
+                  {{#if uses}}
+                    <span class="tool-uses">{{uses}}/{{maxUses}} usos</span>
+                  {{/if}}
+                  {{#if (gt bonus 0)}}
+                    <span class="tool-bonus">+{{bonus}}</span>
+                  {{/if}}
+                </div>
+              </button>
+            {{/each}}
+          </div>
+        {{else}}
+          <div class="empty-state">
+            <i class="fas fa-tools"></i>
+            <p>No tienes herramientas adecuadas para esta extracción.</p>
+            {{#if toolRequirement}}
+              <p class="hint">Se requiere al menos un kit {{toolRequirement.requiredLabel}}.</p>
+            {{/if}}
+            <p class="hint">Necesitas herramientas de
+              {{#if (eq extractionData.type "creature")}}herboristería{{/if}}
+              {{#if (eq extractionData.type "plant")}}herboristería{{/if}}
+              {{#if (eq extractionData.type "mineral")}}minería{{/if}}
+            </p>
+          </div>
+        {{/if}}
+
+        <div class="dialog-buttons">
+          <button data-action="back"><i class="fas fa-arrow-left"></i> Volver</button>
+          {{#if canSkipTool}}
+            <button class="skip-tool-btn">Continuar sin herramienta</button>
+          {{/if}}
+        </div>
+      </div>
+    {{/if}}
+
+    {{!-- Step 4: Confirm and Extract --}}
+    {{#if (eq step 4)}}
+      <div class="extraction-step step-confirmation">
+        <h3>Confirmación de Extracción</h3>
+
+        {{#if extractionInfo}}
+          <div class="extraction-summary">
+            <div class="summary-section">
+              <h4>Material</h4>
+              <p class="material-name">{{extractionInfo.label}}</p>
+              {{#if extractionInfo.sensitive}}
+                <span class="sensitive-badge"><i class="fas fa-flask"></i> Sensible</span>
+              {{/if}}
+            </div>
+
+            <div class="summary-section">
+              <h4>Información de Extracción</h4>
+              <ul>
+                <li><strong>Aptitud:</strong> {{capitalize extractionInfo.aptitudeKey}}</li>
+                <li><strong>Tiempo:</strong> {{extractionInfo.extractionTime}} minutos</li>
+                <li><strong>Dificultad:</strong> {{capitalize extractionInfo.difficulty}}</li>
+                {{#if extractionInfo.bonus}}
+                  <li><strong>Bonus:</strong> +{{extractionInfo.bonus}}</li>
+                {{/if}}
+                {{#if extractionInfo.yieldFormula}}
+                  <li><strong>Cantidad:</strong> {{extractionInfo.yieldFormula}}</li>
+                {{/if}}
+                {{#if extractionInfo.quantity}}
+                  <li><strong>Cantidad estimada:</strong> {{extractionInfo.quantity}}</li>
+                {{/if}}
+                {{#if (and extractionInfo.requiredLabel (not extractionInfo.hasRequiredTool))}}
+                  <li><strong>Requiere kit:</strong> {{extractionInfo.requiredLabel}}</li>
+                {{/if}}
+                {{#if selectedToolName}}
+                  <li><strong>Herramienta:</strong> {{selectedToolName}}</li>
+                {{/if}}
+              </ul>
+              {{#unless extractionInfo.hasRequiredTool}}
+                <p class="warning">
+                  <i class="fas fa-triangle-exclamation"></i>
+                  Necesitas un kit {{extractionInfo.requiredLabel}} para realizar esta extracción.
+                </p>
+              {{/unless}}
+            </div>
+
+            {{#if extractionInfo.conservationInfo}}
+              <div class="summary-section conservation-info">
+                <h4>Conservación</h4>
+                {{#if extractionInfo.conservationInfo.requiresKit}}
+                  <p class="warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Este material es perecedero
+                  </p>
+                  <p>Durará: {{extractionInfo.conservationInfo.time}}</p>
+                  <p>Con kit: {{extractionInfo.conservationInfo.extendedTime}}</p>
+                {{else}}
+                  <p class="success">
+                    <i class="fas fa-check"></i>
+                    No requiere conservación especial
+                  </p>
+                {{/if}}
+              </div>
+            {{/if}}
+          </div>
+
+          <div class="dialog-buttons">
+            <button data-action="back"><i class="fas fa-arrow-left"></i> Volver</button>
+            {{#if extractionInfo.hasRequiredTool}}
+              <button class="primary" data-action="perform-extraction">
+                <i class="fas fa-hand-sparkles"></i> Realizar Extracción
+              </button>
+            {{else}}
+              <button class="primary" disabled>
+                <i class="fas fa-hand-sparkles"></i> Falta herramienta adecuada
+              </button>
+            {{/if}}
+          </div>
+        {{else}}
+          <p class="error">No se pudo obtener información de extracción.</p>
+          <button data-action="back"><i class="fas fa-arrow-left"></i> Volver</button>
+        {{/if}}
+      </div>
+    {{/if}}
+
+  {{/if}}
+
+  <style>
+  .extraction-dialog-container {
+  padding: 1rem;
+  background: linear-gradient(135deg, #2a1810 0%, #1a0f08 100%);
+  color: #e8d7c3;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Scrollbar styling */
+.extraction-dialog-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.extraction-dialog-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.extraction-dialog-container::-webkit-scrollbar-thumb {
+  background: #8b6f47;
+  border-radius: 4px;
+}
+
+.extraction-dialog-container::-webkit-scrollbar-thumb:hover {
+  background: #d4af77;
+}
+
+.extraction-step h3 {
+  margin: 0 0 1rem 0;
+  color: #d4af77;
+  border-bottom: 2px solid #8b6f47;
+  padding-bottom: 0.5rem;
+}
+
+/* Type Selection */
+.extraction-types {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.extraction-type-card {
+  background: rgba(139, 111, 71, 0.1);
+  border: 2px solid #8b6f47;
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.extraction-type-card:hover {
+  background: rgba(139, 111, 71, 0.2);
+  border-color: #d4af77;
+  transform: translateY(-2px);
+}
+
+.extraction-type-card i {
+  font-size: 2rem;
+  color: #d4af77;
+  margin-bottom: 0.5rem;
+}
+
+.extraction-type-card h4 {
+  margin: 0.5rem 0;
+  color: #f5e6d3;
+}
+
+.extraction-type-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #b8a58f;
+}
+
+/* Lists */
+.creatures-list,
+.plants-list,
+.minerals-list,
+.tools-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Creature Card */
+.creature-card {
+  background: rgba(139, 111, 71, 0.1);
+  border: 2px solid #8b6f47;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.creature-card img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.creature-card h4 {
+  margin: 0.5rem 0;
+  color: #f5e6d3;
+}
+
+.parts-list p {
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+  color: #b8a58f;
+}
+
+.part-button {
+  display: block;
+  width: 100%;
+  background: rgba(139, 111, 71, 0.2);
+  border: 1px solid #8b6f47;
+  padding: 0.5rem;
+  margin: 0.25rem 0;
+  border-radius: 4px;
+  color: #e8d7c3;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.part-button:hover {
+  background: rgba(139, 111, 71, 0.3);
+}
+
+.quality-badge {
+  float: right;
+  background: #8b6f47;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+}
+
+/* Plant & Mineral Cards */
+.plant-card,
+.mineral-card {
+  background: rgba(139, 111, 71, 0.1);
+  border: 2px solid #8b6f47;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.plant-card:hover,
+.mineral-card:hover {
+  background: rgba(139, 111, 71, 0.2);
+  border-color: #d4af77;
+}
+
+.plant-header,
+.mineral-card h4 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.plant-info {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #b8a58f;
+  margin: 0.5rem 0;
+}
+
+.plant-use {
+  font-size: 0.85rem;
+  color: #b8a58f;
+  margin: 0.5rem 0 0 0;
+}
+
+/* Badges */
+.accessibility-badge {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.accessibility-badge.general {
+  background: #48bb78;
+  color: white;
+}
+
+.accessibility-badge.limitado {
+  background: #ed8936;
+  color: white;
+}
+
+.accessibility-badge.singular {
+  background: #e53e3e;
+  color: white;
+}
+
+/* Tool Cards */
+.tool-card {
+  background: rgba(139, 111, 71, 0.1);
+  border: 2px solid #8b6f47;
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.tool-card:hover {
+  background: rgba(139, 111, 71, 0.2);
+  border-color: #d4af77;
+}
+
+.tool-info {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.tool-grade {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.tool-grade.grade-basico {
+  background: #718096;
+  color: white;
+}
+
+.tool-grade.grade-avanzado {
+  background: #4299e1;
+  color: white;
+}
+
+.tool-grade.grade-especializado {
+  background: #9f7aea;
+  color: white;
+}
+
+/* Summary */
+.extraction-summary {
+  background: rgba(139, 111, 71, 0.1);
+  border: 2px solid #8b6f47;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.summary-section {
+  margin-bottom: 1rem;
+}
+
+.summary-section h4 {
+  color: #d4af77;
+  margin: 0 0 0.5rem 0;
+}
+
+.summary-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.summary-section li {
+  padding: 0.25rem 0;
+}
+
+.material-name {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #f5e6d3;
+  margin: 0;
+}
+
+.sensitive-badge {
+  background: #ed8936;
+  color: white;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 2rem;
+  color: #b8a58f;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  color: #8b6f47;
+  margin-bottom: 1rem;
+}
+
+/* Buttons */
+.dialog-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.dialog-buttons button {
+  padding: 0.5rem 1rem;
+  border: 2px solid #8b6f47;
+  border-radius: 4px;
+  background: rgba(139, 111, 71, 0.2);
+  color: #e8d7c3;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.dialog-buttons button:hover {
+  background: rgba(139, 111, 71, 0.3);
+  border-color: #d4af77;
+}
+
+.dialog-buttons button.primary {
+  background: #8b6f47;
+  color: white;
+}
+
+.dialog-buttons button.primary:hover {
+  background: #d4af77;
+}
+
+/* Quality Selector */
+.quality-selector {
+  margin-bottom: 1rem;
+}
+
+.quality-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.quality-btn {
+  flex: 1;
+  padding: 0.5rem;
+  border: 2px solid #8b6f47;
+  background: rgba(139, 111, 71, 0.1);
+  color: #e8d7c3;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.quality-btn:hover {
+  background: rgba(139, 111, 71, 0.2);
+}
+
+.quality-btn.active {
+  background: #8b6f47;
+  color: white;
+  border-color: #d4af77;
+}
+
+/* Medicine Check Step */
+.step-medicine-check {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.medicine-check-ui,
+.medicine-result {
+  background: rgba(139, 111, 71, 0.1);
+  border: 2px solid #8b6f47;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.intro-text {
+  color: #b8a58f;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.creature-info-box,
+.check-calculation,
+.your-modifier {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.creature-info-box h4,
+.check-calculation h4,
+.your-modifier h4 {
+  color: #d4af77;
+  margin: 0 0 0.75rem 0;
+  font-size: 0.95rem;
+}
+
+.info-row,
+.calc-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0;
+  color: #e8d7c3;
+}
+
+.info-row:not(:last-child),
+.calc-row:not(:last-child) {
+  border-bottom: 1px solid rgba(139, 111, 71, 0.3);
+}
+
+.info-row .label {
+  color: #b8a58f;
+  font-size: 0.9rem;
+}
+
+.info-row .value,
+.calc-row .value {
+  font-weight: bold;
+  color: #f5e6d3;
+}
+
+.calc-row.total {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 2px solid #8b6f47;
+  font-size: 1.1rem;
+}
+
+.roll-formula {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.roll-formula p {
+  margin: 0;
+  color: #d4af77;
+  font-size: 1.1rem;
+}
+
+/* Medicine Result */
+.medicine-result.success {
+  border-color: #48bb78;
+}
+
+.medicine-result.failure {
+  border-color: #e53e3e;
+}
+
+.creature-info,
+.check-details {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(139, 111, 71, 0.3);
+}
+
+.creature-info p,
+.check-details p {
+  margin: 0.5rem 0;
+  color: #e8d7c3;
+}
+
+.margin.positive {
+  color: #48bb78;
+}
+
+.margin.negative {
+  color: #e53e3e;
+}
+
+.success-message,
+.failure-message {
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 6px;
+}
+
+.success-message {
+  background: rgba(72, 187, 120, 0.1);
+  border: 2px solid #48bb78;
+}
+
+.failure-message {
+  background: rgba(229, 62, 62, 0.1);
+  border: 2px solid #e53e3e;
+}
+
+.success-message i {
+  font-size: 3rem;
+  color: #48bb78;
+  margin-bottom: 1rem;
+}
+
+.failure-message i {
+  font-size: 3rem;
+  color: #e53e3e;
+  margin-bottom: 1rem;
+}
+
+.success-message p,
+.failure-message p {
+  margin: 1rem 0 1.5rem 0;
+  font-size: 1.1rem;
+  color: #e8d7c3;
+}
+
+.success-message button,
+.failure-message button {
+  margin-top: 0.5rem;
+}
+
+/* GM Only Sections */
+.gm-only {
+  border: 2px dashed #d4af77;
+  padding: 1rem;
+  border-radius: 6px;
+  background: rgba(212, 175, 119, 0.05);
+}
+
+.gm-badge {
+  font-size: 0.75rem;
+  color: #d4af77;
+  font-weight: normal;
+  padding: 0.2rem 0.5rem;
+  background: rgba(212, 175, 119, 0.2);
+  border-radius: 4px;
+}
+
+.success-message button,
+.failure-message button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+}
+
+/* Medicine Error */
+.medicine-error {
+  background: rgba(229, 62, 62, 0.1);
+  border: 2px solid #e53e3e;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.medicine-error h3 {
+  color: #e53e3e;
+  margin: 0 0 1rem 0;
+  border-bottom-color: #e53e3e;
+}
+
+.error-content {
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.error-content i {
+  font-size: 3rem;
+  color: #e53e3e;
+  margin-bottom: 1rem;
+}
+
+.error-content p {
+  margin: 1rem 0;
+  color: #e8d7c3;
+  font-size: 1.1rem;
+}
+
+.error-content .hint {
+  font-size: 0.9rem;
+  color: #b8a58f;
+  font-style: italic;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(139, 111, 71, 0.3);
+}
+
+/* Roll Mode Selection */
+.roll-mode-selection {
+  background: rgba(139, 111, 71, 0.1);
+  border: 1px solid #8b6f47;
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1.5rem 0;
+}
+
+.roll-mode-selection h4 {
+  margin: 0 0 1rem 0;
+  color: #d4af77;
+  font-size: 1rem;
+}
+
+.mode-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.mode-option {
+  cursor: pointer;
+  display: block;
+}
+
+.mode-option input[type="radio"] {
+  display: none;
+}
+
+.mode-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid #8b6f47;
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: center;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mode-option:hover .mode-card {
+  border-color: #d4af77;
+  background: rgba(139, 111, 71, 0.15);
+}
+
+.mode-option input:checked + .mode-card {
+  border-color: #d4af77;
+  background: rgba(139, 111, 71, 0.25);
+  box-shadow: 0 0 8px rgba(212, 175, 119, 0.3);
+}
+
+.mode-card i {
+  font-size: 1.5rem;
+  color: #d4af77;
+}
+
+.mode-name {
+  font-weight: bold;
+  color: #f5e6d3;
+  font-size: 0.95rem;
+}
+
+.mode-desc {
+  font-size: 0.8rem;
+  color: #b8a58f;
+}
+
+/* Creature Revealed Info */
+.creature-revealed-info {
+  background: linear-gradient(135deg, rgba(42, 24, 16, 0.8) 0%, rgba(26, 15, 8, 0.8) 100%);
+  border: 2px solid #8b6f47;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.creature-revealed-info h4 {
+  margin: 0 0 1rem 0;
+  color: #d4af77;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.creature-revealed-info h4 i {
+  color: #d4af77;
+}
+
+.revealed-box {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(139, 111, 71, 0.5);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.revealed-box .info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(139, 111, 71, 0.2);
+}
+
+.revealed-box .info-row:last-of-type {
+  border-bottom: none;
+}
+
+.revealed-box .label {
+  font-weight: bold;
+  color: #d4af77;
+}
+
+.revealed-box .value {
+  color: #f5e6d3;
+}
+
+.anatomy-info,
+.weaknesses-info {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(139, 111, 71, 0.3);
+}
+
+.anatomy-desc,
+.weaknesses-desc {
+  color: #e8d7c3;
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.bestiary-note {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #b8a58f;
+  font-style: italic;
+  margin: 0;
+}
+  </style>
+</div>
