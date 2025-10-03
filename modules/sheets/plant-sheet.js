@@ -33,9 +33,9 @@ export class PlantSheet extends HandlebarsApplicationMixin(foundry.applications.
 
     // Preparar opciones para selects
     context.accessibilityOptions = [
-      { value: "general", label: "General (Alta)" },
-      { value: "limitado", label: "Limitado (Media)" },
-      { value: "singular", label: "Singular (Baja)" }
+      { value: "alta", label: "Alta" },
+      { value: "media", label: "Media" },
+      { value: "baja", label: "Baja" }
     ];
 
     context.difficultyOptions = [
@@ -51,19 +51,19 @@ export class PlantSheet extends HandlebarsApplicationMixin(foundry.applications.
     ];
 
     // Calcular tiempo de extracción basado en accesibilidad
-    const accessibility = context.system.accessibility || "general";
+    const accessibility = context.system.accessibility || "alta";
     const timeMap = {
-      general: 15,
-      limitado: 30,
-      singular: 45
+      alta: 15,
+      media: 30,
+      baja: 45
     };
     context.calculatedExtractionTime = timeMap[accessibility] || 15;
 
     // Calcular intervalos
     const intervalMap = {
-      general: 1,
-      limitado: 2,
-      singular: 3
+      alta: 1,
+      media: 2,
+      baja: 3
     };
     context.calculatedIntervals = intervalMap[accessibility] || 1;
 

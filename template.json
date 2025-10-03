@@ -272,7 +272,7 @@
 
     "plant": {
       "plantKey": "",
-      "accessibility": "general",
+      "accessibility": "alta",
       "alchemicalIndex": 0,
       "use": "elixir",
       "cost": 0,

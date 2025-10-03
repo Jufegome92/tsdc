@@ -277,5 +277,10 @@ export class PlantWizard extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.actor.setFlag("tsdc", "plantBuilt", true);
     ui.notifications.info(`Planta configurada: ${plant.label}`);
     this.close();
+
+    // Render the sheet after wizard closes
+    setTimeout(() => {
+      this.actor.sheet?.render(true);
+    }, 100);
   }
 }
